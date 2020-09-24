@@ -2,7 +2,7 @@ defmodule C_Py.Helpers do
   import NimbleParsec
 
   def whitespace(combinator \\ empty()) do
-    combinator |> optional(ignore(repeat(choice([ascii_char(' '), ascii_char('\t')]))))
+    combinator |> ignore(repeat(choice([ascii_char(' '), ascii_char('\t'), ascii_char('\n')])))
   end
   def int_literal(combinator \\ empty()) do
     combinator |> choice([optional(ascii_char('-')) |> repeat(ascii_char('0')) |> choice([
@@ -43,15 +43,23 @@ defmodule C_Py.Helpers do
     |> ascii_char([?a..?z] ++ [?A..?Z])
     |> repeat(ascii_char([?a..?z] ++ [?A..?Z] ++ [?0..?9]))
     |> whitespace()
-    |> ascii_char('=')
-    |> whitespace()
-    |> int_literal()
-    |> whitespace()
   end
 
   def int_decl(combinator \\ empty()) do
     combinator
     |> int_param()
+    |> whitespace()
+    |> ascii_char('=')
+    |> whitespace()
+    |> int_literal()
+    |> whitespace()
+    |> ascii_char(';')
+    |> whitespace()
+  end
+
+  def line(combinator \\ empty()) do
+    combinator
+    |> whitespace()
     |> ascii_char(';')
     |> whitespace()
   end
@@ -62,14 +70,36 @@ defmodule C_Py.Helpers do
     |> string("int")
     |> whitespace()
     |> ignore(ascii_char('('))
-    |> optional(repeat(whitespace() |> int_decl() |> whitespace() |> ignore(ascii_char(',')) |> whitespace()) |> int_decl())
+    |> optional(repeat(whitespace() |> int_param() |> whitespace() |> ignore(ascii_char(',')) |> whitespace()) |> int_param())
     |> whitespace()
     |> ignore(ascii_char(')'))
     |> whitespace()
     |> ascii_char('{')
-    |> whitespace()
+    |> ignore(repeat(ascii_char('\n')))
+    |> repeat(line())
     |> ascii_char('}')
   end
+
+  def program(combinator \\ empty()) do
+    combinator
+    |> whitespace()
+    |> repeat(choice([int_func(), line()]) |> whitespace())
+  end
+
+  def boolean_expression(combinator \\ empty()) do
+    combinator
+  end
+
+  def if_statement(combinator \\ empty()) do
+    combinator
+    |> ignore(string("if") |> whitespace() |> ascii_char('(') |> whitespace())
+    |> boolean_expression()
+    |> ignore(whitespace() |> ascii_char('{'))
+    |> repeat(line())
+    |> ignore(ascii_char('}'))
+    |> whitespace()
+  end
+
 end
 defmodule C_Py do
   import NimbleParsec
