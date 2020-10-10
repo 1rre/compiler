@@ -1,8 +1,8 @@
 defmodule CompilerTest do
   use ExUnit.Case
 
-  test "greets the world" do
+  test "test 1" do
     import Compiler
-    intDecl("int x = 1424;") |> IO.puts()
+    keyword("signed int") |> IO.puts()
   end
 end
