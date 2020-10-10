@@ -3,6 +3,11 @@ defmodule CompilerTest do
 
   test "test 1" do
     import Compiler
-    keyword("signed int") |> IO.puts()
+    identifier("xcx21") |> IO.puts()
+  end
+
+  test "test 2" do
+    import Compiler
+    keyword("unsigned long int") |> IO.puts()
   end
 end

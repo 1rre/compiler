@@ -1,23 +1,25 @@
 defmodule Compiler do
   import NimbleParsec
 
-  defparsec(:ws, ignore(repeat(string(" "))))
+  defparsecp(:ws, ignore(repeat(string(" "))))
 
-  defparsec(:charKw, string("char"))
+  defparsecp(:charKw, string("char"))
 
-  defparsec(:uCharKw,
+  defparsecp(:uCharKw,
     string("unsigned") |>
     parsec(:ws) |>
-    string("char")
+    string("char") |>
+    replace("uChar")
   )
 
-  defparsec(:sCharKw,
+  defparsecp(:sCharKw,
     string("signed") |>
     parsec(:ws) |>
-    string("char")
+    string("char") |>
+    replace("sChar")
   )
 
-  defparsec(:shortKw,
+  defparsecp(:shortKw,
     optional(
       string("signed") |>
       parsec(:ws)
@@ -26,44 +28,84 @@ defmodule Compiler do
     optional(
       parsec(:ws)
       |> string("int")
-    )
+    ) |>
+    replace("short")
   )
 
-  defparsec(:uShortKw,
+  defparsecp(:uShortKw,
     string("unsigned") |>
     parsec(:ws) |>
     string("short")
     |> optional(
       parsec(:ws) |>
       string("int")
-    )
+    ) |>
+    replace("uShort")
   )
 
-  defparsec(:intKw,
+  defparsecp(:intKw,
     choice([
       string("int"),
       string("signed") |>
         parsec(:ws) |>
         string("int"),
       string("signed")
-    ])
+    ]) |>
+    replace("int")
+  )
+
+  defparsecp(:uIntKw,
+    string("unsigned") |>
+    optional(
+      parsec(:ws) |>
+      string("int")
+    ) |>
+    replace("uInt")
+  )
+
+  defparsecp(:longKw,
+    optional(
+      string("signed") |>
+      parsec(:ws)
+    ) |>
+    string("long") |>
+    optional(
+      parsec(:ws) |>
+      string("int")
+    ) |>
+    replace("long")
+  )
+  defparsecp(:uLongKw,
+    string("unsigned") |>
+    parsec(:ws) |>
+    string("long") |>
+    optional(string("int")) |>
+    replace("uLong")
   )
 
   #TODO: unsigned int, long, uLong, long long, uLong long, floats
 
   defparsec(:keyword,
     choice([
-      parsec(:charKw),
       parsec(:uCharKw),
       parsec(:sCharKw),
+      parsec(:charKw),
       parsec(:shortKw),
       parsec(:uShortKw),
+      parsec(:uLongKw),
+      parsec(:longKw),
+      parsec(:uIntKw),
       parsec(:intKw)
-    ])
+    ]) |>
+    parsec(:ws)
+  )
+
+  defparsec(:identifier,
+    ascii_string([?a..?z, ?A..?Z], min: 1) |> ascii_string([?a..?z, ?A..?Z, ?0..?9], min: 0)
   )
 
   defparsec(:decl,
-    string("int ") |>
+    parsec(:keyword) |>
     parsec(:ws) |>
     ascii_string([?a..?z, ?A..?Z], min: 1) |>
     optional(
