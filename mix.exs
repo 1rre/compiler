@@ -1,9 +1,9 @@
-defmodule C_Py.MixProject do
+defmodule Compiler.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :c_py,
+      app: :compiler,
       version: "0.1.0",
       elixir: "~> 1.10",
       start_permanent: Mix.env() == :prod,
