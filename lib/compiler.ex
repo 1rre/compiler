@@ -1,7 +1,30 @@
 defmodule Compiler do
   import NimbleParsec
 
-  defparsecp(:ws, ignore(repeat(string(" "))))
+  #Function to tell if a letter is either a..z or A..Z
+  defp is_letter(x), do: x > 64 && x < 91 || x > 96 && x < 123 || x > 47 && x < 58 || x == 95
+
+  #Replace each non-space newline character in the input file with a space then replace multiple spaces with a single space.
+  def format(s) do
+    String.replace(s, ~r/(\n | \t | \v | \f | \r)+/, " ") |>
+    String.replace(~r/(\ )+/, " ") |>
+    String.replace(~r/(\ )./, fn <<_, a>> ->
+      if is_letter(a) do
+        List.to_string([' ', a])
+      else
+        List.to_string([a])
+      end
+    end) |>
+    String.replace(~r/.(\ )/, fn <<c, _>> ->
+      if is_letter(c) do
+        List.to_string([c, ' '])
+      else
+        List.to_string([c])
+      end
+    end)
+  end
+
+  defparsecp(:ws, ignore(string(" ")))
 
   defparsecp(:charKw, string("char"))
 
@@ -83,8 +106,6 @@ defmodule Compiler do
     replace("uLong")
   )
 
-  #TODO: unsigned int, long, uLong, long long, uLong long, floats
-
   defparsec(:keyword,
     choice([
       parsec(:uCharKw),
@@ -96,12 +117,18 @@ defmodule Compiler do
       parsec(:longKw),
       parsec(:uIntKw),
       parsec(:intKw)
-    ]) |>
-    parsec(:ws)
+    ])
   )
 
   defparsec(:identifier,
-    ascii_string([?a..?z, ?A..?Z], min: 1) |> ascii_string([?a..?z, ?A..?Z, ?0..?9], min: 0)
+    ascii_string([?_, ?a..?z, ?A..?Z], min: 1) |>
+    ascii_string([?_, ?a..?z, ?A..?Z, ?0..?9], min: 0)
+  )
+
+  defparsec(:param,
+    parsec(:keyword) |>
+    parsec(:ws) |>
+    parsec(:identifier)
   )
 
   defparsec(:decl,
@@ -109,17 +136,32 @@ defmodule Compiler do
     parsec(:ws) |>
     ascii_string([?a..?z, ?A..?Z], min: 1) |>
     optional(
-      parsec(:ws) |>
       string("=") |>
-      parsec(:ws) |>
       integer(min: 1, max: 8)
     ) |>
-    parsec(:ws) |>
     ignore(string(";"))
   )
 
-  defparsec(:intFunc,
-    ignore(string("int "))
+  defparsec(:line,
+    parsec(:decl)
   )
+
+  defparsec(:intFunc,
+    parsec(:param) |>
+    string("(") |>
+    optional(
+      repeat(
+        parsec(:param) |>
+        string(",")
+      ) |>
+      parsec(:param)
+    ) |>
+    string(")") |>
+    string("{") |>
+    repeat_while(parsec(:line), {:closing_bracket, []}) |>
+    string("}"),
+    debug: true)
+  defp closing_bracket(<<?}, _::binary>>, context, _, _), do: {:halt, context}
+  defp closing_bracket(_, context, _, _), do: {:cont, context}
 
 end
