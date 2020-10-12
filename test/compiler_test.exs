@@ -10,6 +10,7 @@ defmodule CompilerTest do
     intFunc("int x (int j, int k) {
       int x = 3;
     }" |> format()) |> is_ok()
+
     # "params:\n#{
     #   Enum.drop_while(x, fn y ->
     #     y != "("
@@ -35,17 +36,7 @@ defmodule CompilerTest do
     # }"
   end
 
-  test "char literal" do
-    x = literal("-32e13" |> format) |> elem(1) |> hd
-    IO.puts("#{x}")
-  end
-
-  test "format" do
-    format("int x (int j, int k) {
-      int x = 3;
-      x += 5;
-      cout<<x<<endl;
-      return x;
-    }")
+  test "a" do
+    literal("'\\n'" |> format) |> is_ok()
   end
 end

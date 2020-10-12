@@ -120,12 +120,28 @@ defmodule Compiler do
     ])
   )
 
-  defparsec(:charLiteral,
+  defp escape_char(args) do
+    case args do
+      ?a -> 0x07
+      ?b -> 0x08
+      ?e -> 0x1B
+      ?f -> 0x0C
+      ?n -> 0x0A
+      ?r -> 0x0D
+      ?t -> 0x09
+      ?v -> 0x0B
+      ?\\-> 0x5C
+      ?' -> 0x27
+      ?" -> 0x22
+      ?? -> 0x3F
+    end
+  end
+  defparsecp(:charLiteral,
     ignore(string("'")) |>
     choice([
       ascii_char([?\0..?&, ?(..?[, ?]..127]),
       ignore(string("\\")) |> choice([
-        ascii_char([?a, ?b, ?e, ?f, ?n, ?r, ?t, ?v, ?\\, ?', ?", ??]), #TODO: Implement escape chars \a..\?
+        ascii_char([?a, ?b, ?e, ?f, ?n, ?r, ?t, ?v, ?\\, ?', ?", ??]) |> map({:escape_char, []}), #TODO: Implement escape chars \a..\?
         ascii_string([?0..?7], min: 1, max: 3) |> map({String, :to_integer, [8]}),
         ignore(string("x")) |> ascii_string([?0..?9, ?a..?f, ?A..?F], 2) |> map({String, :to_integer, [16]}),
         ignore(string("u")) |> ascii_string([?0..?9, ?a..?f, ?A..?F], 4) |> map({String, :to_integer, [16]})
