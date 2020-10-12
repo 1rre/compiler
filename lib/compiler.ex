@@ -106,7 +106,7 @@ defmodule Compiler do
     replace("uLong")
   )
 
-  defparsec(:keyword,
+  defparsecp(:keyword,
     choice([
       parsec(:uCharKw),
       parsec(:sCharKw),
@@ -118,6 +118,64 @@ defmodule Compiler do
       parsec(:uIntKw),
       parsec(:intKw)
     ])
+  )
+
+  defparsec(:charLiteral,
+    ignore(string("'")) |>
+    choice([
+      ascii_char([?\0..?&, ?(..?[, ?]..127]),
+      ignore(string("\\")) |> choice([
+        ascii_char([?a, ?b, ?e, ?f, ?n, ?r, ?t, ?v, ?\\, ?', ?", ??]), #TODO: Implement escape chars \a..\?
+        ascii_string([?0..?7], min: 1, max: 3) |> map({String, :to_integer, [8]}),
+        ignore(string("x")) |> ascii_string([?0..?9, ?a..?f, ?A..?F], 2) |> map({String, :to_integer, [16]}),
+        ignore(string("u")) |> ascii_string([?0..?9, ?a..?f, ?A..?F], 4) |> map({String, :to_integer, [16]})
+      ])
+    ]) |>
+    ignore(string("'"))
+  )
+
+  defparsecp(:intLiteral,
+    choice([
+      integer(min: 1),
+      string("0") |> choice([
+        ascii_string([?0..?7], min: 0) |> map({String, :to_integer, [8]}),
+        ignore(string("x")) |> ascii_string([?0..?9, ?a..?f, ?A..?F], min: 1) |> map({String, :to_integer, [16]})
+      ])
+    ])
+
+  )
+
+  defp process_float(args) do
+    case Enum.at(args, 1) do
+      69 when length(args) == 3 -> Enum.at(args, 0) * :math.pow(10, Enum.at(args, 2))
+      101 when length(args) == 3 -> Enum.at(args, 0) * :math.pow(10, Enum.at(args, 2))
+      69 -> Enum.at(args, 0) * :math.pow(10, -Enum.at(args, 3))
+      101 -> Enum.at(args, 0) * :math.pow(10, -Enum.at(args, 3))
+      46 -> [to_string(Enum.at(args, 0)), ".", to_string(Enum.at(args, 2))] |> Enum.join() |> String.to_float()
+    end
+  end
+  defparsecp(:floatLiteral,
+    integer(min: 1) |>
+    choice([
+      ascii_char([69, 101]) |>
+        optional(ascii_char([45])),
+      ascii_char([46])
+    ]) |>
+    integer(min: 1) |>
+    reduce({:process_float, []})
+  )
+
+  defp fix_minus(args) do
+    if Enum.at(args, 0) == 45, do: -(Enum.at(args, 1)), else: Enum.at(args, 0)
+  end
+  defparsec(:literal,
+    optional(ascii_char([45])) |>
+    choice([
+      parsec(:charLiteral),
+      parsec(:floatLiteral),
+      parsec(:intLiteral)
+    ]) |>
+    reduce({:fix_minus, []})
   )
 
   defparsec(:identifier,
@@ -132,19 +190,24 @@ defmodule Compiler do
   )
 
   defparsec(:decl,
-    parsec(:keyword) |>
-    parsec(:ws) |>
-    ascii_string([?a..?z, ?A..?Z], min: 1) |>
+    parsec(:param) |>
     optional(
       string("=") |>
-      integer(min: 1, max: 8)
+      parsec(:literal)
     ) |>
     ignore(string(";"))
+  )
+
+  defparsec(:assignment,
+    parsec(:keyword) |>
+    ignore(string("=")) |>
+    parsec(:literal)
   )
 
   defparsec(:line,
     parsec(:decl)
   )
+
 
   defparsec(:intFunc,
     parsec(:param) |>
@@ -159,8 +222,8 @@ defmodule Compiler do
     string(")") |>
     string("{") |>
     repeat_while(parsec(:line), {:closing_bracket, []}) |>
-    string("}"),
-    debug: true)
+    string("}")
+  )
   defp closing_bracket(<<?}, _::binary>>, context, _, _), do: {:halt, context}
   defp closing_bracket(_, context, _, _), do: {:cont, context}
 

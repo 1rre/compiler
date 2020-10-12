@@ -6,42 +6,38 @@ defmodule CompilerTest do
     assert(elem(x, 0) == :ok)
   end
 
-  test "identifier" do
-    identifier("xcx21") |> is_ok()
-  end
-
-  test "ulong" do
-    keyword("unsigned long int") |> is_ok()
-  end
-
   test "int function" do
-    IO.puts("")
-    x = intFunc("int x (int j, int k) {
+    intFunc("int x (int j, int k) {
       int x = 3;
-    }" |> format()) |> elem(1)
-    "params:\n#{
-      Enum.drop_while(x, fn y ->
-        y != "("
-      end) |>
-      tl() |>
-      Enum.take_while(fn y ->
-        y != ")"
-      end) |>
-      Enum.map(fn y ->
-        if y == ",", do: "\n", else: y
-      end) |> Enum.join()
-    }\n\ncode lines:\n#{
-        Enum.drop_while(x, fn y ->
-        y != "{"
-      end) |>
-      tl() |>
-      Enum.take_while(fn y ->
-        y != "}"
-      end) |>
-      Enum.map(fn y ->
-        if y == ";", do: ";\n", else: y
-      end) |> Enum.join()
-    }" |> IO.puts
+    }" |> format()) |> is_ok()
+    # "params:\n#{
+    #   Enum.drop_while(x, fn y ->
+    #     y != "("
+    #   end) |>
+    #   tl() |>
+    #   Enum.take_while(fn y ->
+    #     y != ")"
+    #   end) |>
+    #   Enum.map(fn y ->
+    #     if y == ",", do: "\n", else: y
+    #   end) |> Enum.join()
+    # }\n\ncode lines:\n#{
+    #     Enum.drop_while(x, fn y ->
+    #     y != "{"
+    #   end) |>
+    #   tl() |>
+    #   Enum.take_while(fn y ->
+    #     y != "}"
+    #   end) |>
+    #   Enum.map(fn y ->
+    #     if y == ";", do: ";\n", else: y
+    #   end) |> Enum.join()
+    # }"
+  end
+
+  test "char literal" do
+    x = literal("-32e13" |> format) |> elem(1) |> hd
+    IO.puts("#{x}")
   end
 
   test "format" do
