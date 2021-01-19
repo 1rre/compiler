@@ -2,7 +2,6 @@
  [{description, "A C89 to MIPS Compiler"},
   {vsn, "0.1.0"},
   {registered, []},
-  {mod, {c_py_app, []}},
   {applications,
    [kernel,
     stdlib

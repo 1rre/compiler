@@ -2,8 +2,8 @@ Definitions.
 
 KEYWORD = auto|double|int|struct|break|else|long|switch|case|enum|register|typedef|char|extern|return|union|const|float|short|unsigned|continue|for|signed|void|default|goto|sizeof|volatile|do|if|static|while
 IDENT   = [_A-Za-z][_A-Za-z0-9]*
-STRING  = "[\n\N]*"
-CHAR_L  = '[\n\N]+'
+STRING  = "((\\")|[^"])*"
+CHAR_L  = '((\\')|[^'])*'
 INTEGER = -?((0[xX][0-9a-fA-F]+)|(0[0-7]+)|(1-9][0-9]+))((ll|LL|[iI]64|[ULul]))?
 FLOAT   = -?[0-9]+(\.[0-9]+)?([Ee][+-]?[0-9]+)?[FLfl]?
 SYMBOL  = (\*=|\/=|%=|\+=|-=|<<=|>>=|&=|\^=|\|=|##|&&|\|\||==|<=|>=|>>|<<|\+\+|--|->|\.\.\.)|[{};[\]().&*+\-~!\/%<>!=^|?:,#=]
@@ -13,8 +13,8 @@ BLANK   = [\s]+
 Rules.
 
 {COMMENT} : skip_token.
-{STRING}  : .
-{CHAR}    : assert_char(TokenLine, TokenChars).
+{STRING}  : escape_str(TokenLine, lists:droplast(tl(TokenChars))).
+{CHAR}    : assert_char(TokenLine, lists:droplast(tl(TokenChars))).
 {KEYWORD} : {token, {list_to_atom(TokenChars), TokenLine}}.
 {SYMBOL}  : {token, {list_to_atom(TokenChars), TokenLine}}.
 {INTEGER} : {token, {integer_l, TokenLine, TokenChars}}.
@@ -27,6 +27,7 @@ Erlang code.
 
 -define(XDIGIT(N), ((N >= $0) and ($9 >= N)) or ((N >= $A) and ($F >= N)) or ((N >= $a) and ($f >= N))).
 -define(ODIGIT(N), ((N >= $0) and ($7 >= N))).
+-define(I_ESCAPE(L,C), {error, list_to_binary(io_lib:format("'\\~s' on line ~B is not a valid escape", [C, L]))}).
 
 
 resolve_valid_float(Line, Chars) -> 
@@ -37,36 +38,48 @@ resolve_valid_float(Line, Chars) ->
       {error, list_to_binary(io_lib:format("~s on line ~B is not a valid octal number", [Chars, Line]))}
   end.
 
-
-% Check for valid escapes then replace escapes with 
-assert_string(Line, Chars) ->
-  case Chars of
-    "" ->
-      {token, {string_l, Line, escape_str(Chars)}};
-    _ ->
-      {error, list_to_binary(io_lib:format("~s on line ~B is not a valid string", [Chars, Line]))}
-  end.
-
-
 % TODO: Error handling for incorrect escapes
-escape_str([$\\, A, B, C | Str])
-   -> [escape([A,B,C]) | escape_str(Str)];
-escape_str([$\\, $x, A, B | Str]) ->
-  [escape([$\\,$x,A,B]) | escape_str(Str)];
-escape_str([$\\, Chr | Str]) ->
-  [escape(Chr) | escape_str(Str)];
-escape_str([Chr | Str]) ->
-  [Chr | escape_str(Str)].
-
+escape_str(TokenLine, []) -> {token, {string_l, TokenLine, ""}};
+escape_str(TokenLine, [$\\,A,B,C | Str]) when ?ODIGIT(A) ->
+  case {escape_str(TokenLine, Str), escape([$\\,A,B,C])} of
+    {_, error} -> {error, ?I_ESCAPE(TokenLine, [A,B,C])};
+    {{token, {string_l, _, S}}, Chr} -> {token, {string_l, TokenLine, [Chr | S]}};
+    {Err, _} -> Err
+  end;
+escape_str(TokenLine, [$\\,$x,A,B | Str])  ->
+  case {escape_str(TokenLine, Str), escape([$\\,A,B])} of
+    {_, error} -> {error, ?I_ESCAPE(TokenLine, [A,B])};
+    {{token, {string_l, _, S}}, Chr} -> {token, {string_l, TokenLine, [Chr | S]}};
+    {Err, _} -> Err
+  end;
+escape_str(TokenLine, [$\\,A | Str])  ->
+  case {escape_str(TokenLine, Str), escape(A)} of
+    {_, error} -> {error, ?I_ESCAPE(TokenLine, [A])};
+    {{token, {string_l, _, S}}, Chr} -> {token, {string_l, TokenLine, [Chr | S]}};
+    {Err, _} -> Err
+  end;
+escape_str(TokenLine, [Chr | Str]) when Chr =/= $\\ ->
+  case escape_str(TokenLine, Str) of
+    {token, {string_l, _, S}} -> {token, {string_l, TokenLine, [Chr | S]}};
+    Err -> Err
+  end;
+escape_str(Line, Str) ->
+  {error, list_to_binary(io_lib:format("~s on line ~B is not a valid substring", [Str, Line]))}.
 
 assert_char(Line, [$\\]) ->
-  {error, list_to_binary(io_lib:format("'\\' on line ~B is not a valid char", [Line]))};
+  {error, ?I_ESCAPE(Line, "")};
 assert_char(Line, [C]) ->
   {token, {char_l, Line, C}};
 assert_char(Line, [$\\,Chr]) ->
-  escape(Chr);
+  case escape(Chr) of
+    error -> ?I_ESCAPE(Line, [Chr]);
+    Char  -> {token, {char_l, Line, Char}}
+  end;
 assert_char(Line, Chr) ->
-  escape(Chr).
+  case escape(Chr) of
+    error -> ?I_ESCAPE(Line, [Chr]);
+    Char  -> {token, {char_l, Line, Char}}
+  end.
 
 
 escape($a) -> 7;
@@ -90,3 +103,4 @@ escape(_) -> error.
 xdigit(N) when (N >= $a) and ($f >= N) -> N - 'a' + 10;
 xdigit(N) when (N >= $A) and ($F >= N) -> N - 'A' + 10;
 xdigit(N) when (N >= $0) and ($9 >= N) -> N - '0'.
+

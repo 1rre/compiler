@@ -1,1 +1,3 @@
-out/
+src/lexer.erl
+sec/parser.erl
+_build/
