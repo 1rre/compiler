@@ -14,6 +14,7 @@ Rules.
 
 {COMMENT} : skip_token.
 {STRING}  : escape_str(TokenLine, lists:droplast(tl(TokenChars))).
+L{STRING} : escape_str(TokenLine, lists:droplast(tl(tl(TokenChars)))). % Extended string, not using for now
 {CHAR}    : assert_char(TokenLine, lists:droplast(tl(TokenChars))).
 {KEYWORD} : {token, {list_to_atom(TokenChars), TokenLine}}.
 {SYMBOL}  : {token, {list_to_atom(TokenChars), TokenLine}}.
