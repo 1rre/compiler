@@ -1,0 +1,13 @@
+Putting here so I don't forget:
+
+launching epmd:  
+`epmd -relaxed_command_check -daemon`  
+
+Launching the erlang shell:  
+`rebar3 shell --name "erlNode@localhost" --setcookie "cookie"`  
+
+Starting the erlang program:   
+`> c89_compiler:start().`   
+
+Sending a message:  
+`> erlang:send({translator, 'scalaNode@localhost'}, "hello").`  

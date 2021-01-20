@@ -2,6 +2,7 @@
  [{description, "A C89 to MIPS Compiler"},
   {vsn, "0.1.0"},
   {registered, []},
+  {module, [c89_compiler]},
   {applications,
    [kernel,
     stdlib

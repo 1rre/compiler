@@ -140,7 +140,5 @@ constant -> ident     : '$1'.
 constant -> char_l    : '$1'.
 
 
-
-
 Erlang code.
 

@@ -1,3 +1,7 @@
 src/lexer.erl
 src/parser.erl
 _build/
+.metals/
+.bloop/
+.vscode/
+out/
