@@ -1,3 +1,4 @@
-== Header names need special case
-== Up to operators
+== Just finished punctuators
+== Need to implement header file locator and methods to assert directives are on a single line
+
 http://port70.net/~nsz/c/c89/c89-draft.html#3.1.5

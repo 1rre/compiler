@@ -6,23 +6,25 @@ STRING  = "((\\")|[^"])*"
 CHAR_L  = '((\\')|[^'])*'
 INTEGER = -?((0[xX][0-9a-fA-F]+)|(0[0-7]*)|([1-9][0-9]*))((ll|LL|[iI]64|[ULul])?)
 FLOAT   = -?[0-9]+(\.[0-9]+)?([Ee][+-]?[0-9]+)?[FLfl]?
-SYMBOL  = (\*=|\/=|%=|\+=|-=|<<=|>>=|&=|\^=|\|=|##|&&|\|\||==|<=|>=|>>|<<|\+\+|--|->|\.\.\.)|[{};[\]().&*+\-~!\/%<>!=^|?:,#=]
+SYMBOL  = (\*=|\/=|%=|\+=|-=|<<=|>>=|&=|\^=|\|=|&&|\|\||==|<=|>=|>>|<<|\+\+|--|->|\.\.\.)|[{};[\]().&*+\-~!\/%<>!=^|?:,=]
 COMMENT = (\/\/[\N]*)|(\/\*[\n\N]*\*\/)
-BLANK   = [\s]+
+BLANK   = [\s\v\t\n\r]+
+DIRECTIVE = #[\s\v\t]*(include|pragma|define|error|warning|undef|if|ifdef|ifndef|else|elif|endif|line)
 
 Rules.
 
-{COMMENT} : skip_token.
-{STRING}  : escape_str(TokenLine, lists:droplast(tl(TokenChars))).
-L{STRING} : escape_str(TokenLine, lists:droplast(tl(tl(TokenChars)))). % Extended string, not using for now
-{CHAR}    : assert_char(TokenLine, lists:droplast(tl(TokenChars))).
-{KEYWORD} : {token, {list_to_atom(TokenChars), TokenLine}}.
-{SYMBOL}  : {token, {list_to_atom(TokenChars), TokenLine}}.
-{INTEGER} : {token, {integer_l, TokenLine, TokenChars}}.
-{FLOAT}   : resolve_valid_float(TokenLine, TokenChars).
-{IDENT}   : {token, {ident, TokenLine, TokenChars}}.
+{COMMENT}   : skip_token.
+{STRING}    : escape_str(TokenLine, lists:droplast(tl(TokenChars))).
+L{STRING}   : escape_str(TokenLine, lists:droplast(tl(tl(TokenChars)))). % Extended string, not using for now
+{BLANK}?{DIRECTIVE}[^_a-zA-Z\n]+[^\n]* : resolve_directive(TokenChars).      % TODO: Ensure that the directives are on their own line
+{CHAR}      : assert_char(TokenLine, lists:droplast(tl(TokenChars))).
+{KEYWORD}   : {token, {list_to_atom(TokenChars), TokenLine}}.
+{SYMBOL}    : {token, {list_to_atom(TokenChars), TokenLine}}.
+{INTEGER}   : {token, {integer_l, TokenLine, TokenChars}}.
+{FLOAT}     : resolve_valid_float(TokenLine, TokenChars).
+{IDENT}     : {token, {ident, TokenLine, TokenChars}}.
 % TODO: Trigraph Sequences
-{BLANK}   : skip_token.
+{BLANK}     : skip_token.
 
 Erlang code.
 
@@ -30,6 +32,7 @@ Erlang code.
 -define(ODIGIT(N), ((N >= $0) and ($7 >= N))).
 -define(I_ESCAPE(L,C), {error, list_to_binary(io_lib:format("'\\~s' on line ~B is not a valid escape", [C, L]))}).
 
+resolve_directive(Chars) -> {error, <<"Not Implemented.">>}. % TODO: Implement. It may well be a good idea to use a sub-lexer for this?
 
 resolve_valid_float(Line, Chars) -> 
   case re:run(Chars, "\\A0[0-9]+\\z") of

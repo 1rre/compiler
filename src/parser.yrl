@@ -18,8 +18,16 @@ Nonterminals
   ternary
   const_expr
   arg_expr_list
+  operator
+  postfix_operator
   unary_operator
   assignment_operator
+  mult_operator
+  add_operator
+  shift_operator
+  equality_operator
+  relational_operator
+  punctuator
   type_name
   constant
   enum_l
@@ -59,8 +67,10 @@ postfix_expr -> postfix_expr '(' ')' : '$1'.
 postfix_expr -> postfix_expr '(' arg_expr_list ')' : {'$1', args, '$3'}.
 postfix_expr -> postfix_expr '.' ident : {'$1', '.', '$3'}.
 postfix_expr -> postfix_expr '->' ident : {'$1', '->', '$3'}.
-postfix_expr -> postfix_expr '++' : {'$1', '$2'}.
-postfix_expr -> postfix_expr '--' : {'$1', '$2'}.
+postfix_expr -> postfix_expr postfix_operator : {'$1', '$2'}.
+
+postfix_operator -> '++' : '++'.
+postfix_operator -> '--' : '--'.
 
 arg_expr_list -> assignment_expr : ['$1'].
 arg_expr_list -> assignment_expr arg_expr_list : ['$1' | '$2'].
@@ -85,27 +95,37 @@ cast_expr -> unary_expr : '$1'.
 cast_expr -> '(' type_name ')' cast_expr : {'$2', '$4'}.
 
 mult_expr -> cast_expr : '$1'.
-mult_expr -> mult_expr '*' cast_expr : {'$1', '*', '$3'}.
-mult_expr -> mult_expr '/' cast_expr : {'$1', '/', '$3'}.
-mult_expr -> mult_expr '%' cast_expr : {'$1', '%', '$3'}.
+mult_expr -> mult_expr mult_operator cast_expr : {'$1', '$2', '$3'}.
+
+mult_operator -> '*' : '*'.
+mult_operator -> '/' : '/'.
+mult_operator -> '%' : '%'.
 
 add_expr -> mult_expr : '$1'.
-add_expr -> add_expr '+' mult_expr : {'$1', '+', '$3'}.
-add_expr -> add_expr '-' mult_expr : {'$1', '-', '$3'}.
+add_expr -> add_expr add_operator mult_expr : {'$1', '$2', '$3'}.
+
+add_operator -> '+' : '+'.
+add_operator -> '-' : '-'.
 
 shift_expr -> add_expr : '$1'.
-shift_expr -> shift_expr '<<' add_expr : {'$1', '<<', '$3'}.
-shift_expr -> shift_expr '>>' add_expr : {'$1', '>>', '$3'}.
+shift_expr -> shift_expr shift_operator add_expr : {'$1', '$1', '$3'}.
+
+shift_operator -> '>>' : '>>'.
+shift_operator -> '<<' : '<<'.
 
 relational_expr -> shift_expr : '$1'.
-relational_expr -> relational_expr '<=' shift_expr : {'$1', '<=', '$3'}.
-relational_expr -> relational_expr '>=' shift_expr : {'$1', '>=', '$3'}.
-relational_expr -> relational_expr '<' shift_expr : {'$1', '<', '$3'}.
-relational_expr -> relational_expr '>' shift_expr : {'$1', '>', '$3'}.
+relational_expr -> relational_expr relational_operator shift_expr : {'$1', '$2', '$3'}.
+
+relational_operator -> '<=' : '<='.
+relational_operator -> '>=' : '<='.
+relational_operator -> '<' : '<'.
+relational_operator -> '>' : '>'.
 
 equality_expr -> relational_expr : '$1'.
-equality_expr -> equality_expr '==' relational_expr : {'$1', '==', '$2'}.
-equality_expr -> equality_expr '!=' relational_expr : {'$1', '!=', '$2'}.
+equality_expr -> equality_expr equality_operator relational_expr : {'$1', '$2', '$3'}.
+
+equality_operator -> '==' : '=='.
+equality_operator -> '!=' : '!='.
 
 band_expr -> equality_expr : '$1'.
 band_expr -> band_expr '&' equality_expr : {'$1', '&', '$3'}.
@@ -149,6 +169,46 @@ constant -> float_l   : '$1'.
 constant -> integer_l : '$1'.
 constant -> ident     : '$1'.
 constant -> char_l    : '$1'.
+
+operator -> postfix_operator : '$1'      %% ++ --
+operator -> unary_operator : '$1'.       %% & * + - ~ !
+operator -> relational_operator : '$1'.  %% < > <= >=
+operator -> equality_operator : '$1'.    %% == !=
+operator -> mult_operator : '$1'.        %% * / %
+operator -> add_operator : '$1'.         %% +'-
+operator -> shift_operator : '$1'.       %% >> <<
+operator -> assignment_operator : '$1'.  %% = *= /= %= += -= <<= >>= &= ^= |=
+operator -> sizeof : sizeof.
+operator -> '->' : '->'.
+operator -> '&&' : '&&'.
+operator -> '||' : '||'.
+operator -> '##' : '##'.
+operator -> '.' : '.'.
+operator -> '&' : '&'.
+operator -> '|' : '|'.
+operator -> '^' : '^'.
+operator -> '#' : '#'.
+% The following only occur in pairs:
+operator -> '[' : '['.
+operator -> ']' : ']'.
+operator -> '(' : '('.
+operator -> ')' : ')'.
+operator -> '?' : '?'.
+operator -> ':' : ':'.
+
+punctuator -> '[' : '['.
+punctuator -> ']' : ']'.
+punctuator -> '(' : '('.
+punctuator -> ')' : ')'.
+punctuator -> '{' : '{'.
+punctuator -> '}' : '}'.
+punctuator -> '*' : '*'.
+punctuator -> ',' : ','.
+punctuator -> ':' : ':'.
+punctuator -> '=' : '='.
+punctuator -> ';' : ';'.
+punctuator -> '#' : '#'.
+punctuator -> '...' : '...'.
 
 type_name -> uchar_t   : '$1'.
 type_name -> schar_t   : '$1'.
