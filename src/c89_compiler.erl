@@ -15,7 +15,21 @@ loop(State) ->
       loop(State)
   end.
 
-tokenise(C89_Code) ->
-  {ok, Tokens, _} = lexer:string(C89_Code),
+tokenise(Source) ->
+  Code = trigraph(Source),
+  {ok, Tokens, _} = lexer:string(Code),
   {ok, Result} = parser:parse(Tokens),
   Result.    
+
+trigraph([]) -> [];
+trigraph([$?,$?,$= | Source]) -> [$# | trigraph(Source)];
+trigraph([$?,$?,$( | Source]) -> [$[ | trigraph(Source)];
+trigraph([$?,$?,$) | Source]) -> [$] | trigraph(Source)];
+trigraph([$?,$?,$/ | Source]) -> [$\\ | trigraph(Source)];
+trigraph([$?,$?,$' | Source]) -> [$^ | trigraph(Source)];
+trigraph([$?,$?,$< | Source]) -> [${ | trigraph(Source)];
+trigraph([$?,$?,$> | Source]) -> [$} | trigraph(Source)];
+trigraph([$?,$?,$! | Source]) -> [$| | trigraph(Source)];
+trigraph([$?,$?,$- | Source]) -> [$~ | trigraph(Source)];
+trigraph([Ch       | Source]) -> [Ch | trigraph(Source)].
+

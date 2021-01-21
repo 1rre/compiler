@@ -16,14 +16,13 @@ Rules.
 {COMMENT}   : skip_token.
 {STRING}    : escape_str(TokenLine, lists:droplast(tl(TokenChars))).
 L{STRING}   : escape_str(TokenLine, lists:droplast(tl(tl(TokenChars)))). % Extended string, not using for now
-{BLANK}?{DIRECTIVE}[^_a-zA-Z\n]+[^\n]* : resolve_directive(TokenChars).      % TODO: Ensure that the directives are on their own line
+{BLANK}?{DIRECTIVE}[^\n]* : resolve_directive(TokenChars).      % TODO: Ensure that the directives are on their own line
 {CHAR}      : assert_char(TokenLine, lists:droplast(tl(TokenChars))).
 {KEYWORD}   : {token, {list_to_atom(TokenChars), TokenLine}}.
 {SYMBOL}    : {token, {list_to_atom(TokenChars), TokenLine}}.
 {INTEGER}   : {token, {integer_l, TokenLine, TokenChars}}.
 {FLOAT}     : resolve_valid_float(TokenLine, TokenChars).
 {IDENT}     : {token, {ident, TokenLine, TokenChars}}.
-% TODO: Trigraph Sequences
 {BLANK}     : skip_token.
 
 Erlang code.

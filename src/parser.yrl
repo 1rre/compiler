@@ -28,20 +28,25 @@ Nonterminals
   equality_operator
   relational_operator
   punctuator
-  type_name
   constant
-  enum_l
-% Types (redo?)
-  uchar_t
-  schar_t
-  char_t
-  l_double
-  ulong_t
-  long_t
-  uint_t
-  int_t
-  float_t
-  double_t
+  declaration
+  declaration_spec
+  declarator_list
+  init_declarator
+  declarator
+  initialiser
+  storage_spec
+  enum_spec
+  typedef_name
+  struct_spec
+  struct_decn_list
+  struct_decn
+  spec_qual_list
+  type_spec
+  type_qual
+  struct_decr_list
+  struct_decr
+  type_name
 .
 
 Terminals 
@@ -210,44 +215,68 @@ punctuator -> ';' : ';'.
 punctuator -> '#' : '#'.
 punctuator -> '...' : '...'.
 
-type_name -> uchar_t   : '$1'.
-type_name -> schar_t   : '$1'.
-type_name -> char_t    : '$1'.
-type_name -> l_double  : '$1'.
-type_name -> ulong_t   : '$1'.
-type_name -> long_t    : '$1'.
-type_name -> uint_t    : '$1'.
-type_name -> int_t     : '$1'.
-type_name -> float_t   : '$1'.
-type_name -> double_t  : '$1'.
-type_name -> void      : '$1'.
+declaration -> declaration_spec ';' : '$1'.
+declaration -> declaration_spec declarator_list ';' : '$1'.
 
-ulong_t -> unsigned long int : {ulong, element(2, '$1')}.
-ulong_t -> unsigned long     : {ulong, element(2, '$1')}.
+declaration_spec -> storage_spec : ['$1'].
+declaration_spec -> storage_spec declaration_spec : ['$1' | '$2'].
+declaration_spec -> type_spec : ['$1'].
+declaration_spec -> type_spec declaration_spec : ['$1' | '$2'].
+declaration_spec -> type_qual : ['$1'].
+declaration_spec -> type_qual declaration_spec : ['$1' | '$2'].
 
-long_t -> signed long int : {long, element(2, '$1')}.
-long_t -> signed long     : {long, element(2, '$1')}.
-long_t -> long int        : {long, element(2, '$1')}.
-long_t -> long            : '$1'.
+declarator_list -> init_declarator : ['$1'].
+declarator_list -> init_declarator declarator_list : ['$1' | '$2'].
 
-int_t -> signed int : {int, element(2, '$1')}.
-int_t -> signed     : {int, element(2, '$1')}.
-int_t -> int        : '$1'.
+init_declarator -> declarator : '$1'.
+init_declarator -> declarator '=' initialiser : {'$1', '=', '$3'}.
 
-uint_t -> unsigned int : {uint, element(2, '$1')}.
-uint_t -> unsigned     : {uint, element(2, '$1')}.
+storage_spec -> typedef : '$1'.
+storage_spec -> extern : '$1'.
+storage_spec -> static : '$1'.
+storage_spec -> auto : '$1'.
+storage_spec -> register : '$1'.
 
-schar_t -> signed char : {schar, element(2, '$1')}.
+type_spec -> void : '$1'.
+type_spec -> char : '$1'.
+type_spec -> short : '$1'.
+type_spec -> int : '$1'.
+type_spec -> long : '$1'.
+type_spec -> float : '$1'.
+type_spec -> double : '$1'.
+type_spec -> signed : '$1'.
+type_spec -> unsigned : '$1'.
+type_spec -> struct_spec : '$1'.
+type_spec -> enum_spec : '$1'.
+type_spec -> typedef_name : '$1'.
 
-uchar_t -> unsigned char : {uchar, element(2, '$1')}.
+struct_spec -> struct '{' struct_decn_list '}' : {'$1', '$3'}.
+struct_spec -> union '{' struct_decn_list '}' : {'$1', '$3'}.
+struct_spec -> struct ident '{' struct_decn_list '}' : {'$1', '$2', '$4'}.
+struct_spec -> union ident '{' struct_decn_list '}' : {'$1', '$2', '$4'}.
+struct_spec -> struct ident : {'$1', '$2'}.
+struct_spec -> union ident : {'$1', '$2'}.
 
-char_t -> char : '$1'.
+struct_decn_list -> struct_decn : ['$1'].
+struct_decn_list -> struct_decn struct_decn_list : ['$1' | '$2'].
 
-l_double -> long double : {ldouble, element(2, '$1')}.
+struct_decn -> spec_qual_list struct_decr_list ';' : {'$1', '$2'}.
 
-float_t -> float : '$1'.
+spec_qual_list -> type_spec : ['$1'].
+spec_qual_list -> type_spec spec_qual_list : ['$1' | '$2'].
+spec_qual_list -> type_qual : ['$1'].
+spec_qual_list -> type_qual spec_qual_list : ['$1' | '$2'].
 
-double_t -> double : '$1'.
+struct_decr_list -> struct_decr : ['$1'].
+struct_decr_list -> struct_decr ',' struct_decr_list : ['$1' | '$2'].
+
+struct_decr -> declarator : '$1'.
+struct_decr -> ':' const_expr : '$2'.
+struct_decr -> declarator ':' const_expr : {'$1', '$2'}.
+
+
+% so that it will compile:
+type_name -> int : '$1'.
 
 
 Erlang code.

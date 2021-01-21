@@ -1,4 +1,4 @@
-package es.tmoor.compiler
+package es.tmoor.compiler.jinterface
 
 import com.ericsson.otp.erlang.{
   OtpErlangAtom,
