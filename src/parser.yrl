@@ -22,7 +22,19 @@ Nonterminals
   assignment_operator
   type_name
   constant
-  enum_l.
+  enum_l
+% Types (redo?)
+  uchar_t
+  schar_t
+  char_t
+  l_double
+  ulong_t
+  long_t
+  uint_t
+  int_t
+  float_t
+  double_t
+.
 
 Terminals 
   '[' ']' '(' ')' '.' '->' '++' '--' '&' '*' '+' '-' '~' '!'
@@ -37,15 +49,14 @@ Terminals
 
 Rootsymbol expression.
 
-primary_expr -> ident : '$1'.
 primary_expr -> constant : '$1'.
 primary_expr -> string_l : '$1'.
 primary_expr -> '(' expression ')' : '$2'.
 
 postfix_expr -> primary_expr : '$1'.
-postfix_expr -> postfix_expr '[' expression ']' : {'$1', sqbr, '$3'}.
+postfix_expr -> postfix_expr '[' expression ']' : {'$1', offset, '$3'}.
 postfix_expr -> postfix_expr '(' ')' : '$1'.
-postfix_expr -> postfix_expr '(' arg_expr_list ')' : {'$1', 'br', '$3'}.
+postfix_expr -> postfix_expr '(' arg_expr_list ')' : {'$1', args, '$3'}.
 postfix_expr -> postfix_expr '.' ident : {'$1', '.', '$3'}.
 postfix_expr -> postfix_expr '->' ident : {'$1', '->', '$3'}.
 postfix_expr -> postfix_expr '++' : {'$1', '$2'}.
@@ -138,6 +149,45 @@ constant -> float_l   : '$1'.
 constant -> integer_l : '$1'.
 constant -> ident     : '$1'.
 constant -> char_l    : '$1'.
+
+type_name -> uchar_t   : '$1'.
+type_name -> schar_t   : '$1'.
+type_name -> char_t    : '$1'.
+type_name -> l_double  : '$1'.
+type_name -> ulong_t   : '$1'.
+type_name -> long_t    : '$1'.
+type_name -> uint_t    : '$1'.
+type_name -> int_t     : '$1'.
+type_name -> float_t   : '$1'.
+type_name -> double_t  : '$1'.
+type_name -> void      : '$1'.
+
+ulong_t -> unsigned long int : {ulong, element(2, '$1')}.
+ulong_t -> unsigned long     : {ulong, element(2, '$1')}.
+
+long_t -> signed long int : {long, element(2, '$1')}.
+long_t -> signed long     : {long, element(2, '$1')}.
+long_t -> long int        : {long, element(2, '$1')}.
+long_t -> long            : '$1'.
+
+int_t -> signed int : {int, element(2, '$1')}.
+int_t -> signed     : {int, element(2, '$1')}.
+int_t -> int        : '$1'.
+
+uint_t -> unsigned int : {uint, element(2, '$1')}.
+uint_t -> unsigned     : {uint, element(2, '$1')}.
+
+schar_t -> signed char : {schar, element(2, '$1')}.
+
+uchar_t -> unsigned char : {uchar, element(2, '$1')}.
+
+char_t -> char : '$1'.
+
+l_double -> long double : {ldouble, element(2, '$1')}.
+
+float_t -> float : '$1'.
+
+double_t -> double : '$1'.
 
 
 Erlang code.

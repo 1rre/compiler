@@ -5,3 +5,4 @@ _build/
 .bloop/
 .vscode/
 out/
+type.hrl.ignore

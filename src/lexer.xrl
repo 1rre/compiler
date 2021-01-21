@@ -4,7 +4,7 @@ KEYWORD = auto|double|int|struct|break|else|long|switch|case|enum|register|typed
 IDENT   = [_A-Za-z][_A-Za-z0-9]*
 STRING  = "((\\")|[^"])*"
 CHAR_L  = '((\\')|[^'])*'
-INTEGER = -?((0[xX][0-9a-fA-F]+)|(0[0-7]+)|(1-9][0-9]+))((ll|LL|[iI]64|[ULul]))?
+INTEGER = -?((0[xX][0-9a-fA-F]+)|(0[0-7]*)|([1-9][0-9]*))((ll|LL|[iI]64|[ULul])?)
 FLOAT   = -?[0-9]+(\.[0-9]+)?([Ee][+-]?[0-9]+)?[FLfl]?
 SYMBOL  = (\*=|\/=|%=|\+=|-=|<<=|>>=|&=|\^=|\|=|##|&&|\|\||==|<=|>=|>>|<<|\+\+|--|->|\.\.\.)|[{};[\]().&*+\-~!\/%<>!=^|?:,#=]
 COMMENT = (\/\/[\N]*)|(\/\*[\n\N]*\*\/)
