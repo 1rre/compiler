@@ -2,7 +2,15 @@ Nonterminals
 expression assignment_operator equality_operator relational_operator
 shift_operator addition_operator multiplication_operator cast unary_operator
 postfix_operator expression_list constant type_name postfix_list float_l
-fractional exponent int_l
+fractional exponent int_l initialiser initialiser_list pointer struct_declarator
+type_qualifier_list direct_declarator identifier_list declarator struct_union
+direct_abstract_declarator abstract_declarator specifier_qualifier_list
+enum_specifier parameter_type_list parameter_list type_qualifier type_specifier
+enumerator_list declaration declaration_specifiers init_declarator_list
+enumerator init_declarator storage_class_specifier struct_union_specifier
+struct_declaration_list struct_declaration struct_declarator_list
+parameter_declaration 
+% typedef_name
 % enum_l
 .
 Terminals
@@ -18,7 +26,7 @@ identifier char_l string_l
 ':' '=' '*=' '/=' '%=' '+=' '-=' '|=' '<<=' '>>=' '&=' '^=' '#' '##' '->'
 .
 
-Rootsymbol expression.
+Rootsymbol declaration.
 
 % This seemed to work at 850 (max), but I think it should be 0?
 Nonassoc 850 '('.
@@ -195,7 +203,7 @@ declaration_specifiers -> type_qualifier declaration_specifiers : ['$1' | '$2'].
 init_declarator_list -> init_declarator : ['$1'].
 init_declarator_list -> init_declarator ',' init_declarator_list : ['$1' | '$3'].
 
-init_declarator -> decalator = initialiser : {'$1', '$2', '$3'}.
+init_declarator -> declarator '=' initialiser : {'$1', '$2', '$3'}.
 
 storage_class_specifier -> typedef : '$1'.
 storage_class_specifier -> extern : '$1'.
@@ -214,7 +222,7 @@ type_specifier -> signed : '$1'.
 type_specifier -> unsigned : '$1'.
 type_specifier -> struct_union_specifier : '$1'.
 type_specifier -> enum_specifier : '$1'.
-type_specifier -> typedef_name : '$1'.
+%type_specifier -> typedef_name : '$1'.
 
 struct_union_specifier -> struct_union identifier '{' struct_declaration_list '}' : {'$1', '$2', '$3', '$4', '$5'}.
 struct_union_specifier -> struct_union '{' struct_declaration_list '}' : {'$1', '$2', '$3', '$4'}.
@@ -238,7 +246,7 @@ struct_declarator_list -> struct_declarator ',' struct_declarator_list : ['$1' |
 
 struct_declarator -> declarator : '$1'.
 struct_declarator -> declarator ':' expression : {'$1', '$2', '$3'}.
-struct_declarator -> ':' expression : {'$1', '$2', '$3'}.
+struct_declarator -> ':' expression : {'$1', '$2'}.
 
 enum_specifier -> enum identifier '{' enumerator_list '}' : {'$1', '$2', '$3', '$4', '$5'}.
 enum_specifier -> enum '{' enumerator_list '}' : {'$1', '$2', '$3', '$4'}.
@@ -252,6 +260,63 @@ enumerator -> identifier '=' expression : {'$1', '$2', '$3'}.
 type_qualifier -> const : '$1'.
 type_qualifier -> volatile : '$1'.
 
-% For testing purposes only:
+declarator -> pointer direct_declarator : {'$1', '$2'}.
+declarator -> direct_declarator : '$1'.
 
-type_name -> int : '$1'.
+direct_declarator -> identifier : '$1'.
+direct_declarator -> '(' declarator ')' : '$2'.
+direct_declarator -> direct_declarator '[' expression ']' : {'$1', '$2', '$3', '$4'}.
+direct_declarator -> direct_declarator '[' ']' : {'$1', '$2', '$3'}.
+direct_declarator -> direct_declarator '(' parameter_type_list ')' : {'$1', '$2', '$3', '$4'}.
+direct_declarator -> direct_declarator '(' identifier_list ')' : {'$1', '$2', '$3', '$4'}.
+direct_declarator -> direct_declarator '(' ')' : {'$1', '$2', '$3'}.
+
+pointer -> '*' type_qualifier_list : {'$1', '$2'}.
+pointer -> '*' : '$1'.
+pointer -> '*' type_qualifier_list pointer : {'$1', '$2', '$3'}.
+pointer -> '*' pointer : {'$1', '$2'}.
+
+type_qualifier_list -> type_qualifier : ['$1'].
+type_qualifier_list -> type_qualifier type_qualifier_list : ['$1' | '$2'].
+
+parameter_type_list -> parameter_list : '$1'.
+parameter_type_list -> parameter_list ',' '...' : {'$1', '$2'}.
+
+parameter_list -> parameter_declaration : ['$1'].
+parameter_list -> parameter_declaration ',' parameter_list : ['$1' | '$3'].
+
+parameter_declaration -> declaration_specifiers declarator : {'$1', '$2'}.
+parameter_declaration -> declaration_specifiers abstract_declarator : {'$1', '$2'}.
+parameter_declaration -> declaration_specifiers : '$1'.
+
+identifier_list -> identifier : ['$1'].
+identifier_list -> identifier ',' identifier_list : ['$1' | '$3'].
+
+type_name -> specifier_qualifier_list abstract_declarator : {'$1', '$2'}.
+type_name -> specifier_qualifier_list : '$1'.
+
+abstract_declarator -> pointer : '$1'.
+abstract_declarator -> pointer direct_abstract_declarator : {'$1', '$2'}.
+abstract_declarator -> direct_abstract_declarator : '$1'.
+
+direct_abstract_declarator -> '(' abstract_declarator ')' : {'$2'}.
+direct_abstract_declarator -> direct_abstract_declarator '[' expression ']' : {'$1', '$2', '$3', '$4'}.
+direct_abstract_declarator -> direct_abstract_declarator '[' ']' : {'$1', '$2', '$3'}.
+direct_abstract_declarator ->  '[' expression ']' : {'$1', '$2', '$3'}.
+direct_abstract_declarator ->  '[' ']' : {'$1', '$2'}.
+direct_abstract_declarator -> direct_abstract_declarator '(' parameter_type_list ')' : {'$1', '$2', '$3', '$4'}.
+direct_abstract_declarator -> direct_abstract_declarator '(' ')' : {'$1', '$2', '$3'}.
+direct_abstract_declarator ->  '(' parameter_type_list ')' : {'$1', '$2', '$3'}.
+direct_abstract_declarator ->  '(' ')' : {'$1', '$2'}.
+
+
+% causes r/r conflict
+% typedef_name -> identifier : '$1'.
+
+initialiser -> expression : '$1'.
+initialiser -> '{' initialiser_list '}' : {'$1', '$2', '$3'}.
+initialiser -> '{' initialiser_list ',' '}' : {'$1', '$2', '$3', '$4'}.
+
+initialiser_list -> initialiser : ['$1'].
+initialiser_list -> initialiser ',' initialiser_list : ['$1' | '$3'].
+
