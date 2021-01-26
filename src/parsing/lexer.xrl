@@ -112,16 +112,18 @@ likely_valid_num(Line, [$0,_X | Chars]) when (_X =:= $x) or (_X =:= $X) ->
       end
   end;
 likely_valid_num(Line, Chars) when hd(Chars) =:= $0 ->
-  case re:split(Chars, "\\A[0-7]+", [{return, list}, {parts, 2}]) of
+  case re:split(Chars, "\\A0[0-7]+", [{return, list}, {parts, 2}]) of
     [_, []] -> {token, {oct_number, Line, Chars}};
     [_, Rest] ->
       io:fwrite("~p~n", [Rest]),
-      case re:run(Rest, "\\A([fF]|[eE]|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
+      case re:run(Rest, "\\A([fF]|([eE](([0-9]+[fFlL]?)?))|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
         nomatch -> {error, "Invalid Number"};
-        {match, F} when (F =:= "F") or (F =:= "f") -> {token, {float_number, Line, lists:droplast(Chars), Rest}};
-        {match, E} when (E =:= "E") or (E =:= "e") -> {token, {raw_exponent, Line, lists:droplast(Chars), Rest}};
+        {match, [F]} when (F =:= "F") or (F =:= "f") -> {token, {float_number, Line, lists:droplast(Chars), Rest}};
+        {match, [E]} when (E =:= "E") or (E =:= "e") -> {token, {raw_exponent, Line, lists:droplast(Chars), Rest}};
+        {match, [L]} when (L =:= "L") or (L =:= "l") -> {token, {oct_number_long, Line, lists:droplast(Chars), Rest}};
         {match, [[_]]} -> {token, {oct_number_suffix, Line, lists:droplast(Chars), Rest}};
-        {match, [[_,_]]} -> {token, {oct_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}}
+        {match, [[_,_]]} -> {token, {oct_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}};
+        _ -> {token, {raw_exponent_suffix, Line, Chars, Rest}}
       end
   end;
 likely_valid_num(Line, Chars) ->
@@ -129,12 +131,14 @@ likely_valid_num(Line, Chars) ->
     [_, []] -> {token, {dec_number, Line, Chars}};
     [_, Rest] ->
       io:fwrite("~p~n", [Rest]),
-      case re:run(Rest, "\\A([fF]|[eE]|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
-        nomatch -> {error, "Invalid Number"};
+      case re:run(Rest, "\\A([fF]|([eE](([0-9]+[fFlL]?)?))|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
         {match, [F]} when (F =:= "F") or (F =:= "f") -> {token, {float_number, Line, lists:droplast(Chars), Rest}};
         {match, [E]} when (E =:= "E") or (E =:= "e") -> {token, {raw_exponent, Line, lists:droplast(Chars), Rest}};
-        {match, [[_]]} -> {token, {dec_number_suffix, Line, lists:droplast(Chars), Rest}};
-        {match, [[_,_]]} -> {token, {dec_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}}
+        {match, [L]} when (L =:= "L") or (L =:= "l") -> {token, {dec_number_long, Line, lists:droplast(Chars), Rest}};
+        {match, [[_]]} when hd(Chars) =/= $0 -> {token, {dec_number_suffix, Line, lists:droplast(Chars), Rest}};
+        {match, [[_,_]]} when hd(Chars) =/= $0  -> {token, {dec_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}};
+        {match, [[E]]} when (hd(E) =:= $E) or (hd(E) =:= $e) -> {token, {raw_exponent_suffix, Line, Chars, Rest}};
+        _ -> {error, "Invalid Number"}
       end
   end.
 -undef(OCT_DIGIT).

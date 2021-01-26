@@ -1,15 +1,16 @@
 Nonterminals
 expression assignment_operator equality_operator relational_operator
 shift_operator addition_operator multiplication_operator cast unary_operator
-postfix_operator expression_list constant type_name postfix_list
+postfix_operator expression_list constant type_name postfix_list float_l
+fractional exponent digitseq
 .
 Terminals
 auto double int struct break else long switch case enum register typedef
 char extern return union const float short unsigned continue goto signed
 void default sizeof volatile do if static while for
-float_number raw_exponent
+float_number raw_exponent raw_exponent_suffix
 oct_number hex_number dec_number
-oct_number_suffix hex_number_suffix dec_number_suffix
+oct_number_suffix hex_number_suffix dec_number_suffix oct_number_long dec_number_long
 identifier char_l string_l
 '{' '}' '...' ';' '[' ']' '(' ')' '.' '++' '--' '&' '|' '*' '+' '-' ','
 '~' '!' '/' '%' '<<' '>>' '<' '>' '<=' '>=' '==' '!=' '^' '&&' '||' '?'
@@ -114,6 +115,29 @@ expression_list -> expression ',' expression_list : ['$1' | '$2'].
 
 % For testing purposes only:
 
-constant -> char_l : '$1'.
+constant -> float_l : '$1'.
+
+float_l -> exponent : '$1'.
+float_l -> fractional : '$1'.
+fractional -> digitseq '.' digitseq : {'$1', '$2', '$3'}.
+fractional -> digitseq '.' float_number : {'$1', '$2', '$3'}.
+fractional -> digitseq '.' oct_number_long : {'$1', '$2', '$3'}.
+fractional -> digitseq '.' dec_number_long : {'$1', '$2', '$3'}.
+fractional -> digitseq '.' : {'$1', '$2'}.
+fractional -> digitseq '.' exponent : {'$1', '$2', '$3'}.
+fractional -> '.' digitseq : {'$1', '$2'}.
+fractional -> '.' float_number : {'$1', '$2'}.
+fractional -> '.' exponent : {'$1', '$2'}.
+
+exponent -> raw_exponent_suffix : '$1'.
+exponent -> raw_exponent '+' digitseq : {'$1', '$2'}.
+exponent -> raw_exponent '-' digitseq : {'$1', '$2'}.
+exponent -> raw_exponent '+' float_number : {'$1', '$2'}.
+exponent -> raw_exponent '-' float_number : {'$1', '$2'}.
+exponent -> raw_exponent '+' dec_number_long : {'$1', '$2'}.
+exponent -> raw_exponent '-' oct_number_long : {'$1', '$2'}.
+
+digitseq -> dec_number : '$1'.
+digitseq -> oct_number : '$1'.
 
 type_name -> int : '$1'.

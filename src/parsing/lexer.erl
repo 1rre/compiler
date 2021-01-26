@@ -12,7 +12,7 @@
 -export([format_error/1]).
 
 %% User code. This is placed here to allow extra attributes.
--file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 24).
+-file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 27).
 
 -define(SIMPLE_ESCAPE(C), (C =:= $a) or (C =:= $b) or (C =:= $e) or (C =:= $f) or
                           (C =:= $n) or (C =:= $r) or (C =:= $t) or (C =:= $v) or
@@ -91,11 +91,12 @@ simple_escape($\\)-> $\x5c.
 
 likely_valid_num(Line, [$0,_X | Chars]) when (_X =:= $x) or (_X =:= $X) ->
   case re:split(Chars, "\\A[0-9a-fA-F]+", [{return, list}, {parts, 2}]) of
-    [_] -> {token, {hex_number, Line, Chars}};
+    [_,[]] -> {token, {hex_number, Line, Chars}};
     [_, Rest] ->
-      case re:run(Rest, "([uU]?[lL]?)|([lL]?[uU]?)") of
+      case re:run(Rest, "\\A([uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
         nomatch -> {error, "Invalid Number"};
-        _ -> {token, {hex_number, Line, Chars, Rest}}
+        {match, [[_]]} -> {token, {hex_number_suffix, Line, lists:droplast(Chars), Rest}};
+        {match, [[_,_]]} -> {token, {hex_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}}
       end
   end;
 likely_valid_num(Line, Chars) when hd(Chars) =:= $0 ->
@@ -103,12 +104,13 @@ likely_valid_num(Line, Chars) when hd(Chars) =:= $0 ->
     [_, []] -> {token, {oct_number, Line, Chars}};
     [_, Rest] ->
       io:fwrite("~p~n", [Rest]),
-      case re:run(Rest, "\\A([fF]|[eE]|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
+      case re:run(Rest, "\\A([fF]|([eE](([0-9]+[fFlL]?)?))|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
         nomatch -> {error, "Invalid Number"};
         {match, F} when (F =:= "F") or (F =:= "f") -> {token, {float_number, Line, lists:droplast(Chars), Rest}};
         {match, E} when (E =:= "E") or (E =:= "e") -> {token, {raw_exponent, Line, lists:droplast(Chars), Rest}};
         {match, [[_]]} -> {token, {oct_number_suffix, Line, lists:droplast(Chars), Rest}};
-        {match, [[_,_]]} -> {token, {oct_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}}
+        {match, [[_,_]]} -> {token, {oct_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}};
+        _ -> {token, {raw_exponent_suffix, Line, Chars, Rest}}
       end
   end;
 likely_valid_num(Line, Chars) ->
@@ -116,12 +118,13 @@ likely_valid_num(Line, Chars) ->
     [_, []] -> {token, {dec_number, Line, Chars}};
     [_, Rest] ->
       io:fwrite("~p~n", [Rest]),
-      case re:run(Rest, "\\A([fF]|[eE]|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
+      case re:run(Rest, "\\A([fF]|([eE](([0-9]+[fFlL]?)?))|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
         nomatch -> {error, "Invalid Number"};
         {match, [F]} when (F =:= "F") or (F =:= "f") -> {token, {float_number, Line, lists:droplast(Chars), Rest}};
         {match, [E]} when (E =:= "E") or (E =:= "e") -> {token, {raw_exponent, Line, lists:droplast(Chars), Rest}};
         {match, [[_]]} -> {token, {dec_number_suffix, Line, lists:droplast(Chars), Rest}};
-        {match, [[_,_]]} -> {token, {dec_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}}
+        {match, [[_,_]]} -> {token, {dec_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}};
+        _ -> {token, {raw_exponent_suffix, Line, Chars, Rest}}
       end
   end.
 -undef(OCT_DIGIT).
@@ -419,7 +422,7 @@ adjust_line(T, A, [_|Cs], L) ->
 %% return signal either an unrecognised character or end of current
 %% input.
 
--file("/home/tmoores/Development/c89_beam/src/parsing/lexer.erl", 421).
+-file("/home/tmoores/Development/c89_beam/src/parsing/lexer.erl", 424).
 yystate() -> 82.
 
 yystate(113, [95|Ics], Line, Tlen, _, _) ->
@@ -2132,27 +2135,27 @@ yyaction_1(TokenChars, TokenLine) ->
      char_to_int (TokenLine, tl (TokenChars)) .
 
 -compile({inline,yyaction_2/2}).
--file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 16).
+-file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 19).
 yyaction_2(TokenChars, TokenLine) ->
-     { token, likely_valid_num (TokenLine, TokenChars) } .
+     likely_valid_num (TokenLine, TokenChars) .
 
 -compile({inline,yyaction_3/2}).
--file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 17).
+-file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 20).
 yyaction_3(TokenChars, TokenLine) ->
      { token, { list_to_atom (TokenChars), TokenLine } } .
 
 -compile({inline,yyaction_4/2}).
--file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 18).
+-file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 21).
 yyaction_4(TokenChars, TokenLine) ->
      { token, { identifier, TokenLine, list_to_atom (TokenChars) } } .
 
 -compile({inline,yyaction_5/2}).
--file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 19).
+-file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 22).
 yyaction_5(TokenChars, TokenLine) ->
      { token, { list_to_atom (TokenChars), TokenLine } } .
 
 -compile({inline,yyaction_6/0}).
--file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 20).
+-file("/home/tmoores/Development/c89_beam/src/parsing/lexer.xrl", 23).
 yyaction_6() ->
      skip_token .
 
