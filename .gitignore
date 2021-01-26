@@ -1,5 +1,4 @@
-src/lexer.erl
-src/parser.erl
+src/parsing/*.erl
 _build/
 .metals/
 .bloop/
@@ -7,3 +6,5 @@ _build/
 out/
 type.hrl.ignore
 test/
+.eunit/
+src/parser.erl

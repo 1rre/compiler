@@ -3,7 +3,7 @@ package es.tmoor.compiler
 import parsers.DefineParser
 
 object Main extends App with DefineParser {
-  val input = io.Source.fromFile("test/test.c").getLines.toArray
+  val input = io.Source.fromFile(args(0)).getLines.toArray
 
   input.mapInPlace(line => {
     ws = true

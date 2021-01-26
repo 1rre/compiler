@@ -7,7 +7,7 @@ trait DefineParser extends RegexParsers with Utils {
   var ws = true
   override def skipWhitespace: Boolean = ws
   class Define(name: String, definition: String) {
-    def parser = ("""[^\n]""".r ~ (name ^^ { _ => definition }).?).+ ^^ { _.map(x => x._1 + x._2.getOrElse("")).mkString }
+    def parser = ((name ^^ { _ => definition }) | """[^\n]""".r).+ ^^ { _.mkString }
     override def toString = name
   }
 
@@ -27,7 +27,7 @@ trait DefineParser extends RegexParsers with Utils {
       l
     }
 
-    override def parser = ("""[^\n]""".r ~ (name ~> list ^^ { replace(_)}).?).+ ^^ { _.map(x => x._1 + x._2.getOrElse("")).mkString}
+    override def parser = ((name ~> list ^^ { replace(_)}) | """[^\n]""".r).+ ^^ { _.mkString}
   }
 
   val defines = HashSet[Define]()
