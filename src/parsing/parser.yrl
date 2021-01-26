@@ -2,7 +2,8 @@ Nonterminals
 expression assignment_operator equality_operator relational_operator
 shift_operator addition_operator multiplication_operator cast unary_operator
 postfix_operator expression_list constant type_name postfix_list float_l
-fractional exponent digitseq
+fractional exponent int_l
+% enum_l
 .
 Terminals
 auto double int struct break else long switch case enum register typedef
@@ -19,6 +20,8 @@ identifier char_l string_l
 
 Rootsymbol expression.
 
+% This seemed to work at 850 (max), but I think it should be 0?
+Nonassoc 850 '('.
 Left  050 ','.
 Left  100 assignment_operator.
 Left  150 '?'.
@@ -37,7 +40,6 @@ Unary 750 unary_operator.
 Unary 750 sizeof.
 Left 800 postfix_operator.
 Right 800 postfix_list.
-Nonassoc 850 '('.
 
 expression -> expression ',' expression : {'$1', '$2'}.
 expression -> expression assignment_operator expression : {'$1', '$2', '$3'}.
@@ -64,7 +66,6 @@ expression -> '(' expression ')' : '$2'.
 
 postfix_list -> '[' expression ']' : {'$1', '$2', '$3'}.
 postfix_list -> '(' expression_list ')' : {apply, '$2'}.
-postfix_operator -> '.' identifier : {'$1', '$2'}.
 
 assignment_operator -> '='   : '$1'.
 assignment_operator -> '*='  : '$1'.
@@ -84,6 +85,7 @@ equality_operator -> '!=' : '$1'.
 relational_operator -> '>' : '$1'.
 relational_operator -> '<' : '$1'.
 relational_operator -> '>=' : '$1'.
+relational_operator -> '<=' : '$1'.
 
 shift_operator -> '>>' : '$1'.
 shift_operator -> '<<' : '$1'.
@@ -109,35 +111,68 @@ unary_operator -> '!' : '$1'.
 
 postfix_operator -> '++' : '$1'.
 postfix_operator -> '--' : '$1'.
+postfix_operator -> '.' identifier : {'$1', '$2'}.
+postfix_operator -> '->' identifier : {'$1', '$2'}.
 
 expression_list -> expression : ['$1'].
 expression_list -> expression ',' expression_list : ['$1' | '$2'].
 
-% For testing purposes only:
-
+constant -> int_l : '$1'.
 constant -> float_l : '$1'.
+constant -> char_l : '$1'.
+%constant -> enum_l : '$1'.
+
+% We need to confirm that the numbers (especially decimal) are valid
+
+int_l -> oct_number : '$1'.
+int_l -> oct_number_long : '$1'.
+int_l -> oct_number_suffix : '$1'.
+int_l -> dec_number : '$1'.
+int_l -> dec_number_long : '$1'.
+int_l -> dec_number_suffix : '$1'.
+int_l -> hex_number : '$1'.
+int_l -> hex_number_suffix : '$1'.
+
+% This causes reduce conflicts because an expression can be an identfier through constant or directly
+% enum_l -> identifier : '$1'.
 
 float_l -> exponent : '$1'.
 float_l -> fractional : '$1'.
-fractional -> digitseq '.' digitseq : {'$1', '$2', '$3'}.
-fractional -> digitseq '.' float_number : {'$1', '$2', '$3'}.
-fractional -> digitseq '.' oct_number_long : {'$1', '$2', '$3'}.
-fractional -> digitseq '.' dec_number_long : {'$1', '$2', '$3'}.
-fractional -> digitseq '.' : {'$1', '$2'}.
-fractional -> digitseq '.' exponent : {'$1', '$2', '$3'}.
-fractional -> '.' digitseq : {'$1', '$2'}.
+fractional -> dec_number '.' dec_number : {'$1', '$2', '$3'}.
+fractional -> oct_number '.' dec_number : {'$1', '$2', '$3'}.
+fractional -> dec_number '.' oct_number : {'$1', '$2', '$3'}.
+fractional -> oct_number '.' oct_number : {'$1', '$2', '$3'}.
+
+fractional -> dec_number '.' float_number : {'$1', '$2', '$3'}.
+fractional -> oct_number '.' float_number : {'$1', '$2', '$3'}.
+
+fractional -> dec_number '.' oct_number_long : {'$1', '$2', '$3'}.
+fractional -> oct_number '.' oct_number_long : {'$1', '$2', '$3'}.
+
+fractional -> dec_number '.' dec_number_long : {'$1', '$2', '$3'}.
+fractional -> oct_number '.' dec_number_long : {'$1', '$2', '$3'}.
+
+fractional -> dec_number '.' : {'$1', '$2'}.
+fractional -> oct_number '.' : {'$1', '$2'}.
+
+fractional -> dec_number '.' exponent : {'$1', '$2', '$3'}.
+fractional -> oct_number '.' exponent : {'$1', '$2', '$3'}.
+
+fractional -> '.' dec_number : {'$1', '$2'}.
+fractional -> '.' oct_number : {'$1', '$2'}.
+
 fractional -> '.' float_number : {'$1', '$2'}.
 fractional -> '.' exponent : {'$1', '$2'}.
 
 exponent -> raw_exponent_suffix : '$1'.
-exponent -> raw_exponent '+' digitseq : {'$1', '$2'}.
-exponent -> raw_exponent '-' digitseq : {'$1', '$2'}.
+exponent -> raw_exponent '+' dec_number : {'$1', '$2'}.
+exponent -> raw_exponent '+' oct_number : {'$1', '$2'}.
+exponent -> raw_exponent '-' dec_number : {'$1', '$2'}.
+exponent -> raw_exponent '-' oct_number : {'$1', '$2'}.
 exponent -> raw_exponent '+' float_number : {'$1', '$2'}.
 exponent -> raw_exponent '-' float_number : {'$1', '$2'}.
 exponent -> raw_exponent '+' dec_number_long : {'$1', '$2'}.
 exponent -> raw_exponent '-' oct_number_long : {'$1', '$2'}.
-
-digitseq -> dec_number : '$1'.
-digitseq -> oct_number : '$1'.
+% For testing purposes only:
 
 type_name -> int : '$1'.

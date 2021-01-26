@@ -2,7 +2,7 @@ Definitions.
 
 KEYWORD = auto|double|int|struct|break|else|long|switch|case|enum|register|typedef|char|extern|return|union|const|float|short|unsigned|continue|for|signed|void|default|goto|sizeof|volatile|do|if|static|while
 IDENT   = [_a-zA-Z]([_a-zA-Z0-9]*)
-NUMBER  =  [0-9][a-zA-Z0-9_]*
+NUMBER  = ([0-9.]+[a-zA-Z_]*)*
 C_CHAR  = [^\n'\\]
 S_CHAR  = [^\n"\\]
 OCTAL_ESCAPE = \\[0-7][0-7]?[0-7]?
@@ -15,10 +15,7 @@ Rules. %"
 
 "({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{S_CHAR})*"  : string_escape(TokenLine, tl(TokenChars)). 
 '({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{C_CHAR})+'  : char_to_int(TokenLine, tl(TokenChars)).
-% Because floats can't easily be assembled now without breaking the '.' operator
-% we just have to do our best to ensure that they're valid.
-% Currently a few decimal numbers beginning with 0 will get through which isn't a priority.
-{NUMBER}  : likely_valid_num(TokenLine, TokenChars).
+{NUMBER} : parse_num(TokenLine, TokenChars).
 {KEYWORD} : {token, {list_to_atom(TokenChars), TokenLine}}.
 {IDENT}   : {token, {identifier, TokenLine, list_to_atom(TokenChars)}}.
 {SYMBOL}  : {token, {list_to_atom(TokenChars), TokenLine}}.
@@ -101,46 +98,12 @@ simple_escape($") -> $\x22;
 simple_escape($?) -> $\x3f;
 simple_escape($\\)-> $\x5c.
 
-likely_valid_num(Line, [$0,_X | Chars]) when (_X =:= $x) or (_X =:= $X) ->
-  case re:split(Chars, "\\A[0-9a-fA-F]+", [{return, list}, {parts, 2}]) of
-    [_,[]] -> {token, {hex_number, Line, Chars}};
-    [_, Rest] ->
-      case re:run(Rest, "\\A([uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
-        nomatch -> {error, "Invalid Number"};
-        {match, [[_]]} -> {token, {hex_number_suffix, Line, lists:droplast(Chars), Rest}};
-        {match, [[_,_]]} -> {token, {hex_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}}
-      end
-  end;
-likely_valid_num(Line, Chars) when hd(Chars) =:= $0 ->
-  case re:split(Chars, "\\A0[0-7]+", [{return, list}, {parts, 2}]) of
-    [_, []] -> {token, {oct_number, Line, Chars}};
-    [_, Rest] ->
-      io:fwrite("~p~n", [Rest]),
-      case re:run(Rest, "\\A([fF]|([eE](([0-9]+[fFlL]?)?))|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
-        nomatch -> {error, "Invalid Number"};
-        {match, [F]} when (F =:= "F") or (F =:= "f") -> {token, {float_number, Line, lists:droplast(Chars), Rest}};
-        {match, [E]} when (E =:= "E") or (E =:= "e") -> {token, {raw_exponent, Line, lists:droplast(Chars), Rest}};
-        {match, [L]} when (L =:= "L") or (L =:= "l") -> {token, {oct_number_long, Line, lists:droplast(Chars), Rest}};
-        {match, [[_]]} -> {token, {oct_number_suffix, Line, lists:droplast(Chars), Rest}};
-        {match, [[_,_]]} -> {token, {oct_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}};
-        _ -> {token, {raw_exponent_suffix, Line, Chars, Rest}}
-      end
-  end;
-likely_valid_num(Line, Chars) ->
-  case re:split(Chars, "\\A[0-9]+", [{return, list}, {parts, 2}]) of
-    [_, []] -> {token, {dec_number, Line, Chars}};
-    [_, Rest] ->
-      io:fwrite("~p~n", [Rest]),
-      case re:run(Rest, "\\A([fF]|([eE](([0-9]+[fFlL]?)?))|[uU][lL]|[lL]|[uU])\\z", [{capture,first,list}]) of
-        {match, [F]} when (F =:= "F") or (F =:= "f") -> {token, {float_number, Line, lists:droplast(Chars), Rest}};
-        {match, [E]} when (E =:= "E") or (E =:= "e") -> {token, {raw_exponent, Line, lists:droplast(Chars), Rest}};
-        {match, [L]} when (L =:= "L") or (L =:= "l") -> {token, {dec_number_long, Line, lists:droplast(Chars), Rest}};
-        {match, [[_]]} when hd(Chars) =/= $0 -> {token, {dec_number_suffix, Line, lists:droplast(Chars), Rest}};
-        {match, [[_,_]]} when hd(Chars) =/= $0  -> {token, {dec_number_suffix, Line, lists:droplast(lists:droplast(Chars)), Rest}};
-        {match, [[E]]} when (hd(E) =:= $E) or (hd(E) =:= $e) -> {token, {raw_exponent_suffix, Line, Chars, Rest}};
-        _ -> {error, "Invalid Number"}
-      end
+parse_num(Line, Chars) -> 
+  case number_lexer:string(Chars) of
+    {ok, [{T, N, S}], _} -> {token, {T, Line, N, S}};
+    {error, {_,_,M}, _} -> {error, M}
   end.
+
 -undef(OCT_DIGIT).
 -undef(HEX_DIGIT).
 -undef(SIMPLE_ESCAPE).
