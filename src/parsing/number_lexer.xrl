@@ -19,12 +19,14 @@ Erlang code.
 
 ffloat(Chars) ->
   {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $f) and (X =/= $F) and (X =/= $l) and (X =/= $L) end, [$0 | Chars]),
-  {Man, Exp} = string:split(Str, "e"),
-  {float_l,list_to_float(Man ++ [$0]) * math:pow(10, list_to_integer([$0 | Exp])), Suffix}.
+  case string:split(Str, "e") of
+    [Man, Exp] -> {float_l,list_to_float(Man ++ [$0]) * math:pow(10, list_to_integer([$0 | Exp])), Suffix};
+    [Man] -> {float_l, list_to_float(Man ++ [$0]), Suffix}
+  end.
 
 ifloat(Chars) ->
   {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $f) and (X =/= $F) and (X =/= $l) and (X =/= $L) end, [$0 | Chars]),
-  {Man, Exp} = string:split(Str, "e"),
+  [Man, Exp] = string:split(Str, "e"),
   {float_l, list_to_integer(Man ++ [$0]) * math:pow(10, list_to_integer([$0 | Exp])), Suffix}.
 oct(Chars) -> 
   {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $u) and (X =/= $U) and (X =/= $l) and (X =/= $L) end, Chars),

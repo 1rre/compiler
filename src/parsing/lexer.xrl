@@ -2,20 +2,20 @@ Definitions.
 
 KEYWORD = auto|double|int|struct|break|else|long|switch|case|enum|register|typedef|char|extern|return|union|const|float|short|unsigned|continue|for|signed|void|default|goto|sizeof|volatile|do|if|static|while
 IDENT   = [_a-zA-Z]([_a-zA-Z0-9]*)
-NUMBER  = ([0-9.]+[a-zA-Z_]*)*
+NUMBER  = ((\.?[0-9]+)[a-zA-Z_.]*([eE][+\-])?)+
 C_CHAR  = [^\n'\\]
 S_CHAR  = [^\n"\\]
 OCTAL_ESCAPE = \\[0-7][0-7]?[0-7]?
 HEX_ESCAPE = \\x[0-9a-fA-F]+
 SYMBOL = \<\<\=|\>\>\=|\{|\}|\.\.\.|\<\<|\>\>|\<|\>|\<\=|\>\=|\=\=|\!\=|\^|\||\&\&|\?|\:|\*\=|\/\=|\%\=|\+\=|\-\=|\&\=|\^\=|\|\=|\-\>|\+\+|\-\-|\;|\[|\]|\(|\)|\.|\&|\||\*|\+|\-|\~|\!|\/|\%|\=|\,|\#\#|\#
 SIMPLE_ESCAPE = \\[abefnrtv'"\\?]
-BLANK = [\s\n]+
+BLANK = [\s\n]
 
 Rules. %"
 
 "({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{S_CHAR})*"  : string_escape(TokenLine, tl(TokenChars)). 
 '({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{C_CHAR})+'  : char_to_int(TokenLine, tl(TokenChars)).
-{NUMBER} : parse_num(TokenLine, TokenChars).
+{NUMBER}  : parse_num(TokenLine, TokenChars).
 {KEYWORD} : {token, {list_to_atom(TokenChars), TokenLine}}.
 {IDENT}   : {token, {identifier, TokenLine, list_to_atom(TokenChars)}}.
 {SYMBOL}  : {token, {list_to_atom(TokenChars), TokenLine}}.
@@ -99,6 +99,7 @@ simple_escape($?) -> $\x3f;
 simple_escape($\\)-> $\x5c.
 
 parse_num(Line, Chars) -> 
+  io:fwrite("~s~n", [Chars]),
   case number_lexer:string(Chars) of
     {ok, [{T, N, S}], _} -> {token, {T, Line, N, S}};
     {error, {_,_,M}, _} -> {error, M}
