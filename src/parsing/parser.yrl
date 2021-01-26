@@ -41,6 +41,10 @@ Unary 750 sizeof.
 Left 800 postfix_operator.
 Right 800 postfix_list.
 
+%%%%%%%%%%%%%%%
+% EXPRESSIONS %
+%%%%%%%%%%%%%%%
+
 expression -> expression ',' expression : {'$1', '$2'}.
 expression -> expression assignment_operator expression : {'$1', '$2', '$3'}.
 expression -> expression '?' expression ':' expression : {'$1', '$2', '$3', '$5'}.
@@ -173,6 +177,81 @@ exponent -> raw_exponent '+' float_number : {'$1', '$2'}.
 exponent -> raw_exponent '-' float_number : {'$1', '$2'}.
 exponent -> raw_exponent '+' dec_number_long : {'$1', '$2'}.
 exponent -> raw_exponent '-' oct_number_long : {'$1', '$2'}.
+
+%%%%%%%%%%%%%%%%
+% DECLARATIONS %
+%%%%%%%%%%%%%%%%
+
+declaration -> declaration_specifiers ';' : {'$1', '$2'}.
+declaration -> declaration_specifiers init_declarator_list ';' : {'$1', '$2', '$3'}.
+
+declaration_specifiers -> storage_class_specifier : ['$1'].
+declaration_specifiers -> storage_class_specifier declaration_specifiers : ['$1' | '$2'].
+declaration_specifiers -> type_specifier : ['$1'].
+declaration_specifiers -> type_specifier declaration_specifiers : ['$1' | '$2'].
+declaration_specifiers -> type_qualifier : ['$1'].
+declaration_specifiers -> type_qualifier declaration_specifiers : ['$1' | '$2'].
+
+init_declarator_list -> init_declarator : ['$1'].
+init_declarator_list -> init_declarator ',' init_declarator_list : ['$1' | '$3'].
+
+init_declarator -> decalator = initialiser : {'$1', '$2', '$3'}.
+
+storage_class_specifier -> typedef : '$1'.
+storage_class_specifier -> extern : '$1'.
+storage_class_specifier -> static : '$1'.
+storage_class_specifier -> auto : '$1'.
+storage_class_specifier -> register : '$1'.
+
+type_specifier -> void : '$1'.
+type_specifier -> char : '$1'.
+type_specifier -> short : '$1'.
+type_specifier -> int : '$1'.
+type_specifier -> long : '$1'.
+type_specifier -> float : '$1'.
+type_specifier -> double : '$1'.
+type_specifier -> signed : '$1'.
+type_specifier -> unsigned : '$1'.
+type_specifier -> struct_union_specifier : '$1'.
+type_specifier -> enum_specifier : '$1'.
+type_specifier -> typedef_name : '$1'.
+
+struct_union_specifier -> struct_union identifier '{' struct_declaration_list '}' : {'$1', '$2', '$3', '$4', '$5'}.
+struct_union_specifier -> struct_union '{' struct_declaration_list '}' : {'$1', '$2', '$3', '$4'}.
+struct_union_specifier -> struct_union identifier : {'$1', '$2'}.
+
+struct_union -> struct : '$1'.
+struct_union -> union : '$1'.
+
+struct_declaration_list -> struct_declaration : ['$1'].
+struct_declaration_list -> struct_declaration struct_declaration_list : ['$1' | '$2'].
+
+struct_declaration -> specifier_qualifier_list struct_declarator_list ';' : {'$1', '$2', '$3'}.
+
+specifier_qualifier_list -> type_specifier : ['$1'].
+specifier_qualifier_list -> type_specifier specifier_qualifier_list : ['$1' | '$2'].
+specifier_qualifier_list -> type_qualifier : ['$1'].
+specifier_qualifier_list -> type_qualifier specifier_qualifier_list : ['$1' | '$2'].
+
+struct_declarator_list -> struct_declarator : ['$1'].
+struct_declarator_list -> struct_declarator ',' struct_declarator_list : ['$1' | '$3'].
+
+struct_declarator -> declarator : '$1'.
+struct_declarator -> declarator ':' expression : {'$1', '$2', '$3'}.
+struct_declarator -> ':' expression : {'$1', '$2', '$3'}.
+
+enum_specifier -> enum identifier '{' enumerator_list '}' : {'$1', '$2', '$3', '$4', '$5'}.
+enum_specifier -> enum '{' enumerator_list '}' : {'$1', '$2', '$3', '$4'}.
+
+enumerator_list -> enumerator : ['$1'].
+enumerator_list -> enumerator ',' enumerator_list : ['$1' | '$3'].
+
+enumerator -> identifier : '$1'.
+enumerator -> identifier '=' expression : {'$1', '$2', '$3'}.
+
+type_qualifier -> const : '$1'.
+type_qualifier -> volatile : '$1'.
+
 % For testing purposes only:
 
 type_name -> int : '$1'.
