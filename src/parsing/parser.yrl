@@ -28,7 +28,7 @@ typedef_name
 enum_l
 .
 
-Rootsymbol translation_units.
+Rootsymbol translation_unit.
 
 % This seemed to work at 850, but I think it should be 0?
 Nonassoc 850 '('.

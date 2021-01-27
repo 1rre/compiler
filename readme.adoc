@@ -1,27 +1,6 @@
-== Just finished punctuators
-It may be worth making a preprocessor to deal with directives \*before* we run the lexer. (Tbh it would probably be a nicer experience to do them in a JVM language or in C\++ - we can use JInterface for all Erlang types and erl interface to exchange text with C or C++)
+= C Compiler
+== The parser seems to work, time to make type checker etc.
 
-The issue here is that header files may mess up the line numbering?
+I might do that in CPP - the command to compile a NIF is g++ -o \<<NIF_LIB>>.so -fpic -shared \<<NIF_CPP>>.cpp -I /lib/erlang/\<<erts-11.1.7>>/include
 
-I guess we compile them separately and then use a linker or something?
-
-I guess we'd check for function declaration at the same time as time as type checking?
-
-== C Spec:
-http://port70.net/~nsz/c/c89/c89-draft.html#3.1.5
-
-== Using JInterface in case we want to implement bits in Scala/Java/Kotlin (Mutable data structures would be useful for type checking etc?)
-Most of these are just for testing, but we can probably run it either from a shell script or as part of the application.
-
-launching epmd:  
-`bash$ epmd -relaxed_command_check -daemon`  
-
-Launching the erlang shell:  
-`bash$ rebar3 shell --name "erlNode@localhost" --setcookie "cookie"`  
-
-Starting the erlang program:   
-`erl> c89_compiler:start().`   
-
-Sending a message:  
-`erl> erlang:send({translator, 'scalaNode@localhost'}, "hello").`  
-
+replace \<<erts-11.1.7>> with whatever version you may have - there should be a way to find that out that at runtime but I'll figure that out later.
