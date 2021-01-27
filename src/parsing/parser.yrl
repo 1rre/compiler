@@ -11,9 +11,10 @@ enumerator init_declarator storage_class_specifier struct_union_specifier
 struct_declaration_list struct_declaration struct_declarator_list
 parameter_declaration statement labeled_statement compound_statement
 iteration_statement statement_list selection_statement jump_statement
-expression_statement declaration_list
-% typedef_name
-% enum_l
+expression_statement declaration_list translation_unit external_declaration
+function_definition translation_units
+%typedef_name -> https://stackoverflow.com/questions/17202409/how-typedef-name-identifier-issue-is-resolved-in-c
+%enum_l
 .
 Terminals
 auto double int struct break else long switch case enum register typedef
@@ -22,12 +23,12 @@ void default sizeof volatile do if static while for
 int_l float_l identifier char_l string_l
 '{' '}' '...' ';' '[' ']' '(' ')' '.' '++' '--' '&' '|' '*' '+' '-' ','
 '~' '!' '/' '%' '<<' '>>' '<' '>' '<=' '>=' '==' '!=' '^' '&&' '||' '?'
-':' '=' '*=' '/=' '%=' '+=' '-=' '|=' '<<=' '>>=' '&=' '^=' '#' '##' '->'
+':' '=' '*=' '/=' '%=' '+=' '-=' '|=' '<<=' '&=' '^=' '#' '##' '>>=' '->'
 .
 
-Rootsymbol statement.
+Rootsymbol translation_units.
 
-% This seemed to work at 850 (max), but I think it should be 0?
+% This seemed to work at 850, but I think it should be 0?
 Nonassoc 850 '('.
 Left  050 ','.
 Left  100 assignment_operator.
@@ -45,8 +46,10 @@ Left  650 multiplication_operator.
 Right 700 cast.
 Unary 750 unary_operator.
 Unary 750 sizeof.
-Left 800 postfix_operator.
+Left  800 postfix_operator.
 Right 800 postfix_list.
+Right 900 declaration_list.
+%Unary 950 external_declaration.
 
 %%%%%%%%%%%%%%%
 % EXPRESSIONS %
@@ -156,6 +159,7 @@ declaration_specifiers -> type_qualifier declaration_specifiers : ['$1' | '$2'].
 init_declarator_list -> init_declarator : ['$1'].
 init_declarator_list -> init_declarator ',' init_declarator_list : ['$1' | '$3'].
 
+init_declarator -> declarator : '$1'.
 init_declarator -> declarator '=' initialiser : {'$1','$2','$3'}.
 
 storage_class_specifier -> typedef : '$1'.
@@ -262,8 +266,6 @@ direct_abstract_declarator -> direct_abstract_declarator '(' ')' : {'$1','$2','$
 direct_abstract_declarator ->  '(' parameter_type_list ')' : {'$1','$2','$3'}.
 direct_abstract_declarator ->  '(' ')' : {'$1','$2'}.
 
-
-% causes r/r conflict
 % typedef_name -> identifier : '$1'.
 
 initialiser -> expression : '$1'.
@@ -320,6 +322,22 @@ jump_statement -> continue ';' : {'$1', '$2'}.
 jump_statement -> break ';' : {'$1', '$2'}.
 jump_statement -> return expression ';' : {'$1', '$2', '$3'}.
 jump_statement -> return ';' : {'$1', '$2'}.
+
+translation_unit -> external_declaration : ['$1'].
+translation_unit -> external_declaration translation_unit : ['$1' | '$2'].
+
+external_declaration -> function_definition : '$1'.
+external_declaration -> declaration : '$1'.
+
+function_definition -> declaration_specifiers declarator : {'$1', '$2'}.
+function_definition -> declarator : '$1'.
+function_definition -> declaration_list compound_statement : {'$1', '$2'}.
+function_definition -> compound_statement : '$1'.
+
+% Out of spec but probs useful:
+
+translation_units -> translation_unit : ['$1'].
+translation_units -> translation_unit translation_units : ['$1' | '$2'].
 
 
 

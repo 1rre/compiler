@@ -20,7 +20,7 @@ read_file(Io_Stream) ->
     eof -> {ok, []};
     {ok, Line} ->
       case read_file(Io_Stream) of
-        {ok, Data} -> {ok, Line ++ [$\n|Data]};
+        {ok, Data} -> {ok, Line ++ Data};
         {error, Err} -> {error, Err}
       end;
     {error, Err} -> {error, Err}

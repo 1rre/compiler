@@ -1,5 +1,7 @@
 Definitions.
 
+COMMENT = (\/\/[^\n]*)|(\/\*(.|[\n\s])*\*\/)
+
 KEYWORD = auto|double|int|struct|break|else|long|switch|case|enum|register|typedef|char|extern|return|union|const|float|short|unsigned|continue|for|signed|void|default|goto|sizeof|volatile|do|if|static|while
 IDENT   = [_a-zA-Z]([_a-zA-Z0-9]*)
 NUMBER  = ((\.?[0-9]+)[a-zA-Z_.]*([eE][+\-])?)+
@@ -12,7 +14,7 @@ SIMPLE_ESCAPE = \\[abefnrtv'"\\?]
 BLANK = [\s\n]
 
 Rules. %"
-
+{COMMENT} : skip_token.
 "({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{S_CHAR})*"  : string_escape(TokenLine, tl(TokenChars)). 
 '({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{C_CHAR})+'  : char_to_int(TokenLine, tl(TokenChars)).
 {NUMBER}  : parse_num(TokenLine, TokenChars).
