@@ -13,8 +13,8 @@ parameter_declaration statement labeled_statement compound_statement
 iteration_statement statement_list selection_statement jump_statement
 expression_statement declaration_list translation_unit external_declaration
 function_definition translation_units
-%typedef_name -> https://stackoverflow.com/questions/17202409/how-typedef-name-identifier-issue-is-resolved-in-c
-%enum_l
+
+% We need advanced fixes for these 2: https://stackoverflow.com/questions/17202409/how-typedef-name-identifier-issue-is-resolved-in-c
 .
 Terminals
 auto double int struct break else long switch case enum register typedef
@@ -24,6 +24,8 @@ int_l float_l identifier char_l string_l
 '{' '}' '...' ';' '[' ']' '(' ')' '.' '++' '--' '&' '|' '*' '+' '-' ','
 '~' '!' '/' '%' '<<' '>>' '<' '>' '<=' '>=' '==' '!=' '^' '&&' '||' '?'
 ':' '=' '*=' '/=' '%=' '+=' '-=' '|=' '<<=' '&=' '^=' '#' '##' '>>=' '->'
+typedef_name
+enum_l
 .
 
 Rootsymbol translation_units.
@@ -49,7 +51,7 @@ Unary 750 sizeof.
 Left  800 postfix_operator.
 Right 800 postfix_list.
 Right 900 declaration_list.
-%Unary 950 external_declaration.
+Unary 950 external_declaration.
 
 %%%%%%%%%%%%%%%
 % EXPRESSIONS %
@@ -134,12 +136,10 @@ expression_list -> expression ',' expression_list : ['$1' | '$2'].
 constant -> int_l : '$1'.
 constant -> float_l : '$1'.
 constant -> char_l : '$1'.
-%constant -> enum_l : '$1'.
+constant -> enum_l : '$1'.
 
-% We need to confirm that the numbers (especially decimal) are valid
 
-% This causes reduce conflicts because an expression can be an identfier through constant or directly
-% enum_l -> identifier : '$1'.
+%enum_l -> identifier : '$1'.
 
 
 %%%%%%%%%%%%%%%%
@@ -179,7 +179,7 @@ type_specifier -> signed : '$1'.
 type_specifier -> unsigned : '$1'.
 type_specifier -> struct_union_specifier : '$1'.
 type_specifier -> enum_specifier : '$1'.
-%type_specifier -> typedef_name : '$1'.
+type_specifier -> typedef_name : '$1'.
 
 struct_union_specifier -> struct_union identifier '{' struct_declaration_list '}' : {'$1','$2','$3','$4','$5'}.
 struct_union_specifier -> struct_union '{' struct_declaration_list '}' : {'$1','$2','$3','$4'}.
@@ -207,6 +207,7 @@ struct_declarator -> ':' expression : {'$1','$2'}.
 
 enum_specifier -> enum identifier '{' enumerator_list '}' : {'$1','$2','$3','$4','$5'}.
 enum_specifier -> enum '{' enumerator_list '}' : {'$1','$2','$3','$4'}.
+enum_specifier -> enum identifier : {'$1','$2'}.
 
 enumerator_list -> enumerator : ['$1'].
 enumerator_list -> enumerator ',' enumerator_list : ['$1' | '$3'].
