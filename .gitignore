@@ -1,4 +1,4 @@
-src/parsing/lexer.erl
+src/parsing/*lexer.erl
 _build/
 .metals/
 .bloop/
