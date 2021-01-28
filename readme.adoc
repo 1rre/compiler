@@ -1,4 +1,5 @@
 = C Compiler
+
 == The parser seems to work, time to make type checker etc.
 
 I might do that in CPP - the command to compile a NIF is g++ -o \<<NIF_LIB>>.so -fpic -shared \<<NIF_CPP>>.cpp -I /lib/erlang/\<<erts-11.1.7>>/include
