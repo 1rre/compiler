@@ -8,3 +8,4 @@ type.hrl.ignore
 test/
 .eunit/
 src/parser.erl
+priv/

@@ -5,3 +5,4 @@
 I might do that in CPP - the command to compile a NIF is g++ -o \<<NIF_LIB>>.so -fpic -shared \<<NIF_CPP>>.cpp -I /lib/erlang/\<<erts-11.1.7>>/include
 
 replace \<<erts-11.1.7>> with whatever version you may have - there should be a way to find that out that at runtime but I'll figure that out later.
+
