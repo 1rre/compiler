@@ -19,7 +19,7 @@ main(["compile"]) ->
   Include = get_dep(erts),
   Cxx_Files = filelib:wildcard("*.cpp", "src"),
   [compile(Cxx, Nif, Include) || Nif <- Cxx_Files],
-  monitor_cxx(length(Cxx_Files)),
+  wait_exe(length(Cxx_Files)),
   Leex_Files = filelib:wildcard("src/parsing/*.xrl"),
   [leex:file(Xrl) || Xrl <- Leex_Files],
   Yecc_Files = filelib:wildcard("src/parsing/*.yrl"),
