@@ -1,10 +1,11 @@
 = C Compiler
 
-== The parser seems to work, time to make type checker etc.
+== Progress
+The parser seems to work, time to make type checker, translator etc.
 
-I might do that in CPP - the command to compile a NIF is g++ -o \<<NIF_LIB>>.so -fpic -shared \<<NIF_CPP>>.cpp -I /lib/erlang/\<<erts-11.1.7>>/include
+If we want we can make the type checker in C++ using a NIF - more info link:https://erlang.org/doc/man/erl_nif.html[here].
 
-replace \<<erts-11.1.7>> with whatever version you may have - there should be a way to find that out that at runtime but I'll figure that out later.
+It's almost certainly also a good idea to improve the AST to make it more obvious what is being produced and what is expected
 
 == Compilation
 To compile everything so you can run an eshell in `.build`, chmod "build.erl" and run `./build.erl compile`.
