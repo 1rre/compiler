@@ -101,7 +101,6 @@ simple_escape($?) -> $\x3f;
 simple_escape($\\)-> $\x5c.
 
 parse_num(Line, Chars) -> 
-  io:fwrite("~s~n", [Chars]),
   case number_lexer:string(Chars) of
     {ok, [{T, N, S}], _} -> {token, {T, Line, N, S}};
     {error, {_,_,M}, _} -> {error, M}

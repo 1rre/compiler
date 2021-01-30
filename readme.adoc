@@ -6,3 +6,8 @@ I might do that in CPP - the command to compile a NIF is g++ -o \<<NIF_LIB>>.so 
 
 replace \<<erts-11.1.7>> with whatever version you may have - there should be a way to find that out that at runtime but I'll figure that out later.
 
+== Compilation
+To compile everything so you can run an eshell in `.build`, chmod "build.erl" and run `./build.erl compile`.
+
+To compile a runnable escript, run `./build.erl bin/compiler` (or just `./build.erl`)
+

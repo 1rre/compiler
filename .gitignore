@@ -9,3 +9,4 @@ test/
 .eunit/
 src/parser.erl
 priv/
+.build/
