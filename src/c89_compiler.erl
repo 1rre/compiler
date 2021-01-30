@@ -14,6 +14,7 @@ main([File]) ->
   io:fwrite("Rest:~n~p~n~n~n~n", [Rest]),
   {ok, Result} = parser:parse(Scan),
   io:fwrite("Result:~n~p~n~n~n~n", [Result]),
+  nif_test:send(Result),
   halt(0);
 
 main(_) -> main(["test/test.c"]).
