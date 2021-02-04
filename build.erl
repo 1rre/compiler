@@ -9,7 +9,7 @@
 main(["clean"]) -> 
   file:del_dir_r(".build"),
   file:del_dir_r("bin"),
-  [file:delete(File) || File <- filelib:wildcard("src/parsing/*.erl")];
+  [file:delete(File) || File <- filelib:wildcard("src/erl/parsing/*.erl")];
 
 % Compile everything
 main(["compile"]) -> 
@@ -36,10 +36,10 @@ build_common() ->
   Include = get_dep(erts),
   Cxx_Files = filelib:wildcard("src/cpp/*.cpp"),
   [compile(Cxx, Nif, Include) || Nif <- Cxx_Files],
-  wait_exe(length(Cxx_Files)),
-  Leex_Files = filelib:wildcard("src/parsing/*.xrl"),
+  wait_exe(length(Cxx_Files), false),
+  Leex_Files = filelib:wildcard("src/erl/parsing/*.xrl"),
   [leex:file(Xrl) || Xrl <- Leex_Files],
-  Yecc_Files = filelib:wildcard("src/parsing/*.yrl"),
+  Yecc_Files = filelib:wildcard("src/erl/parsing/*.yrl"),
   [c:y(Yrl) || Yrl <- Yecc_Files],
   filelib:wildcard("src/**/*.erl").
 
@@ -112,11 +112,17 @@ compile(Cxx, Nif, Include) ->
 
 
 %% Ensure that all C++ files have compiled correctly
-wait_exe(0) -> ok;
-wait_exe(N) -> 
+wait_exe(0, true) ->
+  error("Compilation had errors.");
+wait_exe(0, _) ->
+  ok;
+wait_exe(N, Is_Ok) -> 
   receive
-    {'EXIT', _, normal} -> wait_exe(N - 1);
-    Message -> error(Message)
+    {'EXIT', _, normal} -> wait_exe(N - 1, Is_Ok);
+    {_Port, {data, Message}} ->
+      io:fwrite(standard_error, "~s~n", [Message]),
+      wait_exe(N, true);
+    _Message -> wait_exe(N, true)
   end.
 
 
@@ -132,5 +138,5 @@ escriptise(Bin) ->
   open_port({spawn_executable, os:find_executable("chmod")},
              [stderr_to_stdout, 
               {args, ["a+x", "bin/c89_compiler"]}]),
-  wait_exe(1).
+  wait_exe(1, false).
 

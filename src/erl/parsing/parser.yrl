@@ -52,6 +52,7 @@ Left  800 postfix_operator.
 Right 800 postfix_list.
 Right 900 declaration_list.
 Unary 950 external_declaration.
+Unary 950 else.
 
 
 %%%%%%%%%%%%%%%
@@ -305,8 +306,8 @@ statement_list -> statement statement_list : ['$1' | '$2'].
 expression_statement -> expression ';' : {'$1', '$2'}.
 expression_statement -> ';' : '$1'.
 
-selection_statement -> if '(' expression ')' statement : {'$1','$2','$3','$4','$5'}.
 selection_statement -> if '(' expression ')' statement else statement : {'$1','$2','$3','$4','$5','$6','$7'}.
+selection_statement -> if '(' expression ')' statement : {'$1','$2','$3','$4','$5'}.
 selection_statement -> switch '(' expression ')' statement : {'$1','$2','$3','$4','$5'}.
 
 iteration_statement -> while '(' expression ')' statement : {'$1','$2','$3','$4','$5'}.
@@ -318,6 +319,7 @@ iteration_statement -> for '(' ';' expression ';' expression ')' statement : {'$
 iteration_statement -> for '(' expression ';' ';' ')' statement : {'$1','$2','$3','$4','$5','$6','$7'}.                                 % · - -
 iteration_statement -> for '(' ';' expression ';' ')' statement : {'$1','$2','$3','$4','$5','$6','$7'}.                                 % - · -
 iteration_statement -> for '(' ';' ';' expression ')' statement : {'$1','$2','$3','$4','$5','$6','$7'}.                                 % · - -
+iteration_statement -> for '(' ';' ';' ')' statement : {'$1','$2','$3','$4','$5','$6'}.                                                 % - - -
 
 jump_statement -> goto identifier ';' : {'$1', '$2', '$3'}.
 jump_statement -> continue ';' : {'$1', '$2'}.

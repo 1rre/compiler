@@ -13,7 +13,7 @@ SYMBOL = \<\<\=|\>\>\=|\{|\}|\.\.\.|\<\<|\>\>|\<|\>|\<\=|\>\=|\=\=|\!\=|\^|\||\&
 SIMPLE_ESCAPE = \\[abefnrtv'"\\?]
 BLANK = [\s\n]
 
-Rules. %"
+Rules.
 {COMMENT} : skip_token.
 "({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{S_CHAR})*"  : string_escape(TokenLine, tl(TokenChars)). 
 '({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{C_CHAR})+'  : char_to_int(TokenLine, tl(TokenChars)).

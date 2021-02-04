@@ -9,6 +9,6 @@ cpp_get_ast(_List) ->
   error("Nif not loaded!").
 
 send(Output) ->
-  io:fwrite("~p~n", [cpp_get_ast(Output)]),
+  io:fwrite("~s~n", [cpp_get_ast(Output)]),
   halt(0).
 
