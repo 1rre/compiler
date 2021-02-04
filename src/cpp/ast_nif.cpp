@@ -1,6 +1,7 @@
 #include <erl_nif.h>
 #include <vector>
-#include <iostream>
+#include <stdio.h>
+#include "erl_translator.hpp"
 
 
 static ERL_NIF_TERM get_ast(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
@@ -26,4 +27,5 @@ static ErlNifFunc nif_funcs[] = {
     {"cpp_get_ast", 1, get_ast}
 };
 
-ERL_NIF_INIT(nif_test, nif_funcs, NULL, NULL, NULL, NULL);
+ERL_NIF_INIT(ast_nif, nif_funcs, NULL, NULL, NULL, NULL);
+

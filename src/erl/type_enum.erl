@@ -16,7 +16,7 @@ scan([{'{', Line} | Tokens], Types, Enums) ->
 
 % On a typedef keyword, look for the next identifier and map it to the appropriate type
 scan([{typedef, Line} | Tokens], Types, Enums) -> 
-  {Adj, Name, Rest} = find_ident(Tokens),
+  {Adj, Name, Rest} = find_ident(Tokens, Types, Enums),
   {A0, R0} = scan(Rest, [Name|Types], Enums),
   {[{typedef, Line} | Adj ++ A0], R0};
 
@@ -60,10 +60,18 @@ scan([], _Types, _Enums) ->
 scan(_Tokens, _Types, _Enums) -> error("how did this happen?").
 
 % Find the next identifier and return it
-find_ident([{identifier, Line, Name} | Tokens]) ->
-  {[{identifier, Line, Name}], Name, Tokens};
-find_ident([Other | Tokens]) ->
-  {Adj, Name, Rest} = find_ident(Tokens),
+find_ident([{identifier, Line, Name} | Tokens], Types, Enums) ->
+  case lists:member(Name, Types) of
+    true -> find_ident([{typedef_name, Line, Name} | Tokens], Types, Enums);
+    false ->
+      case lists:member(Name, Enums) of
+        true -> find_ident([{enum_l, Line, Name} | Tokens], Types, Enums);
+        false -> 
+          {[{identifier, Line, Name}], Name, Tokens}
+      end
+  end;
+find_ident([Other | Tokens], Types, Enums) ->
+  {Adj, Name, Rest} = find_ident(Tokens, Types, Enums),
   {[Other | Adj], Name, Rest};
-find_ident([]) -> {[], nil, []}.
+find_ident([], _, _) -> {[], nil, []}.
 

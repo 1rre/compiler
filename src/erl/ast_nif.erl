@@ -1,9 +1,9 @@
--module(nif_test).
+-module(ast_nif).
 -export([send/1, init/0, cpp_get_ast/1]).
 -on_load(init/0).
 
 init() -> 
-  erlang:load_nif(".build/nif_test", 0).
+  erlang:load_nif(".build/ast_nif", 0).
 
 cpp_get_ast(_List) ->
   error("Nif not loaded!").
