@@ -59,30 +59,30 @@ Unary 950 else.
 % EXPRESSIONS %
 %%%%%%%%%%%%%%%
 
-expression -> expression ',' expression : {'$1','$2'}.
-expression -> expression assignment_operator expression : {'$1','$2','$3'}.
-expression -> expression '?' expression ':' expression : {'$1','$2','$3','$5'}.
-expression -> expression '||' expression : {'$1','$2','$3'}.
-expression -> expression '&&' expression : {'$1','$2','$3'}.
-expression -> expression '|' expression : {'$1','$2','$3'}.
-expression -> expression '^' expression : {'$1','$2','$3'}.
-expression -> expression '&' expression : {'$1','$2','$3'}.
-expression -> expression equality_operator expression : {'$1','$2','$3'}.
-expression -> expression relational_operator expression : {'$1','$2','$3'}.
-expression -> expression shift_operator expression : {'$1','$2','$3'}.
-expression -> expression addition_operator expression : {'$1','$2','$3'}.
-expression -> expression multiplication_operator expression : {'$1','$2','$3'}.
-expression -> cast expression : {'$1','$2'}.
-expression -> unary_operator expression : {'$1','$2'}.
-expression -> expression postfix_operator : {'$1','$2'}.
+expression -> expression ',' expression : {'$1','$2'}. % I don't think this is tested
+expression -> expression assignment_operator expression : {move,'$2',['$1','$3']}.
+expression -> expression '?' expression ':' expression : {'?','$1', ['$3','$5']}.
+expression -> expression '||' expression : {bif,'||',['$1','$3']}.
+expression -> expression '&&' expression : {bif,'&&',['$1','$3']}.
+expression -> expression '|' expression : {bif,'|',['$1','$3']}.
+expression -> expression '^' expression : {bif,'^',['$1','$3']}.
+expression -> expression '&' expression : {bif,'&',['$1','$3']}.
+expression -> expression equality_operator expression : {bif,element(1,'$2'),['$1','$3']}.
+expression -> expression relational_operator expression : {bif,element(1,'$2'),['$1','$3']}.
+expression -> expression shift_operator expression : {bif,element(1,'$2'),['$1','$3']}.
+expression -> expression addition_operator expression : {bif,element(1,'$2'),['$1','$3']}.
+expression -> expression multiplication_operator expression : {bif, element(1,'$2'),['$1','$3']}.
+expression -> cast expression : {cast,'$1','$2'}.
+expression -> unary_operator expression : {element(1,'$1'),'$2'}.
+expression -> expression postfix_operator : {'$1',element(1,'$2')}.
 expression -> expression postfix_list : {'$1','$2'}.
-expression -> sizeof '(' type_name ')' : {'$1','$3'}. % Is the 2nd part a cast?
+expression -> sizeof '(' type_name ')' : {sizeof,'$3'}. % Is the 2nd part a cast?
 expression -> identifier : '$1'.
 expression -> constant : '$1'.
 expression -> string_l : '$1'.
 expression -> '(' expression ')' : '$2'.
 
-postfix_list -> '[' expression ']' : {'$1','$2','$3'}.
+postfix_list -> '[' expression ']' : {offset, '$2'}.
 postfix_list -> '(' expression_list ')' : {apply,'$2'}.
 
 assignment_operator -> '='   : '$1'.
