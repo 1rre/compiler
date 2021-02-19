@@ -6,7 +6,7 @@
 #include <string>
 #include <stdlib.h>
 
-namespace syntax_tree { 
+namespace ast { 
   enum enif_error {
     ERR_BAD_ATOM_LENGTH=1,
     ERR_BAD_ATOM_NAME,
@@ -17,17 +17,17 @@ namespace syntax_tree {
     ERR_BAD_TUPLE
   };
 
-  class Term {
+  class term {
     public:
     virtual std::string type_name() { return ""; }
     virtual std::string to_string() { return ""; }
   };
 
-  Term* translate(ErlNifEnv* env, ERL_NIF_TERM term);
+  term* translate(ErlNifEnv* env, ERL_NIF_TERM term);
 
-  class Atom : public virtual Term {
+  class atom : public virtual term {
   public:
-    Atom(ErlNifEnv* env, ERL_NIF_TERM atom) {
+    atom(ErlNifEnv* env, ERL_NIF_TERM atom) {
       unsigned _length;
       if (!enif_get_atom_length(env, atom, &_length, ERL_NIF_LATIN1)) exit(ERR_BAD_ATOM_LENGTH);
       char* _buf = (char*)malloc(_length+1);
@@ -48,9 +48,9 @@ namespace syntax_tree {
     std::string name;
   };
 
-  class Float : public virtual Term {
+  class erl_float : public virtual term {
   public:
-    Float(ErlNifEnv* env, ERL_NIF_TERM dbl) {
+    erl_float(ErlNifEnv* env, ERL_NIF_TERM dbl) {
       if (!enif_get_double(env, dbl, &value)) exit(ERR_BAD_FLOAT);
     }
     std::string type_name() {
@@ -63,9 +63,9 @@ namespace syntax_tree {
     double value;
   };
 
-  class Integer : public virtual Term {
+  class integer : public virtual term {
   public:
-    Integer(ErlNifEnv* env, ERL_NIF_TERM integer) {
+    integer(ErlNifEnv* env, ERL_NIF_TERM integer) {
       if (!enif_get_int64(env, integer, &value)) exit(ERR_BAD_INT);
     }
     std::string type_name() {
@@ -78,9 +78,9 @@ namespace syntax_tree {
     long value;
   };
 
-  class List : public virtual Term {
+  class list : public virtual term {
   public:
-    List(ErlNifEnv* env, ERL_NIF_TERM tail) {
+    list(ErlNifEnv* env, ERL_NIF_TERM tail) {
       unsigned _length;
       ERL_NIF_TERM _head;
       if (!enif_get_list_length(env, tail, &_length)) exit(ERR_BAD_LIST_LENGTH);
@@ -102,12 +102,12 @@ namespace syntax_tree {
       return rtn;
     }
   private:
-    std::vector<Term*> elems;
+    std::vector<term*> elems;
   };
 
-  class Tuple : public virtual Term {
+  class tuple : public virtual term {
   public:
-    Tuple(ErlNifEnv* env, ERL_NIF_TERM tuple) {
+    tuple(ErlNifEnv* env, ERL_NIF_TERM tuple) {
       int _arity;
       const ERL_NIF_TERM* _elems;
       if (!enif_get_tuple(env, tuple, &_arity, &_elems)) exit(ERR_BAD_TUPLE);
@@ -128,21 +128,21 @@ namespace syntax_tree {
       return rtn;
     }
   private:
-    std::vector<Term*> elems;
+    std::vector<term*> elems;
   };
 
-  Term* translate(ErlNifEnv* env, ERL_NIF_TERM term) {
+  term* translate(ErlNifEnv* env, ERL_NIF_TERM term) {
     switch (enif_term_type(env, term)) {
       case ERL_NIF_TERM_TYPE_ATOM:
-        return new Atom(env, term);
+        return new atom(env, term);
       case ERL_NIF_TERM_TYPE_FLOAT:
-        return new Float(env, term);
+        return new erl_float(env, term);
       case ERL_NIF_TERM_TYPE_INTEGER:
-        return new Integer(env, term);
+        return new integer(env, term);
       case ERL_NIF_TERM_TYPE_LIST:
-        return new List(env, term);
+        return new list(env, term);
       case ERL_NIF_TERM_TYPE_TUPLE:
-        return new Tuple(env, term);
+        return new tuple(env, term);
       default:
         return nullptr;
     }

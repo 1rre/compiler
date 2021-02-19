@@ -148,8 +148,8 @@ constant -> enum_l : '$1'.
 % DECLARATIONS %
 %%%%%%%%%%%%%%%%
 
-declaration -> declaration_specifiers ';' : {'$1','$2'}.
-declaration -> declaration_specifiers init_declarator_list ';' : {'$1','$2','$3'}.
+declaration -> declaration_specifiers ';' : {'$1'}.
+declaration -> declaration_specifiers init_declarator_list ';' : {'$1','$2'}.
 
 declaration_specifiers -> storage_class_specifier : ['$1'].
 declaration_specifiers -> storage_class_specifier declaration_specifiers : ['$1' | '$2'].
@@ -183,8 +183,8 @@ type_specifier -> struct_union_specifier : '$1'.
 type_specifier -> enum_specifier : '$1'.
 type_specifier -> typedef_name : '$1'.
 
-struct_union_specifier -> struct_union identifier '{' struct_declaration_list '}' : {'$1','$2','$3','$4','$5'}.
-struct_union_specifier -> struct_union '{' struct_declaration_list '}' : {'$1','$2','$3','$4'}.
+struct_union_specifier -> struct_union identifier '{' struct_declaration_list '}' : {'$1','$2','$4'}.
+struct_union_specifier -> struct_union '{' struct_declaration_list '}' : {'$1','$3'}.
 struct_union_specifier -> struct_union identifier : {'$1','$2'}.
 
 struct_union -> struct : '$1'.
@@ -193,7 +193,7 @@ struct_union -> union : '$1'.
 struct_declaration_list -> struct_declaration : ['$1'].
 struct_declaration_list -> struct_declaration struct_declaration_list : ['$1' | '$2'].
 
-struct_declaration -> specifier_qualifier_list struct_declarator_list ';' : {'$1','$2','$3'}.
+struct_declaration -> specifier_qualifier_list struct_declarator_list ';' : {'$1','$2'}.
 
 specifier_qualifier_list -> type_specifier : ['$1'].
 specifier_qualifier_list -> type_specifier specifier_qualifier_list : ['$1' | '$2'].
@@ -207,8 +207,8 @@ struct_declarator -> declarator : '$1'.
 struct_declarator -> declarator ':' expression : {'$1','$2','$3'}.
 struct_declarator -> ':' expression : {'$1','$2'}.
 
-enum_specifier -> enum identifier '{' enumerator_list '}' : {'$1','$2','$3','$4','$5'}.
-enum_specifier -> enum '{' enumerator_list '}' : {'$1','$2','$3','$4'}.
+enum_specifier -> enum identifier '{' enumerator_list '}' : {'$1','$2','$4'}.
+enum_specifier -> enum '{' enumerator_list '}' : {'$1','$3'}.
 enum_specifier -> enum identifier : {'$1','$2'}.
 
 enumerator_list -> enumerator : ['$1'].
@@ -227,9 +227,9 @@ direct_declarator -> identifier : '$1'.
 direct_declarator -> '(' declarator ')' : '$2'.
 direct_declarator -> direct_declarator '[' expression ']' : {'$1','$2','$3','$4'}.
 direct_declarator -> direct_declarator '[' ']' : {'$1','$2','$3'}.
-direct_declarator -> direct_declarator '(' parameter_type_list ')' : {'$1','$2','$3','$4'}.
-direct_declarator -> direct_declarator '(' identifier_list ')' : {'$1','$2','$3','$4'}.
-direct_declarator -> direct_declarator '(' ')' : {'$1','$2','$3'}.
+direct_declarator -> direct_declarator '(' parameter_type_list ')' : {'$1','$3'}.
+direct_declarator -> direct_declarator '(' identifier_list ')' : {'$1','$3'}.
+direct_declarator -> direct_declarator '(' ')' : {'$1'}.
 
 pointer -> '*' type_qualifier_list : {'$1','$2'}.
 pointer -> '*' : '$1'.
@@ -272,8 +272,8 @@ direct_abstract_declarator ->  '(' ')' : {'$1','$2'}.
 % typedef_name -> identifier : '$1'.
 
 initialiser -> expression : '$1'.
-initialiser -> '{' initialiser_list '}' : {'$1','$2','$3'}.
-initialiser -> '{' initialiser_list ',' '}' : {'$1','$2','$3','$4'}.
+initialiser -> '{' initialiser_list '}' : {'$2'}.
+initialiser -> '{' initialiser_list ',' '}' : {'$2'}.
 
 initialiser_list -> initialiser : ['$1'].
 initialiser_list -> initialiser ',' initialiser_list : ['$1' | '$3'].
@@ -293,9 +293,9 @@ labeled_statement -> identifier ':' statement : {'$1','$2','$3'}.
 labeled_statement -> case expression ':' statement : {'$1','$2','$3','$4'}.
 labeled_statement -> default ':' statement : {'$1','$2','$3'}.
 
-compound_statement -> '{' declaration_list statement_list '}' : {'$1','$2','$3','$4'}.
-compound_statement -> '{' declaration_list '}' : {'$1','$2','$3'}.
-compound_statement -> '{' statement_list '}' : {'$1','$2','$3'}.
+compound_statement -> '{' declaration_list statement_list '}' : {'$2','$3'}.
+compound_statement -> '{' declaration_list '}' : {'$2'}.
+compound_statement -> '{' statement_list '}' : {'$2'}.
 
 declaration_list -> declaration : ['$1'].
 declaration_list -> declaration declaration_list : ['$1' | '$2'].
@@ -303,29 +303,29 @@ declaration_list -> declaration declaration_list : ['$1' | '$2'].
 statement_list -> statement : ['$1'].
 statement_list -> statement statement_list : ['$1' | '$2'].
 
-expression_statement -> expression ';' : {'$1', '$2'}.
-expression_statement -> ';' : '$1'.
+expression_statement -> expression ';' : {'$1'}.
+expression_statement -> ';' : {nil}.
 
-selection_statement -> if '(' expression ')' statement else statement : {'$1','$2','$3','$4','$5','$6','$7'}.
-selection_statement -> if '(' expression ')' statement : {'$1','$2','$3','$4','$5'}.
-selection_statement -> switch '(' expression ')' statement : {'$1','$2','$3','$4','$5'}.
+selection_statement -> if '(' expression ')' statement else statement : {'$1','$3','$5','$7'}.
+selection_statement -> if '(' expression ')' statement : {'$1','$3','$5'}.
+selection_statement -> switch '(' expression ')' statement : {'$1','$3','$5'}.
 
-iteration_statement -> while '(' expression ')' statement : {'$1','$2','$3','$4','$5'}.
-iteration_statement -> do statement while '(' expression ')' ';' : {'$1','$2','$3','$4','$5','$6','$7'}.
-iteration_statement -> for '(' expression ';' expression ';' expression ')' statement : {'$1','$2','$3','$4','$5','$6','$7','$8','$9'}. % · · ·
-iteration_statement -> for '(' expression ';' expression ';' ')' statement : {'$1','$2','$3','$4','$5','$6','$7','$8'}.                 % · · -
-iteration_statement -> for '(' expression ';' ';' expression ')' statement : {'$1','$2','$3','$4','$5','$6','$7','$8'}.                 % · - ·
-iteration_statement -> for '(' ';' expression ';' expression ')' statement : {'$1','$2','$3','$4','$5','$6','$7','$8'}.                 % - · ·
-iteration_statement -> for '(' expression ';' ';' ')' statement : {'$1','$2','$3','$4','$5','$6','$7'}.                                 % · - -
-iteration_statement -> for '(' ';' expression ';' ')' statement : {'$1','$2','$3','$4','$5','$6','$7'}.                                 % - · -
-iteration_statement -> for '(' ';' ';' expression ')' statement : {'$1','$2','$3','$4','$5','$6','$7'}.                                 % · - -
-iteration_statement -> for '(' ';' ';' ')' statement : {'$1','$2','$3','$4','$5','$6'}.                                                 % - - -
+iteration_statement -> while '(' expression ')' statement : {'$1','$3','$5'}.
+iteration_statement -> do statement while '(' expression ')' ';' : {'$1','$2','$5'}.
+iteration_statement -> for '(' expression ';' expression ';' expression ')' statement : {'$1',{'$3','$5','$7'},'$9'}.
+iteration_statement -> for '(' expression ';' expression ';' ')' statement : {'$1',{'$3','$5',nil},'$8'}.
+iteration_statement -> for '(' expression ';' ';' expression ')' statement : {'$1',{'$3',nil,'$6'},'$8'}.
+iteration_statement -> for '(' ';' expression ';' expression ')' statement : {'$1',{nil,'$4','$6'},'$8'}.
+iteration_statement -> for '(' expression ';' ';' ')' statement : {'$1',{'$3',nil,nil},'$7'}.
+iteration_statement -> for '(' ';' expression ';' ')' statement : {'$1',{nil,'$4',nil},'$7'}.
+iteration_statement -> for '(' ';' ';' expression ')' statement : {'$1',{nil,nil,'$5'},'$7'}.
+iteration_statement -> for '(' ';' ';' ')' statement : {'$1',{nil,nil,nil},'$6'}.
 
-jump_statement -> goto identifier ';' : {'$1', '$2', '$3'}.
-jump_statement -> continue ';' : {'$1', '$2'}.
-jump_statement -> break ';' : {'$1', '$2'}.
-jump_statement -> return expression ';' : {'$1', '$2', '$3'}.
-jump_statement -> return ';' : {'$1', '$2'}.
+jump_statement -> goto identifier ';' : {'$1', '$2'}.
+jump_statement -> continue ';' : {'$1'}.
+jump_statement -> break ';' : {'$1'}.
+jump_statement -> return expression ';' : {'$1', '$2'}.
+jump_statement -> return ';' : {'$1', nil}.
 
 translation_unit -> external_declaration : ['$1'].
 translation_unit -> external_declaration translation_unit : ['$1' | '$2'].
