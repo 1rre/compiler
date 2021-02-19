@@ -23,17 +23,17 @@ namespace ast {
     virtual std::string to_string() { return ""; }
   };
 
-  term* translate(ErlNifEnv* env, ERL_NIF_TERM term);
+  term* translate(ErlNifEnv* Env, ERL_NIF_TERM term);
 
   class atom : public virtual term {
   public:
-    atom(ErlNifEnv* env, ERL_NIF_TERM atom) {
-      unsigned _length;
-      if (!enif_get_atom_length(env, atom, &_length, ERL_NIF_LATIN1)) exit(ERR_BAD_ATOM_LENGTH);
-      char* _buf = (char*)malloc(_length+1);
-      if (!enif_get_atom(env, atom, _buf, _length+1, ERL_NIF_LATIN1)) exit(ERR_BAD_ATOM_NAME);
-      name = std::string(_buf);
-      free(_buf);
+    atom(ErlNifEnv* Env, ERL_NIF_TERM Atom) {
+      unsigned _Length;
+      if (!enif_get_atom_length(Env, Atom, &_Length, ERL_NIF_LATIN1)) exit(ERR_BAD_ATOM_LENGTH);
+      char* _Buf = (char*)malloc(_Length+1);
+      if (!enif_get_atom(Env, Atom, _Buf, _Length+1, ERL_NIF_LATIN1)) exit(ERR_BAD_ATOM_NAME);
+      Name = std::string(_Buf);
+      free(_Buf);
     }
 
     std::string type_name() {
@@ -41,108 +41,108 @@ namespace ast {
     }
 
     std::string to_string() {
-      return name;
+      return Name;
     }
 
   private:
-    std::string name;
+    std::string Name;
   };
 
   class erl_float : public virtual term {
   public:
-    erl_float(ErlNifEnv* env, ERL_NIF_TERM dbl) {
-      if (!enif_get_double(env, dbl, &value)) exit(ERR_BAD_FLOAT);
+    erl_float(ErlNifEnv* Env, ERL_NIF_TERM Dbl) {
+      if (!enif_get_double(Env, Dbl, &Value)) exit(ERR_BAD_FLOAT);
     }
     std::string type_name() {
       return "float";
     }
     std::string to_string() {
-      return std::to_string(value);
+      return std::to_string(Value);
     }
   private:
-    double value;
+    double Value;
   };
 
   class integer : public virtual term {
   public:
-    integer(ErlNifEnv* env, ERL_NIF_TERM integer) {
-      if (!enif_get_int64(env, integer, &value)) exit(ERR_BAD_INT);
+    integer(ErlNifEnv* Env, ERL_NIF_TERM Integer) {
+      if (!enif_get_int64(Env, Integer, &Value)) exit(ERR_BAD_INT);
     }
     std::string type_name() {
       return "int";
     }
     std::string to_string() {
-      return std::to_string(value);
+      return std::to_string(Value);
     }
   private:
-    long value;
+    long Value;
   };
 
   class list : public virtual term {
   public:
-    list(ErlNifEnv* env, ERL_NIF_TERM tail) {
-      unsigned _length;
-      ERL_NIF_TERM _head;
-      if (!enif_get_list_length(env, tail, &_length)) exit(ERR_BAD_LIST_LENGTH);
-      for (unsigned i = 0; i < _length; i++) 
-        if (!enif_get_list_cell(env, tail, &_head, &tail)) exit(ERR_BAD_LIST_ELEMS);
-        else elems.push_back(translate(env, _head));
+    list(ErlNifEnv* Env, ERL_NIF_TERM Tail) {
+      unsigned _Length;
+      ERL_NIF_TERM _Head;
+      if (!enif_get_list_length(Env, Tail, &_Length)) exit(ERR_BAD_LIST_LENGTH);
+      for (unsigned I = 0; I < _Length; I++) 
+        if (!enif_get_list_cell(Env, Tail, &_Head, &Tail)) exit(ERR_BAD_LIST_ELEMS);
+        else Elems.push_back(translate(Env, _Head));
     }
     std::string type_name() {
       return "list";
     }
     std::string to_string() {
-      std::string rtn = "[";
-      for (auto& t : elems) {
-        rtn.append(t -> to_string());
-        rtn.push_back(',');
+      std::string Rtn = "[";
+      for (auto& t : Elems) {
+        Rtn.append(t -> to_string());
+        Rtn.push_back(',');
       }
-      if (*(rtn.end()-1) == ',') rtn.back() = ']';
-      else rtn.push_back(']');
-      return rtn;
+      if (*(Rtn.end()-1) == ',') Rtn.back() = ']';
+      else Rtn.push_back(']');
+      return Rtn;
     }
   private:
-    std::vector<term*> elems;
+    std::vector<term*> Elems;
   };
 
   class tuple : public virtual term {
   public:
-    tuple(ErlNifEnv* env, ERL_NIF_TERM tuple) {
-      int _arity;
-      const ERL_NIF_TERM* _elems;
-      if (!enif_get_tuple(env, tuple, &_arity, &_elems)) exit(ERR_BAD_TUPLE);
-      for (unsigned i = 0; i < _arity; i++)
-        elems.push_back(translate(env, _elems[i]));
+    tuple(ErlNifEnv* Env, ERL_NIF_TERM Tuple) {
+      int _Arity;
+      const ERL_NIF_TERM* _Elems;
+      if (!enif_get_tuple(Env, Tuple, &_Arity, &_Elems)) exit(ERR_BAD_TUPLE);
+      for (unsigned i = 0; i < _Arity; i++)
+        Elems.push_back(translate(Env, _Elems[i]));
     }
     std::string type_name() {
       return "tuple";
     }
     std::string to_string() {
-      std::string rtn = "{";
-      for (auto& t : elems) {
-        rtn.append(t -> to_string());
-        rtn.push_back(',');
+      std::string Rtn = "{";
+      for (auto& T : Elems) {
+        Rtn.append(T -> to_string());
+        Rtn.push_back(',');
       }
-      if (rtn.back() == ',') rtn.back() = '}';
-      else rtn.push_back('}');
-      return rtn;
+      if (Rtn.back() == ',') Rtn.back() = '}';
+      else Rtn.push_back('}');
+      return Rtn;
     }
   private:
-    std::vector<term*> elems;
+    std::vector<term*> Elems;
   };
 
-  term* translate(ErlNifEnv* env, ERL_NIF_TERM term) {
-    switch (enif_term_type(env, term)) {
+  term* translate(ErlNifEnv* Env, ERL_NIF_TERM Term) {
+    switch (enif_term_type(Env, Term)) {
       case ERL_NIF_TERM_TYPE_ATOM:
-        return new atom(env, term);
+        return new atom(Env, Term);
       case ERL_NIF_TERM_TYPE_FLOAT:
-        return new erl_float(env, term);
+        return new erl_float(Env, Term);
       case ERL_NIF_TERM_TYPE_INTEGER:
-        return new integer(env, term);
+        return new integer(Env, Term);
       case ERL_NIF_TERM_TYPE_LIST:
-        return new list(env, term);
+        return new list(Env, Term);
       case ERL_NIF_TERM_TYPE_TUPLE:
-        return new tuple(env, term);
+        return new tuple(Env, Term);
       default:
         return nullptr;
     }
