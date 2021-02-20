@@ -34,11 +34,11 @@ main(["--codegen", File]) ->
   io:fwrite("Ast:~n~p~n~n~n~n", [Result]),
   ast2beam:convert(Result),
   halt(0);
-  
+
 
 main(_) -> main(["test/test.c"]).
 
-read_file(Io_Stream) -> 
+read_file(Io_Stream) ->
   case file:read_line(Io_Stream) of
     eof -> {ok, []};
     {ok, Line} ->
@@ -48,4 +48,3 @@ read_file(Io_Stream) ->
       end;
     {error, Err} -> {error, Err}
   end.
-

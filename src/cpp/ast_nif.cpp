@@ -4,15 +4,15 @@
 #include "erl_translator.hpp"
 
 
-int x = 0;
+int X = 0;
 
-static ERL_NIF_TERM get_ast(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+static ERL_NIF_TERM get_ast(ErlNifEnv* Env, int Argc, const ERL_NIF_TERM Argv[]) {
   // Arity 1 function expects a single argument
-  if (argc != 1) return enif_make_badarg(env);
-  printf("X is %d\n", x);
-  x++;
-  ast::term* ast = ast::translate(env, argv[0]);
-  return enif_make_string(env, ast -> to_string().c_str(), ERL_NIF_LATIN1);
+  if (Argc != 1) return enif_make_badarg(Env);
+  printf("X is %d\n", X);
+  X++;
+  ast::term* Ast = ast::translate(Env, Argv[0]);
+  return enif_make_string(Env, Ast -> to_string().c_str(), ERL_NIF_LATIN1);
 }
 
 static ErlNifFunc nif_funcs[] = {
@@ -20,4 +20,3 @@ static ErlNifFunc nif_funcs[] = {
 };
 
 ERL_NIF_INIT(ast_nif, nif_funcs, NULL, NULL, NULL, NULL);
-

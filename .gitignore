@@ -11,3 +11,4 @@ src/parser.erl
 priv/
 .build/
 .vagrant/
+.ccls-cache/

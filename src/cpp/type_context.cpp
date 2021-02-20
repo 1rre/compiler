@@ -1,26 +1,39 @@
 #include <erl_nif.h>
-#include "type_context.hpp"
+#include <map>
 #include "erl_translator.hpp"
 
+namespace context {
+  std::map<ast::term*, ast::term*> Typedef;
+  std::map<ast::term*, ast::term*> Enum;
+  std::map<ast::term*, ast::term*> Var;
+  std::map<ast::term*, ast::term*> Fun;
+}
+
 static ERL_NIF_TERM get_var_context(ErlNifEnv* Env, int Argc, const ERL_NIF_TERM* Argv) {
-  if (Argc != 1) return enif_make_badarg(Env);
-  ast::atom Var_Name(Env, *Argv);
-  context::Var[Var_Name];
-  return enif_make_atom(Env, "ok");
+  if (Argc != 2) return enif_make_badarg(Env);
+  ast::term* Expected_Type = ast::translate(Env, Argv[0]);
+  ast::term* Identifier = ast::translate(Env, Argv[1]);
+  if (context::Var.find(Identifier) == context::Var.end())
+    return enif_make_tuple2(Env, enif_make_atom(Env, "Error"),
+                            enif_make_string(Env, "Error", ERL_NIF_LATIN1));
+  ast::term* Value = context::Var[Identifier];
+  return Value->to_erl(Env);
 }
 
 static ERL_NIF_TERM set_var_context(ErlNifEnv* Env, int Argc, const ERL_NIF_TERM* Argv) {
-  if (Argc != 2) return enif_make_badarg(Env);
+  if (Argc != 3) return enif_make_badarg(Env);
+  ast::term* Type = ast::translate(Env, Argv[0]);
+  ast::term* Identifier = ast::translate(Env, Argv[0]);
   return enif_make_atom(Env, "ok");
 }
 
 static ERL_NIF_TERM make_var_context(ErlNifEnv* Env, int Argc, const ERL_NIF_TERM* Argv) {
-  if (Argc != 2) return enif_make_badarg(Env);
+  if (Argc != 3) return enif_make_badarg(Env);
   return enif_make_atom(Env, "ok");
 }
 
 static ERL_NIF_TERM get_type_context(ErlNifEnv* Env, int Argc, const ERL_NIF_TERM* Argv){
-  if (Argc != 1) return enif_make_badarg(Env);
+  if (Argc != 2) return enif_make_badarg(Env);
   return enif_make_atom(Env, "ok");
 }
 
@@ -39,4 +52,3 @@ static ErlNifFunc nif_funcs[] = {
 };
 
 ERL_NIF_INIT(ast2beam,nif_funcs,NULL,NULL,NULL,NULL);
-
