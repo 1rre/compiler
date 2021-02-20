@@ -25,7 +25,7 @@ namespace ast {
     virtual ERL_NIF_TERM to_erl(ErlNifEnv* Env) const { return enif_make_badarg(Env); }
   };
 
-  term* translate(ErlNifEnv* Env, ERL_NIF_TERM term);
+  term* to_cpp(ErlNifEnv* Env, ERL_NIF_TERM term);
 
   class atom : public virtual term {
   public:
@@ -103,7 +103,7 @@ namespace ast {
       if (!enif_get_list_length(Env, Tail, &_Length)) exit(ERR_BAD_LIST_LENGTH);
       for (unsigned I = 0; I < _Length; I++)
         if (!enif_get_list_cell(Env, Tail, &_Head, &Tail)) exit(ERR_BAD_LIST_ELEMS);
-        else Elems.push_back(translate(Env, _Head));
+        else Elems.push_back(to_cpp(Env, _Head));
     }
     std::string type_name() const {
       return "list";
@@ -137,7 +137,7 @@ namespace ast {
       const ERL_NIF_TERM* _Elems;
       if (!enif_get_tuple(Env, Tuple, &_Arity, &_Elems)) exit(ERR_BAD_TUPLE);
       for (unsigned i = 0; i < _Arity; i++)
-        Elems.push_back(translate(Env, _Elems[i]));
+        Elems.push_back(to_cpp(Env, _Elems[i]));
     }
     std::string type_name() const {
       return "tuple";

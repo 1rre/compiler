@@ -2,7 +2,7 @@
 -export([main/1]).
 
 
-main([File]) ->
+main(["-cpp", File]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
@@ -13,7 +13,7 @@ main([File]) ->
   io:fwrite("back at erl~n"),
   ast_nif:send(Result);
 
-main(["--debug", File]) ->
+main(["-debug", File]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   io:fwrite("Read:~n~s~n~n", [Input]),
@@ -25,16 +25,14 @@ main(["--debug", File]) ->
   io:fwrite("Ast:~n~p~n~n~n~n", [Result]),
   halt(0);
 
-main(["--codegen", File]) ->
+main([File]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
   io:fwrite("Ast:~n~p~n~n~n~n", [Result]),
-  ast2beam:convert(Result),
-  halt(0);
-
+  beam_gen:translate(Result);
 
 main(_) -> main(["test/test.c"]).
 

@@ -11,7 +11,7 @@ static ERL_NIF_TERM get_ast(ErlNifEnv* Env, int Argc, const ERL_NIF_TERM Argv[])
   if (Argc != 1) return enif_make_badarg(Env);
   printf("X is %d\n", X);
   X++;
-  ast::term* Ast = ast::translate(Env, Argv[0]);
+  ast::term* Ast = ast::to_cpp(Env, Argv[0]);
   return enif_make_string(Env, Ast -> to_string().c_str(), ERL_NIF_LATIN1);
 }
 

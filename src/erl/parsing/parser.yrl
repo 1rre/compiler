@@ -12,14 +12,11 @@ struct_declaration_list struct_declaration struct_declarator_list
 parameter_declaration statement labeled_statement compound_statement
 iteration_statement statement_list selection_statement jump_statement
 expression_statement declaration_list translation_unit external_declaration
-function_definition translation_units
-
-% We need advanced fixes for these 2: https://stackoverflow.com/questions/17202409/how-typedef-name-identifier-issue-is-resolved-in-c
-.
+function_definition.
 Terminals
 auto double int struct break else long switch case enum register typedef
 char extern return union const float short unsigned continue goto signed
-void default sizeof volatile do if static while for 
+void default sizeof volatile do if static while for
 int_l float_l identifier char_l string_l
 '{' '}' '...' ';' '[' ']' '(' ')' '.' '++' '--' '&' '|' '*' '+' '-' ','
 '~' '!' '/' '%' '<<' '>>' '<' '>' '<=' '>=' '==' '!=' '^' '&&' '||' '?'
@@ -32,27 +29,27 @@ Rootsymbol translation_unit.
 
 % This seemed to work at 850, but I think it should be 0?
 Nonassoc 850 '('.
-Left  050 ','.
-Left  100 assignment_operator.
-Left  150 '?'.
-Left  200 '||'.
-Left  250 '&&'.
-Left  300 '|'.
-Left  350 '^'.
-Left  400 '&'.
-Left  450 equality_operator.
-Left  500 relational_operator.
-Left  550 shift_operator.
-Left  600 addition_operator.
-Left  650 multiplication_operator.
-Right 700 cast.
-Unary 750 unary_operator.
-Unary 750 sizeof.
-Left  800 postfix_operator.
-Right 800 postfix_list.
-Right 900 declaration_list.
-Unary 950 external_declaration.
-Unary 950 else.
+Left  025 ','.
+Left  050 assignment_operator.
+Left  075 '?'.
+Left  100 '||'.
+Left  125 '&&'.
+Left  150 '|'.
+Left  175 '^'.
+Left  200 '&'.
+Left  225 equality_operator.
+Left  250 relational_operator.
+Left  275 shift_operator.
+Left  300 addition_operator.
+Left  325 multiplication_operator.
+Right 350 cast.
+Unary 375 unary_operator.
+Unary 375 sizeof.
+Left  400 postfix_operator.
+Right 400 postfix_list.
+Right 450 declaration_list.
+Unary 475 external_declaration.
+Unary 500 else.
 
 
 %%%%%%%%%%%%%%%
@@ -84,6 +81,7 @@ expression -> '(' expression ')' : '$2'.
 
 postfix_list -> '[' expression ']' : {offset, '$2'}.
 postfix_list -> '(' expression_list ')' : {apply,'$2'}.
+postfix_list -> '(' ')' : {apply,[]}.
 
 assignment_operator -> '='   : '$1'.
 assignment_operator -> '*='  : '$1'.
@@ -148,8 +146,8 @@ constant -> enum_l : '$1'.
 % DECLARATIONS %
 %%%%%%%%%%%%%%%%
 
-declaration -> declaration_specifiers ';' : {'$1'}.
-declaration -> declaration_specifiers init_declarator_list ';' : {'$1','$2'}.
+declaration -> declaration_specifiers ';' : {declaration, '$1', []}.
+declaration -> declaration_specifiers init_declarator_list ';' : {declaration, '$1','$2'}.
 
 declaration_specifiers -> storage_class_specifier : ['$1'].
 declaration_specifiers -> storage_class_specifier declaration_specifiers : ['$1' | '$2'].
@@ -333,17 +331,11 @@ translation_unit -> external_declaration translation_unit : ['$1' | '$2'].
 external_declaration -> function_definition : '$1'.
 external_declaration -> declaration : '$1'.
 
-function_definition -> declaration_specifiers declarator : {'$1', '$2'}.
-function_definition -> declarator : '$1'.
-function_definition -> declaration_list compound_statement : {'$1', '$2'}.
-function_definition -> compound_statement : '$1'.
-
-% Out of spec but probs useful:
-
-translation_units -> translation_unit : ['$1'].
-translation_units -> translation_unit translation_units : ['$1' | '$2'].
-
-
-
-
-
+function_definition -> declaration_list compound_statement : {function, {'$1', '$2'}}.
+function_definition -> compound_statement : {function, {'$1'}}. % I think this is K&R style?
+%% out of spec, test rigourously
+function_definition -> declaration_specifiers declarator compound_statement : {function, {'$1', '$2', '$3'}}.
+function_definition -> declarator compound_statement : {function, '$1', '$2'}.
+%% end
+function_definition -> declaration_specifiers declarator : {function, '$1', '$2'}.
+function_definition -> declarator : {function, '$1'}.

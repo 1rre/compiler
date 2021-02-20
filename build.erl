@@ -6,26 +6,30 @@
 %% Main function
 
 % Remove all generated files
-main(["clean"]) -> 
+main(["clean"]) ->
   file:del_dir_r(".build"),
   file:del_dir_r("bin"),
   [file:delete(File) || File <- filelib:wildcard("src/erl/parsing/*.erl")];
 
 % Compile everything
-main(["compile"]) -> 
+main(["compile"]) ->
   Erl_Files = build_common(),
   [compile:file(Erl, [{outdir, ".build"}, report_errors, report_warnings]) || Erl <- Erl_Files],
   halt(0);
 
 % Compile everything
-main(["bin/compiler"]) -> 
+main(["bin/compiler"]) ->
   file:make_dir("bin"),
   Erl_Files = build_common(),
-  Bin = [{change_ext(Erl, beam), element(3, compile:file(Erl, [binary]))} || Erl <- Erl_Files],
+  Bin = [{change_ext(Erl, beam),
+          case compile:file(Erl, [binary]) of
+            {ok, _mod, Bin} -> Bin;
+            Err -> error({Err, Erl})
+          end} || Erl <- Erl_Files],
   escriptise(Bin),
   halt(0);
 
-% For ease, no arguments compiles everything 
+% For ease, no arguments compiles everything
 main(_) -> main(["bin/compiler"]).
 
 %% Common tasks for compiling to beam files (shared object files) and an escript (a binary file)
@@ -46,14 +50,14 @@ build_common() ->
 
 %% Collate the dependencies for compilation
 % C++ compiler
-get_dep(cxx) -> 
+get_dep(cxx) ->
   case os:getenv("CXX") of
     false ->
       io:fwrite("CXX environment variable not set: autodetecting C++ compiler.~n"),
       find(cxx);
-    Cxx_Env -> 
+    Cxx_Env ->
       case os:find_executable(Cxx_Env) of
-        false -> 
+        false ->
           io:fwrite("CXX environment variable is not in path: autodetecting C++ compiler.~n"),
           find(cxx);
         Exec -> Exec
@@ -66,7 +70,7 @@ get_dep(erts) ->
     false ->
       io:fwrite("ERTS_INCLUDE environment variable not set: autodetecting ERTS include directory.~n"),
       find(erts);
-    Include -> 
+    Include ->
       case filelib:is_dir(Include) and filelib:is_file(filename:join(Include, "erl_nif.h")) of
         true -> Include;
         false ->
@@ -78,7 +82,7 @@ get_dep(erts) ->
 
 %% Autodetect the dependencies for compilation
 % Erlang runtime system include directory
-find(erts) -> 
+find(erts) ->
   case filelib:wildcard("erts*/include/", code:root_dir()) of
     [Version | _] ->
       io:fwrite("Using ERTS Version `~s`.~n", [lists:takewhile(fun (C) -> C /= $/ end, Version)]),
@@ -92,7 +96,7 @@ find(cxx, []) -> error("Couldn't find C++ Compiler. Try setting the 'CXX' enviro
 find(cxx, [Cxx | Rest]) ->
   case os:find_executable(Cxx) of
     false -> find(cxx, Rest);
-    Exec -> 
+    Exec ->
       io:fwrite("Using `~s` as CXX.~n",[Cxx]),
       Exec
   end.
@@ -116,7 +120,7 @@ wait_exe(0, true) ->
   error("Compilation had errors.");
 wait_exe(0, _) ->
   ok;
-wait_exe(N, Is_Ok) -> 
+wait_exe(N, Is_Ok) ->
   receive
     {'EXIT', _, normal} -> wait_exe(N - 1, Is_Ok);
     {_Port, {data, Message}} ->
@@ -136,7 +140,6 @@ escriptise(Bin) ->
                   {archive, Bin, []}]),
   io:fwrite("~p~n", [Status]),
   open_port({spawn_executable, os:find_executable("chmod")},
-             [stderr_to_stdout, 
+             [stderr_to_stdout,
               {args, ["a+x", "bin/c89_compiler"]}]),
   wait_exe(1, false).
-
