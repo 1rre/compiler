@@ -1,4 +1,4 @@
-src/parsing/*lexer.erl
+src/erl/parsing/*.erl
 _build/
 .metals/
 .bloop/
@@ -12,3 +12,4 @@ priv/
 .build/
 .vagrant/
 .ccls-cache/
+bin/

@@ -12,7 +12,7 @@ struct_declaration_list struct_declaration struct_declarator_list
 parameter_declaration statement labeled_statement compound_statement
 iteration_statement statement_list selection_statement jump_statement
 expression_statement declaration_list translation_unit external_declaration
-function_definition.
+function_definition declaration_statement declaration_statement_list.
 Terminals
 auto double int struct break else long switch case enum register typedef
 char extern return union const float short unsigned continue goto signed
@@ -49,7 +49,7 @@ Left  400 postfix_operator.
 Right 400 postfix_list.
 Right 450 declaration_list.
 Unary 475 external_declaration.
-Unary 500 else.
+Right 500 else.
 
 
 %%%%%%%%%%%%%%%
@@ -291,9 +291,13 @@ labeled_statement -> identifier ':' statement : {'$1','$2','$3'}.
 labeled_statement -> case expression ':' statement : {'$1','$2','$3','$4'}.
 labeled_statement -> default ':' statement : {'$1','$2','$3'}.
 
-compound_statement -> '{' declaration_list statement_list '}' : {'$2','$3'}.
-compound_statement -> '{' declaration_list '}' : {'$2'}.
-compound_statement -> '{' statement_list '}' : {'$2'}.
+compound_statement -> '{'  '}' : {[]}.
+compound_statement -> '{' declaration_statement_list '}' : {'$2'}.
+
+declaration_statement -> declaration : '$1'.
+declaration_statement -> statement : '$1'.
+declaration_statement_list -> declaration_statement : ['$1'].
+declaration_statement_list -> declaration_statement declaration_statement_list : ['$1' | '$2'].
 
 declaration_list -> declaration : ['$1'].
 declaration_list -> declaration declaration_list : ['$1' | '$2'].
