@@ -10,11 +10,19 @@ translate(Ast) ->
     {error,Reason} -> error(Reason)
   end.
 
-translate([],Context) -> {ok, #{}, ""};
-translate([{function,{Return_Type,Decl,Statement}} | Rest], Context) ->
-  io:fwrite("Fn:~nReturns: ~p~nDecl:~n~p~nStatement:~n~p~n", [Return_Type,Decl,Statement]),
+translate([],Context) -> {ok,#{},""};
+translate([Part | Rest], Context) ->
+  {ok,N_Context,Stat_Tran} = translate(Part,Context),
+  {ok,_,Translation} = translate(Rest,N_Context),
+  {ok,N_Context,Translation++Stat_Tran};
+translate({function,{Return_Type,Decl,Statement}}, Context) ->
+  io:fwrite("Fn:~nReturns:~n\t~p~nDecl:~n\t~p~nStatement:~n\t~p~n~n",[Return_Type,Decl,Statement]),
+  translate(Statement,Context);
+translate({function,{Fn_Spec}}, Context) ->
+  error({unknown_fn_spec,Fn_Spec});
+translate([{declaration,Type,Specs}|Rest],Context) ->
+  io:fwrite("Declaration:~nType:~n\t~p~nSpecs:~n\t~p~n~n",[Type, Specs]),
   translate(Rest, Context);
-translate([{function,{Fn_Spec}} | Rest], Context) -> error({unknown_fn_spec,Fn_Spec});
-translate(Part,_) ->
-  io:fwrite("Part:~n~p~n",[Part]),
-  {ok,#{},""}.
+translate(Part,_Context) ->
+  io:fwrite("Part:~n~p~n~n",[Part]),
+  {ok, #{}, ""}.

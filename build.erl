@@ -135,11 +135,11 @@ change_ext(File, beam) -> filename:basename(File, "erl") ++ "beam";
 change_ext(File, so) -> filename:basename(File, "cpp") ++ "so".
 
 escriptise(Bin) ->
-  Status = escript:create("bin/c89_compiler",
+  Status = escript:create("bin/compiler",
                  [shebang,
                   {archive, Bin, []}]),
   io:fwrite("~p~n", [Status]),
   open_port({spawn_executable, os:find_executable("chmod")},
              [stderr_to_stdout,
-              {args, ["a+x", "bin/c89_compiler"]}]),
+              {args, ["a+x", "bin/compiler"]}]),
   wait_exe(1, false).

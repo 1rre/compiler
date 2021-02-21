@@ -1,4 +1,4 @@
--module(c89_compiler).
+-module(compiler).
 -export([main/1]).
 
 
