@@ -1,6 +1,7 @@
 #ifndef ERL_TRANSLATOR
 #define ERL_TRANSLATOR
 
+#include <cstring>
 #include <erl_nif.h>
 #include <vector>
 #include <string>
@@ -92,7 +93,7 @@ namespace ast {
       return enif_make_long(Env, Value);
     }
   private:
-    long Value;
+    ErlNifSInt64 Value;
   };
 
   class list : public virtual term {

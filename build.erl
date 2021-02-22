@@ -34,6 +34,10 @@ main(_) -> main(["bin/compiler"]).
 
 %% Common tasks for compiling to beam files (shared object files) and an escript (a binary file)
 build_common() ->
+  case string:to_integer(erlang:system_info(otp_release)) of
+    {X, _} when X >= 22 -> ok;
+    _ -> error("Erts v22.0 or later required")
+  end,
   file:make_dir(".build"),
   process_flag(trap_exit, true),
   Cxx = get_dep(cxx),
@@ -139,7 +143,10 @@ escriptise(Bin) ->
                  [shebang,
                   {archive, Bin, []}]),
   io:fwrite("~p~n", [Status]),
-  open_port({spawn_executable, os:find_executable("chmod")},
-             [stderr_to_stdout,
-              {args, ["a+x", "bin/compiler"]}]),
+  case os:type() of
+    {_,nt} -> ok;
+    _ -> open_port({spawn_executable, os:find_executable("chmod")},
+                    [stderr_to_stdout,
+                     {args, ["a+x", "bin/compiler"]}])
+  end,
   wait_exe(1, false).
