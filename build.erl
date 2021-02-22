@@ -145,8 +145,9 @@ escriptise(Bin) ->
   io:fwrite("~p~n", [Status]),
   case os:type() of
     {_,nt} -> ok;
-    _ -> open_port({spawn_executable, os:find_executable("chmod")},
-                    [stderr_to_stdout,
-                     {args, ["a+x", "bin/compiler"]}])
-  end,
-  wait_exe(1, false).
+    _ ->
+      open_port({spawn_executable, os:find_executable("chmod")},
+                 [stderr_to_stdout,
+                  {args, ["a+x", "bin/compiler"]}]),
+      wait_exe(1, false)
+  end.
