@@ -1,3 +1,5 @@
 = Week Commencing 2021/02/22
 
-== Aims
+== Goals
+* Have basic code generation for simple functions working by the end of the week
+* Further optimise the AST design to allow for easier compilation

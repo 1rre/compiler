@@ -1,4 +1,4 @@
--module(compiler).
+-module(c_compiler).
 -export([main/1]).
 
 
@@ -31,7 +31,7 @@ main([File]) ->
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
-  io:fwrite("Ast:~n~p~n~n~n~n", [Result]),
+  %io:fwrite("Ast:~n~p~n~n~n~n", [Result]),
   beam_gen:translate(Result);
 
 main(_) -> main(["test/test.c"]).

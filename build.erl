@@ -18,7 +18,7 @@ main(["compile"]) ->
   halt(0);
 
 % Compile everything
-main(["bin/compiler"]) ->
+main(["bin/c_compiler"]) ->
   file:make_dir("bin"),
   Erl_Files = build_common(),
   Bin = [{change_ext(Erl, beam),
@@ -30,7 +30,7 @@ main(["bin/compiler"]) ->
   halt(0);
 
 % For ease, no arguments compiles everything
-main(_) -> main(["bin/compiler"]).
+main(_) -> main(["bin/c_compiler"]).
 
 %% Common tasks for compiling to beam files (shared object files) and an escript (a binary file)
 build_common() ->
@@ -139,7 +139,7 @@ change_ext(File, beam) -> filename:basename(File, "erl") ++ "beam";
 change_ext(File, so) -> filename:basename(File, "cpp") ++ "so".
 
 escriptise(Bin) ->
-  Status = escript:create("bin/compiler",
+  Status = escript:create("bin/c_compiler",
                  [shebang,
                   {archive, Bin, []}]),
   io:fwrite("~p~n", [Status]),
@@ -148,6 +148,6 @@ escriptise(Bin) ->
     _ ->
       open_port({spawn_executable, os:find_executable("chmod")},
                  [stderr_to_stdout,
-                  {args, ["a+x", "bin/compiler"]}]),
+                  {args, ["a+x", "bin/c_compiler"]}]),
       wait_exe(1, false)
   end.
