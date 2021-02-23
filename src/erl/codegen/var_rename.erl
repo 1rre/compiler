@@ -20,7 +20,10 @@ process({function,{Return_Type,{{identifier,_,Ident},Args},Statement}},Context) 
       {N2_Context, St++N_St}
   end, {Context,[]}, Args),
   {ok,N_Context,N_St} = process(Statement, [{function,{Ident,{Type,length(Args)}}}|A_Context]),
-  {ok,[{function,{Ident,{Type,length(Args)}}}|Context],[{function, Type, Ident, length(Args), N_St}]};
+  {ok,
+   [{function,{Ident,{Type,length(Args)}}}|Context],
+   [{function, Type, Ident, length(Args),
+     N_St}]};
 process({function, Fn_Spec}, _Context) ->
   error({unknown_fn_spec,Fn_Spec});
 
@@ -30,7 +33,22 @@ process({declaration, O_Type, O_Specs}, Context) ->
   Type = check_typedef(O_Type, Context),
   Rv_Cnt = proplists:get_value(rvcnt, Context),
   N_Context = [{variable,{Ident,{Type,{y,Rv_Cnt}}}} | increment(rvcnt, Context)],
-  {ok,N_Context,N_St ++ [{move,{y,Rv_Cnt},{x,proplists:get_value(lvcnt,N_Context)}}]};
+  Lv_Cnt = proplists:get_value(lvcnt,N_Context),
+  if
+    N_St =:= [] -> {ok,N_Context,[]};
+    true -> {ok,N_Context,N_St ++ [{move,{y,Rv_Cnt},{x,Lv_Cnt}}]}
+  end;
+
+process({assign, {'=',Ln}, O_Specs}, Context) ->
+  {ok,Ident,N_St} = get_decl_specs(O_Specs, Context),
+  Variables = proplists:get_all_values(variable, Context),
+  case proplists:get_value(Ident, Variables) of
+    {_Type, X} ->
+      Lv_Cnt = proplists:get_value(lvcnt,Context),
+      io:fwrite("NST: ~p~n", [N_St]),
+      {ok,Context,N_St++[{move,X,{x,Lv_Cnt}}]};
+    Other -> error({Other,Ident,{line,Ln},{context,Context}})
+  end;
 
 %% Built-in Functions (arity 2, eg a+b, a!=b, etc.)
 process({bif,T,[A,B]}, Context) ->
@@ -82,10 +100,13 @@ process(Part, Context) ->
   io:fwrite("Part:~n~p~n~n",[Part]),
   {ok,Context,[]}.
 
-get_decl_specs([{identifier,_,Ident}],_Context) ->
+get_decl_specs([{identifier,_,Ident}],Context) ->
   {ok, Ident, []};
 get_decl_specs([{{identifier,_,Ident},{'=',_},St}],Context) ->
-  {ok, _N_Context, N_St} = process(St,Context),
+  {ok, N_Context, N_St} = process(St,Context),
+  {ok, Ident, N_St};
+get_decl_specs([{identifier,_,Ident},St],Context) ->
+  {ok, N_Context, N_St} = process(St,Context),
   {ok, Ident, N_St}.
 
 
