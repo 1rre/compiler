@@ -38,12 +38,12 @@ RUN set -xe \
   bison flex \
   g++-mips-linux-gnu gdb-multiarch \
   qemu \
-  erlang 
+  erlang
 
 # Quality of life for remote shell
 
   RUN apt-get -y install \
-  software-properties-common nvim \
+  software-properties-common \
   && apt-add-repository ppa:fish-shell/release-3 \
   && apt-get update \
   && apt-get -y install fish
@@ -61,4 +61,3 @@ RUN chsh -s /usr/bin/fish
 ADD ./ /home/c89_compiler/
 
 CMD ["/usr/bin/fish"]
-
