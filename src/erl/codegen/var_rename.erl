@@ -19,7 +19,7 @@ process({function,{Return_Type,{{identifier,_,Ident},Args},Statement}},Context) 
       {ok, N2_Context, N_St} = process(Arg, N_Context),
       {N2_Context, St++N_St}
   end, {Context,[]}, Args),
-  {ok,N_Context,N_St} = process(Statement, [{function,{Ident,{Type,length(Args)}}}|A_Context]),
+  {ok,N_Context,N_St} = process(Statement, [{function,{Ident,{Type,length(Args)}}} | A_Context]),
   {ok,
    [{function,{Ident,{Type,length(Args)}}}|Context],
    [{function, Type, Ident, length(Args),
@@ -89,6 +89,14 @@ process({{identifier,Ln,Ident},{apply,Args}}, Context) ->
     Other ->
       error({Other, Ident, {args, Args}, {line, Ln}, {context, Context}})
   end;
+
+process({{'if',_},Test,True,False}, Context) ->
+  {ok,If_Context,If_St} = process(Test, Context),
+  Test_Eq = {test,{x,proplists:get_value(lvcnt, Context)},{f,proplists:get_value(lbcnt, If_Context)+1}},
+  {ok,T_Context,T_St} = process(True, If_Context),
+  Label = {label,proplists:get_value(lbcnt, T_Context)+1},
+  {ok,F_Context,F_St} = process(False, increment(lbcnt, T_Context)),
+  {ok,F_Context,If_St++[Test_Eq|T_St]++[Label|F_St]};
 
 %% Return
 process({{return,_},Statement}, Context) ->

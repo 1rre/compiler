@@ -2,7 +2,7 @@ Nonterminals
 expression assignment_operator equality_operator relational_operator
 shift_operator addition_operator multiplication_operator cast unary_operator
 postfix_operator expression_list constant type_name postfix_list initialiser
-initialiser_list pointer struct_declarator
+initialiser_list pointer struct_declarator if_statement
 type_qualifier_list direct_declarator identifier_list declarator struct_union
 direct_abstract_declarator abstract_declarator specifier_qualifier_list
 enum_specifier parameter_type_list parameter_list type_qualifier type_specifier
@@ -20,7 +20,7 @@ void default sizeof volatile do if static while for
 int_l float_l identifier char_l string_l
 '{' '}' '...' ';' '[' ']' '(' ')' '.' '++' '--' '&' '|' '*' '+' '-' ','
 '~' '!' '/' '%' '<<' '>>' '<' '>' '<=' '>=' '==' '!=' '^' '&&' '||' '?'
-':' '=' '*=' '/=' '%=' '+=' '-=' '|=' '<<=' '&=' '^=' '#' '##' '>>=' '->'
+':' '=' '*=' '/=' '%=' '+=' '-=' '|=' '<<=' '&=' '^=' '>>=' '->'
 typedef_name
 enum_l
 .
@@ -49,7 +49,6 @@ Left  400 postfix_operator.
 Right 400 postfix_list.
 Right 450 declaration_list.
 Unary 475 external_declaration.
-Right 500 else.
 
 
 %%%%%%%%%%%%%%%
@@ -308,8 +307,10 @@ statement_list -> statement statement_list : ['$1' | '$2'].
 expression_statement -> expression ';' : '$1'.
 expression_statement -> ';' : nil.
 
-selection_statement -> if '(' expression ')' statement else statement : {'$1','$3','$5','$7'}.
-selection_statement -> if '(' expression ')' statement : {'$1','$3','$5'}.
+if_statement -> if '(' expression ')' statement : {'$1','$3','$5'}.
+
+selection_statement -> if_statement else statement : {element(1,'$1'),element(2,'$1'),element(3,'$1'),'$3'}.
+selection_statement -> if_statement : {element(1,'$1'),element(2,'$1'),element(3,'$1'),[]}.
 selection_statement -> switch '(' expression ')' statement : {'$1','$3','$5'}.
 
 iteration_statement -> while '(' expression ')' statement : {'$1','$3','$5'}.
