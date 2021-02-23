@@ -3,3 +3,56 @@
 == Goals
 * Have basic code generation for simple functions working by the end of the week
 * Further optimise the AST design to allow for easier compilation
+
+
+== 2021/02/22
+* Added code generation for returns of literals
+
+== 2021/02/23
+* Started working on function to further process AST to make code generation easier
+** Variable renaming
+** Distinguishing between register and memory variables (although this needs work, as it's possible for the number of register variables to exceed the number of temp registers).
+I've tried to decrease this where possible, eg by reusing registers, however this doesn't always work as intended, for example:
+
+[source,c]
+--
+int main() {
+  return 1+2+3+4+5;
+}
+--
+gives an output of
+[source,erlang]
+--
+[{function,int32,main,0,
+           [{move,{x,0},{integer,1}},
+            {move,{x,1},{integer,2}},
+            {add,{x,0},[{x,0},{x,1}]},
+            {move,{x,1},{integer,3}},
+            {add,{x,0},[{x,0},{x,1}]},
+            {move,{x,1},{integer,4}},
+            {add,{x,0},[{x,0},{x,1}]},
+            {move,{x,1},{integer,5}},
+            {add,{x,0},[{x,0},{x,1}]}]}]
+--
+whereas
+[source,c]
+--
+int main() {
+  return 1+(2+(3+(4+(5))));
+}
+--
+gives an output of
+[source,erlang]
+--
+[{function,int32,main,0,
+           [{move,{x,0},{integer,1}},
+            {move,{x,1},{integer,2}},
+            {move,{x,2},{integer,3}},
+            {move,{x,3},{integer,4}},
+            {move,{x,4},{integer,5}},
+            {add,{x,3},[{x,3},{x,4}]},
+            {add,{x,2},[{x,2},{x,3}]},
+            {add,{x,1},[{x,1},{x,2}]},
+            {add,{x,0},[{x,0},{x,1}]}]}]
+--
+which will inevitibly result in an infinite number of registers being requested should that pattern continue.
