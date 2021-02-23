@@ -1,9 +1,6 @@
 -module(beam_gen).
 -export([translate/1]).
 
--record(variable, {ident,type}).
--record(function, {ident,type,arity,args}).
-
 translate(Ast) ->
   case translate(Ast,#{}) of
     {ok,Context,Translation} ->
@@ -19,6 +16,7 @@ translate([Part | Rest], Context) ->
   {ok,N_Context,Stat_Tran} = translate(Part,Context),
   {ok,_,Translation} = translate(Rest,N_Context),
   {ok,N_Context,Translation++Stat_Tran};
+
 %% Functions
 translate({function,{Return_Type,{{identifier,_,Ident},[]},Statement}}, Context) ->
   Type = get_type(Return_Type, Context),
@@ -29,17 +27,19 @@ translate({function,{Return_Type,{{identifier,_,Ident},[]},Statement}}, Context)
   end;
 translate({function,{Fn_Spec}}, Context) ->
   error({unknown_fn_spec,Fn_Spec});
+
 %% Declarations
 translate({declaration,O_Type,O_Specs},Context) ->
   Specs = get_specs(O_Specs,Context),
   Type = get_type(O_Type,Context),
-  %io:fwrite("Declaration:~nType:~n\t~p~nSpecs:~n\t~p~n~n",[Type, Specs]),
   {ok,maps:put(Specs,{variable,Type},Context),""};
+
 %% Literals
 translate({int_l,_,Val,[]},Context) ->
   {ok,Context,io_lib:format("li $2, ~B~n",[Val])};
 translate({int_l,N,Val,_Specs},Context) ->
   translate({int_l,N,Val,[]},Context);
+
 %% BIFs
 translate({bif,'+',[A,B]},Context) ->
   Trn_A = case translate(A,Context) of
@@ -52,6 +52,7 @@ translate({bif,'+',[A,B]},Context) ->
   end,
   Out = io_lib:format("~smove $8, $2~n~sadd $2, $8, $2~n",[Trn_A,Trn_B]),
   {ok,Context,Out};
+
 %% Return
 translate({{return,_},Val},Context) ->
   case translate(Val,Context) of
@@ -60,13 +61,16 @@ translate({{return,_},Val},Context) ->
       {ok,Context,Out};
     Unex -> error({unexpected,Unex})
   end;
+
 %% Nil
 translate(nil,Context) ->
   {ok,Context,""};
+
 %% Base case
 translate(Part,Context) ->
   io:fwrite(standard_error,"Part:~n~p~n~n",[Part]),
   {ok,Context,""}.
+
 
 get_specs([{{identifier,_,Ident},{'=',_},Expr}|Rest],Context) ->
   [{Ident, translate(Expr,Context)}|get_specs(Rest,Context)];

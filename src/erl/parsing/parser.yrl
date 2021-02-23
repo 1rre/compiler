@@ -57,7 +57,7 @@ Right 500 else.
 %%%%%%%%%%%%%%%
 
 expression -> expression ',' expression : mklist('$1','$3'). % I don't think this is tested
-expression -> expression assignment_operator expression : {move,'$2',['$1','$3']}.
+expression -> expression assignment_operator expression : {assign,'$2',['$1','$3']}.
 expression -> expression '?' expression ':' expression : {'?','$1', ['$3','$5']}.
 expression -> expression '||' expression : {bif,'||',['$1','$3']}.
 expression -> expression '&&' expression : {bif,'&&',['$1','$3']}.
@@ -350,4 +350,3 @@ mklist(A,B) when is_list(A) and is_list(B) -> A++B;
 mklist(A,B) when is_list(A) -> A++[B];
 mklist(A,B) when is_list(B) -> [A|B];
 mklist(A,B) -> [A,B].
-
