@@ -1,14 +1,18 @@
 -module(var_rename).
 -export([process/1]).
 
+-define(LVARS, proplists:get_value(lvars, Context)).
+-define(MVARS, proplists:get_value(lvars, Context)).
+-define(LABELS, proplists:get_value(lvars, Context)).
+
 process(Ast) ->
   io:fwrite("Ast:~n~n~p~n~n", [Ast]),
-  process(Ast, [], 0, 0).
-process([], _Context, _V_Cnt, _L_Cnt) -> {ok,[],[],0,0};
+  process(Ast, [{labels,0},{lvars,0},{mvars,0}]).
+process([], _Context) -> {ok,[],[],0,0};
 process([St|Ast], Context, V_Cnt, L_Cnt) ->
   {ok,N_Context,St_List,N_V_Cnt,N_L_Cnt} = process(St,Context,V_Cnt,L_Cnt),
   {ok,N2_Context,N_St_List,N2_V_Cnt,N2_L_Cnt} = process(Ast,N_Context,V_Cnt,L_Cnt),
-  {ok,N2_Context,[St_List|N_St_List],N2_V_Cnt,N2_L_Cnt};
+  {ok,N2_Context,St_List++N_St_List,N2_V_Cnt,N2_L_Cnt};
 
 %% Functions
 process({function,{Return_Type,{{identifier,_,Ident},Args},Statement}}, Context, V_Cnt, L_Cnt) ->
@@ -20,22 +24,28 @@ process({function, Fn_Spec}, Context, V_Cnt, L_Cnt) ->
 
 %% Declarations
 process({declaration, O_Type, O_Specs}, Context, V_Cnt, L_Cnt) ->
-  Specs = get_decl_specs(O_Specs, Context),
+  {ok,Ident,N_St,N_V_Cnt,N_L_Cnt} = get_decl_specs(O_Specs, Context, V_Cnt, L_Cnt),
   Type = check_typedef(O_Type, Context),
-  io:fwrite("declaration:~n~p~n~n~p~n~n", [Specs, O_Type]),
-  {ok,Context,[],V_Cnt,L_Cnt};
+  {ok,[{variable,{Ident,{Type,{y,V_Cnt}}}}|Context],N_St,V_Cnt+1,N_L_Cnt};
 
 %% Built-in Functions
 process({bif, '+',[A,B]}, Context, V_Cnt, L_Cnt) ->
   {ok,A_Context,A_St,A_V_Cnt,A_L_Cnt} = process(A,Context,V_Cnt,L_Cnt),
   {ok,B_Context,B_St,B_V_Cnt,B_L_Cnt} = process(B,A_Context,A_V_Cnt+1,A_L_Cnt),
   Statement = A_St ++ B_St ++ [{add,V_Cnt,[A_V_Cnt,B_V_Cnt]}],
-  io:fwrite("Add:~n~p~n~n",[Statement]),
   {ok,Context,Statement,V_Cnt,B_L_Cnt};
 
 %% Literal values
 process({int_l,_,Val,_Suf}, Context, V_Cnt, L_Cnt) ->
-  {ok,Context,[{move,V_Cnt,{integer,Val}}],V_Cnt,L_Cnt};
+  {ok,Context,[{move,{x,0},{integer,Val}}],V_Cnt,L_Cnt};
+
+%% Identifiers
+process({identifier,Ln,Ident}, Context, V_Cnt, L_Cnt) ->
+  Variables = proplists:get_all_values(variable, Context),
+  case proplists:get_value(Ident, Variables) of
+    {_Type, X} -> X;
+    Other -> error({Other,Ident,{line,Ln},{context,Context}})
+  end;
 
 %% Return
 process({{return,_},Statement}, Context, V_Cnt, L_Cnt) ->
@@ -47,8 +57,11 @@ process(Part, Context, V_Cnt, L_Cnt) ->
   io:fwrite("Part:~n~p~n~n",[Part]),
   {ok,[],[],V_Cnt,L_Cnt}.
 
-get_decl_specs(Type,Context) ->
-  Type.
+get_decl_specs([{identifier,_,Ident}],Context, V_Cnt, L_Cnt) ->
+  {ok, Ident, [], V_Cnt, L_Cnt};
+get_decl_specs([{{identifier,_,Ident},{'=',_},St}],Context, V_Cnt, L_Cnt) ->
+  {ok, N_Context, N_St, N_V_Cnt, N_L_Cnt} = process(St,Context,V_Cnt,L_Cnt),
+  {ok, Ident, N_St, N_V_Cnt, N_L_Cnt}.
 
 
 check_typedef(Type, Context) ->

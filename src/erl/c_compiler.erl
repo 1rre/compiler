@@ -31,7 +31,6 @@ main([File]) ->
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
-  %beam_gen:translate(Result);
   Proc = var_rename:process(Result),
   io:fwrite("~n~nResult:~n~n~n~p~n", [Proc]);
 
