@@ -93,7 +93,7 @@ process({{identifier,Ln,Ident},{apply,Args}}, Context) ->
 process({{'if',_},Test,True,False}, Context) ->
   {ok,If_Context,If_St} = process(Test, Context),
   Test_Eq = {test,{x,proplists:get_value(lvcnt, Context)},{f,proplists:get_value(lbcnt, If_Context)+1}},
-  {ok,T_Context,T_St} = process(True, If_Context),
+  {ok,T_Context,T_St} = process(True, replace(lbcnt,proplists:get_value(lbcnt,If_Context),Context)),
   Label = {label,proplists:get_value(lbcnt, T_Context)+1},
   {ok,F_Context,F_St} = process(False, increment(lbcnt, T_Context)),
   {ok,F_Context,If_St++[Test_Eq|T_St]++[Label|F_St]};
@@ -134,10 +134,13 @@ get_type(Type) -> error({unknown_type, Type}).
 increment(Key, List) ->
   Value = proplists:get_value(Key, List),
   [{Key,Value+1} | proplists:delete(Key,List)].
+  
+replace(Key, Value, List) ->
+  [{Key, Value} | proplists:delete(Value, List)].
 
 fun_2(Type,A,B,Context) ->
   {ok,A_Context,A_St} = process(A,Context),
-  N_A_Context = [{lvcnt,proplists:get_value(lvcnt,Context)+1} | proplists:delete(lvcnt,A_Context)],
+  N_A_Context = replace(lvcnt,proplists:get_value(lvcnt,Context)+1,A_Context),
   {ok,B_Context,B_St} = process(B,N_A_Context),
   V_Cnt = proplists:get_value(lvcnt,Context),
   Statement = A_St ++ B_St ++ [{Type,{x,V_Cnt},[{x,V_Cnt},{x,V_Cnt+1}]}],
