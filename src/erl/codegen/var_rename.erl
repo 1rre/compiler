@@ -14,8 +14,13 @@ process([St|Ast], Context) ->
 % TODO: Work out if ANSI C has default args & implement this
 process({function,{Return_Type,{{identifier,_,Ident},Args},Statement}},Context) ->
   Type = check_typedef(Return_Type, Context),
-  {ok,N_Context,N_St} = process(Statement, [{function,{Ident,{Type,length(Args)}}}|Context]),
-  {ok,N_Context,[{function, Type, Ident, length(Args), N_St}]};
+  {A_Context,_} = lists:foldl(fun
+    (Arg, {N_Context,St}) ->
+      {ok, N2_Context, N_St} = process(Arg, N_Context),
+      {N2_Context, St++N_St}
+  end, {Context,[]}, Args),
+  {ok,N_Context,N_St} = process(Statement, [{function,{Ident,{Type,length(Args)}}}|A_Context]),
+  {ok,[{function,{Ident,{Type,length(Args)}}}|Context],[{function, Type, Ident, length(Args), N_St}]};
 process({function, Fn_Spec}, _Context) ->
   error({unknown_fn_spec,Fn_Spec});
 
@@ -54,10 +59,17 @@ process({identifier,Ln,Ident}, Context) ->
 
 % TODO: Process args
 process({{identifier,Ln,Ident},{apply,Args}}, Context) ->
+  {_, P_Args} = lists:foldl(fun
+    (Arg, {N_Context, St}) ->
+      {ok, N2_Context, N_St} = process(Arg, N_Context),
+      {N2_Context, St ++ N_St}
+  end, {Context, []}, Args),
   Functions = proplists:get_all_values(function, Context),
   case proplists:get_value(Ident, Functions) of
-    {Type, Len} when Len =:= length(Args) -> {ok, Context, [{call,Ident,Args}]};
-    Other -> error({Other, Ident, {line, Ln}, {context, Context}})
+    {Type, Len} when Len =:= length(Args) ->
+      {ok, Context, P_Args ++ [{call,Ident,Len,{x,proplists:get_value(lvcnt,Context)}}]};
+    Other ->
+      error({Other, Ident, {args, Args}, {line, Ln}, {context, Context}})
   end;
 
 %% Return

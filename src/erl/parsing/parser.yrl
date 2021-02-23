@@ -56,7 +56,7 @@ Right 500 else.
 % EXPRESSIONS %
 %%%%%%%%%%%%%%%
 
-expression -> expression ',' expression : mklist('$1','$3'). % I don't think this is tested
+%expression -> expression ',' expression : mklist('$1','$3'). % I don't think this is tested
 expression -> expression assignment_operator expression : {assign,'$2',['$1','$3']}.
 expression -> expression '?' expression ':' expression : {'?','$1', ['$3','$5']}.
 expression -> expression '||' expression : {bif,'||',['$1','$3']}.
@@ -130,8 +130,8 @@ postfix_operator -> '--' : '$1'.
 postfix_operator -> '.' identifier : {'$1','$2'}.
 postfix_operator -> '->' identifier : {'$1','$2'}.
 
+expression_list -> expression ',' expression_list : ['$1' | '$3'].
 expression_list -> expression : ['$1'].
-expression_list -> expression ',' expression_list : ['$1' | '$2'].
 
 constant -> int_l : '$1'.
 constant -> float_l : '$1'.
@@ -243,8 +243,8 @@ parameter_type_list -> parameter_list ',' '...' : {'$1','$2'}.
 parameter_list -> parameter_declaration : ['$1'].
 parameter_list -> parameter_declaration ',' parameter_list : ['$1' | '$3'].
 
-parameter_declaration -> declaration_specifiers declarator : {'$1','$2'}.
-parameter_declaration -> declaration_specifiers abstract_declarator : {'$1','$2'}.
+parameter_declaration -> declaration_specifiers declarator : {declaration,'$1',['$2']}.
+parameter_declaration -> declaration_specifiers abstract_declarator : {declaration,'$1',['$2']}.
 parameter_declaration -> declaration_specifiers : '$1'.
 
 identifier_list -> identifier : ['$1'].

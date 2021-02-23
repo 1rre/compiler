@@ -58,3 +58,5 @@ gives an output of
 which will inevitibly result in an infinite number of registers being requested should that pattern continue.
 
 One way of fixing this would be to essentially calculate the more memory efficient order in which to calculate the operands for each operation, however this would probably take a while.
+
+* We also need to work on accepting arguments to functions
