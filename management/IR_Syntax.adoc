@@ -1,0 +1,13 @@
+= Syntax of the Intermediate Representation
+
+Up to date as of 11am on 24/02/2021
+
+[%header,cols="4,5"]
+|===
+|Syntax | Usage
+|`{move,${rd},${data}}` | Copy the value of `data` (register, memory or immediate) to `rd` (register or memory)
+|`{${op},${rd},[${ra},${rb}]}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
+|`{test,${ra},${lb}}` | Branch to `lb` (label) if the value in `ra` is 0
+|`{call,${fn},${ar},${ra}}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (register)
+|`{label,${lb}}` | Create `lb` (label) which can be jumped to using `test`
+|===

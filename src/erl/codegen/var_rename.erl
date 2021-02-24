@@ -2,7 +2,6 @@
 -export([process/1]).
 
 process(Ast) ->
-  io:fwrite("Ast:~n~n~p~n~n", [Ast]),
   process(Ast, [{lbcnt,0},{lvcnt,0},{rvcnt,0}]).
 process([], Context) -> {ok,Context,[]};
 process([St|Ast], Context) ->
@@ -45,7 +44,6 @@ process({assign, {'=',Ln}, O_Specs}, Context) ->
   case proplists:get_value(Ident, Variables) of
     {_Type, X} ->
       Lv_Cnt = proplists:get_value(lvcnt,Context),
-      io:fwrite("NST: ~p~n", [N_St]),
       {ok,Context,N_St++[{move,X,{x,Lv_Cnt}}]};
     Other -> error({Other,Ident,{line,Ln},{context,Context}})
   end;
