@@ -14,7 +14,6 @@ call_fn(Fn,Context,Ir) ->
   case lists:search(fun ({function,_Type,Fun,_Arity,_St}) -> Fun =:= Fn end, Ir) of
     {value, {function,_Type,Fn,_Arity,St}} ->
       Result = run_st(St,Context,Ir),
-      io:fwrite("~s~p gave ~p~n",[Fn,lists:reverse(Context#context.stack),Result]),
       Result;
     _ -> error({not_found, Fn})
   end.
@@ -31,15 +30,15 @@ run_st([{label,_}|Rest],Context,Ir) -> run_st(Rest,Context,Ir);
 run_st([{jump,{f,Lb}}|_],Context,Ir) -> jump(Lb,Context,Ir);
 
 run_st([{call,Fn,Arity,{x,First}}|Rest],Context,Ir) ->
-  {Args,Other} = lists:split(length(Context#context.reg) - First - 1, Context#context.reg),
-  io:fwrite("Split list: ~p~n", [{Args,Other}]),
+  {Args,Other} = gc_list(First,Arity,Context#context.reg),
   Fn_Context = #context{global=Context#context.global,
                         stack=Args,
                         heap=Context#context.heap,
                         fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
-  N_Context = Fn_End#context{stack=Other++Context#context.stack,
-                             fn=Context#context.fn},
+  N_Context = Fn_End#context{stack=Context#context.stack,
+                             fn=Context#context.fn,
+                             reg=[lists:last(Fn_End#context.reg)|Other]},
   run_st(Rest,N_Context,Ir);
 
 run_st([{test,Data,{f,Lb}}|St],Context,Ir) ->
@@ -48,18 +47,6 @@ run_st([{test,Data,{f,Lb}}|St],Context,Ir) ->
     Data_Val == 0 -> jump(Lb,Context,Ir);
     true -> run_st(St,Context,Ir)
   end;
-
-run_st([{'+',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,A_Val + B_Val,Context),
-  run_st(Rest,N_Context,Ir);
-
-run_st([{'-',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,A_Val - B_Val,Context),
-  run_st(Rest,N_Context,Ir);
 
 run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
@@ -70,58 +57,10 @@ run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
   end,
   run_st(Rest,N_Context,Ir);
 
-run_st([{'%',Dest,[A,B]}|Rest],Context,Ir) ->
+run_st([{Op,Dest,[A,B]}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,A_Val rem B_Val,Context),
-  run_st(Rest,N_Context,Ir);
-
-run_st([{'&&',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,(A_Val /= 0) and (B_Val /= 0),Context),
-  run_st(Rest,N_Context,Ir);
-
-run_st([{'||',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,(A_Val == 0) and (B_Val == 0),Context),
-  run_st(Rest,N_Context,Ir);
-
-run_st([{'>=',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,A_Val >= B_Val,Context),
-  run_st(Rest,N_Context,Ir);
-
-run_st([{'<=',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,B_Val >= A_Val,Context),
-  run_st(Rest,N_Context,Ir);
-
-run_st([{'>',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,A_Val>B_Val,Context),
-  run_st(Rest,N_Context,Ir);
-
-run_st([{'<',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,B_Val>A_Val,Context),
-  run_st(Rest,N_Context,Ir);
-
-run_st([{'==',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,A_Val==B_Val,Context),
-  run_st(Rest,N_Context,Ir);
-
-run_st([{'!=',Dest,[A,B]}|Rest],Context,Ir) ->
-  {ok,A_Val} = get_data(A, Context),
-  {ok,B_Val} = get_data(B, Context),
-  {ok,N_Context} = set_data(Dest,A_Val/=B_Val,Context),
+  {ok,N_Context} = set_data(Dest,do_op(Op,A_Val,B_Val),Context),
   run_st(Rest,N_Context,Ir);
 
 run_st(St,_Context,_Ir) ->
@@ -145,8 +84,20 @@ set_data({y,N},Data,Context) ->
   {ok,Context#context{stack=set_data(Context#context.stack,N,Data)}};
 set_data([_|Reg],N,Data) when length(Reg) =:= N -> [Data | Reg];
 set_data(Reg,N,Data) when length(Reg) =:= N -> [Data | Reg];
+set_data([],0,Data) -> [Data];
 set_data([Hd|Reg],N,Data) -> [Hd|set_data(Reg,N,Data)];
 set_data(Dest,_N,_Data) -> error({no_loc,Dest}).
+
+
+gc_list(_,_,[]) -> {[],[]};
+gc_list(First,Arity,[_|Reg]) when length(Reg) >= First + Arity -> gc_list(First,Arity,Reg);
+gc_list(First,Arity,[Hd|Reg]) when length(Reg) >= First ->
+  {Args, Other} = gc_list(First,Arity,Reg),
+  {[Hd|Args],Other};
+gc_list(First,Arity,[Hd|Reg]) ->
+  {_,Tl} = gc_list(First,Arity,Reg),
+  {[],[Hd|Tl]}.
+
 
 jump(Lb,Context,Ir) ->
   Fn = Context#context.fn,
@@ -159,3 +110,15 @@ jump(Lb,Context,Ir) ->
 find_lb([{label,_Lb}|St],_Lb) -> St;
 find_lb([_|St],Lb) -> find_lb(St,Lb);
 find_lb(_,Lb) -> error({no_label,Lb}).
+
+do_op('+',A,B) -> A+B;
+do_op('-',A,B) -> A-B;
+do_op('*',A,B) -> A*B;
+do_op('%',A,B) -> A div B;
+do_op('==',A,B) -> A==B;
+do_op('!=',A,B) -> A/=B;
+do_op('>=',A,B) -> A>=B;
+do_op('<=',A,B) -> B>=A;
+do_op('>',A,B) -> A>B;
+do_op('<',A,B) -> B>A;
+do_op(Op,_,_) -> error({unknown,Op}).
