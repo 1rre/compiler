@@ -74,6 +74,8 @@ get_data({x,N},Context) ->
 get_data({y,N},Context) ->
   Stack = Context#context.stack,
   {ok,lists:nth(length(Stack) - N, Stack)};
+get_data(nil,_Context) ->
+  {ok,nil};
 get_data(Data,_Context) ->
   error({unknown,Data}).
 
