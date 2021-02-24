@@ -1,4 +1,4 @@
--module(var_rename).
+-module(build_ir).
 -export([process/1]).
 
 process(Ast) ->
@@ -18,17 +18,16 @@ process({function,{Return_Type,{{identifier,_,Ident},Args},Statement}},Context) 
       {ok, N2_Context, N_St} = process(Arg, N_Context),
       {N2_Context, St++N_St}
   end, {Context,[]}, Args),
-  {ok,N_Context,N_St} = process(Statement, [{function,{Ident,{Type,length(Args)}}} | A_Context]),
-  {ok,
-   [{function,{Ident,{Type,length(Args)}}}|Context],
-   [{function, Type, Ident, length(Args),
-     N_St}]};
+  {ok,_N_Context,N_St} = process(Statement, [{function,{Ident,{Type,length(Args)}}} | A_Context]),
+  {ok,[{function,{Ident,{Type,length(Args)}}}|Context],[{function, Type, Ident, length(Args),N_St}]};
+% TODO: Implement any other fn types
 process({function, Fn_Spec}, _Context) ->
   error({unknown_fn_spec,Fn_Spec});
 
 %% Declarations
 process({declaration, O_Type, O_Specs}, Context) ->
-  {ok,Ident,N_St} = get_decl_specs(O_Specs, Context),
+  {ok,Ident,St} = get_decl_specs(O_Specs),
+  {ok,_N_Context,N_St} = process(St,Context),
   Type = check_typedef(O_Type, Context),
   Rv_Cnt = proplists:get_value(rvcnt, Context),
   N_Context = [{variable,{Ident,{Type,{y,Rv_Cnt}}}} | increment(rvcnt, Context)],
@@ -39,7 +38,8 @@ process({declaration, O_Type, O_Specs}, Context) ->
   end;
 
 process({assign, {'=',Ln}, O_Specs}, Context) ->
-  {ok,Ident,N_St} = get_decl_specs(O_Specs, Context),
+  {ok,Ident,St} = get_decl_specs(O_Specs),
+  {ok,_N_Context,N_St} = process(St,Context),
   Variables = proplists:get_all_values(variable, Context),
   case proplists:get_value(Ident, Variables) of
     {_Type, X} ->
@@ -82,7 +82,7 @@ process({{identifier,Ln,Ident},{apply,Args}}, Context) ->
   end, {Context, []}, Args),
   Functions = proplists:get_all_values(function, Context),
   case proplists:get_value(Ident, Functions) of
-    {Type, Len} when Len =:= length(Args) ->
+    {_Type, Len} when Len =:= length(Args) ->
       {ok, Context, P_Args ++ [{call,Ident,Len,{x,proplists:get_value(lvcnt,Context)}}]};
     Other ->
       error({Other, Ident, {args, Args}, {line, Ln}, {context, Context}})
@@ -92,8 +92,9 @@ process({{identifier,Ln,Ident},{apply,Args}}, Context) ->
 % If
 process({{'if',_},Test,True,False}, Context) ->
   {ok,If_Context,If_St} = process(Test, Context),
-  Test_Eq = {test,{x,proplists:get_value(lvcnt, Context)},{f,proplists:get_value(lbcnt, If_Context)+1}},
-  {ok,T_Context,T_St} = process(True, replace(lbcnt,proplists:get_value(lbcnt,If_Context),Context)),
+  Test_Eq = {test,{x,proplists:get_value(lvcnt, Context)},
+                  {f,proplists:get_value(lbcnt, If_Context)+1}},
+  {ok,T_Context,T_St} = process(True,replace(lbcnt,proplists:get_value(lbcnt,If_Context),Context)),
   Lb_Cnt = proplists:get_value(lbcnt, T_Context),
   Jump = {jump,{f,Lb_Cnt+2}},
   Start_Label = {label,Lb_Cnt+1},
@@ -118,6 +119,19 @@ process({{'do',_},Do,Test}, Context) ->
   {ok,T_Context,Test_St} = process(Test,replace(lbcnt,proplists:get_value(lbcnt,Do_Context),Context)),
   Jump = {test,{x,proplists:get_value(lvcnt,Context)},{f,Lb_Cnt+1}},
   {ok,replace(lbcnt,proplists:get_value(lbcnt,T_Context),Context),[Label|Do_St]++Test_St++[Jump]};
+% For
+process({{for,_},{First,Pred,St},Loop},Context) ->
+  Lb_Cnt = proplists:get_value(lbcnt, Context),
+  {ok,F_Context,F_St} = process(First,replace(lbcnt,Lb_Cnt+3,Context)),
+  P_Label = {label,Lb_Cnt+1},
+  {ok,P_Context,P_St} = process(Pred,replace(lvcnt,proplists:get_value(lvcnt,Context),F_Context)),
+  P_Test = {test,{x,proplists:get_value(lvcnt, F_Context)},{f,Lb_Cnt+2}},
+  {ok,N_Context,N_St} = process(St,replace(lvcnt,proplists:get_value(lvcnt,Context),P_Context)),
+  {ok,L_Context,L_St} = process(Loop,replace(lvcnt,proplists:get_value(lvcnt,Context),N_Context)),
+  Jump = {jump, {f,Lb_Cnt+1}},
+  E_Label = {label,Lb_Cnt+2},
+  {ok,replace(lbcnt,proplists:get_value(lbcnt,L_Context),Context),F_St++[P_Label|P_St]++[P_Test|N_St++L_St]++[Jump,E_Label]};
+
 
 %% Return
 process({{return,_},Statement}, Context) ->
@@ -129,15 +143,13 @@ process(Part, Context) ->
   io:fwrite("Part:~n~p~n~n",[Part]),
   {ok,Context,[]}.
 
-get_decl_specs([{identifier,_,Ident}],Context) ->
+get_decl_specs([{identifier,_,Ident}]) ->
   {ok, Ident, []};
-get_decl_specs([{{identifier,_,Ident},{'=',_},St}],Context) ->
-  {ok, N_Context, N_St} = process(St,Context),
-  {ok, Ident, N_St};
-get_decl_specs([{identifier,_,Ident},St],Context) ->
-  {ok, N_Context, N_St} = process(St,Context),
-  {ok, Ident, N_St};
-get_decl_specs(Unkn,Context) ->
+get_decl_specs([{{identifier,_,Ident},{'=',_},St}]) ->
+  {ok, Ident, St};
+get_decl_specs([{identifier,_,Ident},St]) ->
+  {ok, Ident, St};
+get_decl_specs(Unkn) ->
   io:fwrite("Unknown, ~p", [Unkn]),
   {ok,nil,[]}.
 

@@ -1,29 +1,5 @@
 -module(c_compiler).
--export([main/1]).
-
-
-main(["-cpp", File]) ->
-  {ok, Io_Stream} = file:open(File, [read]),
-  {ok, Input} = read_file(Io_Stream),
-  {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
-  {Scan, _Rest} = type_enum:scan(Tokens),
-  {ok, Result} = parser:parse(Scan),
-  io:fwrite("Ast:~n~p~n~n~n~n", [Result]),
-  ast_nif:send(Result),
-  io:fwrite("back at erl~n"),
-  ast_nif:send(Result);
-
-main(["-debug", File]) ->
-  {ok, Io_Stream} = file:open(File, [read]),
-  {ok, Input} = read_file(Io_Stream),
-  io:fwrite("Read:~n~s~n~n", [Input]),
-  {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
-  io:fwrite("Tokens:~n~p~n~n", [Tokens]),
-  {Scan, Rest} = type_enum:scan(Tokens),
-  io:fwrite("Processed Typedefs:~n~p~n~nRemainder was: ~s~n~n", [Scan, Rest]),
-  {ok, Result} = parser:parse(Scan),
-  io:fwrite("Ast:~n~p~n~n~n~n", [Result]),
-  halt(0);
+-export([main/1,run_vm/1,run_vm/3]).
 
 main([File]) ->
   {ok, Io_Stream} = file:open(File, [read]),
@@ -31,11 +7,17 @@ main([File]) ->
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
-  {ok, _Context, Statement} = var_rename:process(Result),
-  io:fwrite("~n~nResult:~n~n~n~p~n", [Statement]);
+  {ok, _Context, Statement} = build_ir:process(Result),
+  {ok, Statement};
 
+main(["-vm",File]) -> run_vm(File);
 
 main(_) -> main(["test/test.c"]).
+
+run_vm(File) -> run_vm(File,[],main).
+run_vm(File,Fn,Args) ->
+  {ok,Ir} = main([File]),
+  ir_vm:run(Ir,Fn,Args).
 
 read_file(Io_Stream) ->
   case file:read_line(Io_Stream) of

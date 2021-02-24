@@ -1,3 +1,0 @@
--xc++
--I
-/usr/lib64/erlang/erts-11.1.7/include/

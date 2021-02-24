@@ -10,7 +10,7 @@ enumerator_list declaration declaration_specifiers init_declarator_list
 enumerator init_declarator storage_class_specifier struct_union_specifier
 struct_declaration_list struct_declaration struct_declarator_list
 parameter_declaration statement labeled_statement compound_statement
-iteration_statement statement_list selection_statement jump_statement
+iteration_statement selection_statement jump_statement
 expression_statement declaration_list translation_unit external_declaration
 function_definition declaration_statement declaration_statement_list.
 Terminals
@@ -223,7 +223,7 @@ declarator -> direct_declarator : '$1'.
 direct_declarator -> identifier : '$1'.
 direct_declarator -> '(' declarator ')' : '$2'.
 direct_declarator -> direct_declarator '[' expression ']' : {'$1',{array,'$3'}}.
-direct_declarator -> direct_declarator '[' ']' : {'$1',{array,nil}}.
+direct_declarator -> direct_declarator '[' ']' : {'$1',{array,[]}}.
 direct_declarator -> direct_declarator '(' parameter_type_list ')' : {'$1','$3'}.
 direct_declarator -> direct_declarator '(' identifier_list ')' : {'$1','$3'}.
 direct_declarator -> direct_declarator '(' ')' : {'$1', []}.
@@ -258,9 +258,9 @@ abstract_declarator -> direct_abstract_declarator : '$1'.
 
 direct_abstract_declarator -> '(' abstract_declarator ')' : '$2'.
 direct_abstract_declarator -> direct_abstract_declarator '[' expression ']' : {'$1',{array,'$3'}}.
-direct_abstract_declarator -> direct_abstract_declarator '[' ']' : {'$1',{array,nil}}.
+direct_abstract_declarator -> direct_abstract_declarator '[' ']' : {'$1',{array,[]}}.
 direct_abstract_declarator ->  '[' expression ']' : {array,'$2'}.
-direct_abstract_declarator ->  '[' ']' : {array,nil}.
+direct_abstract_declarator ->  '[' ']' : {array,[]}.
 direct_abstract_declarator -> direct_abstract_declarator '(' parameter_type_list ')' : {'$1','$2','$3','$4'}.
 direct_abstract_declarator -> direct_abstract_declarator '(' ')' : {'$1','$2','$3'}.
 direct_abstract_declarator ->  '(' parameter_type_list ')' : {'$1','$2','$3'}.
@@ -301,11 +301,8 @@ declaration_statement_list -> declaration_statement declaration_statement_list :
 declaration_list -> declaration : ['$1'].
 declaration_list -> declaration declaration_list : ['$1' | '$2'].
 
-statement_list -> statement : ['$1'].
-statement_list -> statement statement_list : ['$1' | '$2'].
-
 expression_statement -> expression ';' : '$1'.
-expression_statement -> ';' : nil.
+expression_statement -> ';' : [].
 
 if_statement -> if '(' expression ')' statement : {'$1','$3','$5'}.
 
@@ -316,19 +313,19 @@ selection_statement -> switch '(' expression ')' statement : {'$1','$3','$5'}.
 iteration_statement -> while '(' expression ')' statement : {'$1','$3','$5'}.
 iteration_statement -> do statement while '(' expression ')' ';' : {'$1','$2','$5'}.
 iteration_statement -> for '(' expression ';' expression ';' expression ')' statement : {'$1',{'$3','$5','$7'},'$9'}.
-iteration_statement -> for '(' expression ';' expression ';' ')' statement : {'$1',{'$3','$5',nil},'$8'}.
-iteration_statement -> for '(' expression ';' ';' expression ')' statement : {'$1',{'$3',nil,'$6'},'$8'}.
-iteration_statement -> for '(' ';' expression ';' expression ')' statement : {'$1',{nil,'$4','$6'},'$8'}.
-iteration_statement -> for '(' expression ';' ';' ')' statement : {'$1',{'$3',nil,nil},'$7'}.
-iteration_statement -> for '(' ';' expression ';' ')' statement : {'$1',{nil,'$4',nil},'$7'}.
-iteration_statement -> for '(' ';' ';' expression ')' statement : {'$1',{nil,nil,'$5'},'$7'}.
-iteration_statement -> for '(' ';' ';' ')' statement : {'$1',{nil,nil,nil},'$6'}.
+iteration_statement -> for '(' expression ';' expression ';' ')' statement : {'$1',{'$3','$5',[]},'$8'}.
+iteration_statement -> for '(' expression ';' ';' expression ')' statement : {'$1',{'$3',[],'$6'},'$8'}.
+iteration_statement -> for '(' ';' expression ';' expression ')' statement : {'$1',{[],'$4','$6'},'$8'}.
+iteration_statement -> for '(' expression ';' ';' ')' statement : {'$1',{'$3',[],[]},'$7'}.
+iteration_statement -> for '(' ';' expression ';' ')' statement : {'$1',{[],'$4',[]},'$7'}.
+iteration_statement -> for '(' ';' ';' expression ')' statement : {'$1',{[],[],'$5'},'$7'}.
+iteration_statement -> for '(' ';' ';' ')' statement : {'$1',{[],[],[]},'$6'}.
 
 jump_statement -> goto identifier ';' : {'$1', '$2'}.
 jump_statement -> continue ';' : '$1'.
 jump_statement -> break ';' : '$1'.
 jump_statement -> return expression ';' : {'$1', '$2'}.
-jump_statement -> return ';' : {'$1', nil}.
+jump_statement -> return ';' : {'$1', []}.
 
 translation_unit -> external_declaration : ['$1'].
 translation_unit -> external_declaration translation_unit : ['$1' | '$2'].
@@ -344,10 +341,3 @@ function_definition -> declarator compound_statement : {function, '$1', '$2'}.
 %% end
 function_definition -> declaration_specifiers declarator : {function, '$1', '$2'}.
 function_definition -> declarator : {function, '$1'}.
-
-Erlang code.
-
-mklist(A,B) when is_list(A) and is_list(B) -> A++B;
-mklist(A,B) when is_list(A) -> A++[B];
-mklist(A,B) when is_list(B) -> [A|B];
-mklist(A,B) -> [A,B].

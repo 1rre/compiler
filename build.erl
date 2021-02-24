@@ -1,8 +1,5 @@
-#!/usr/bin/env escript
-
--module(make_compiler).
+-module(build).
 -export([main/1]).
-
 %% Main function
 
 % Remove all generated files
@@ -21,19 +18,14 @@ main(["compile"]) ->
 main(["bin/c_compiler"]) ->
   file:make_dir("bin"),
   Erl_Files = build_common(),
-  Self=self(),
-  Pids = [spawn_link(fun() -> Self ! {self(), {change_ext(Erl, beam),compile:file(Erl,[binary])}} end) || Erl <- Erl_Files],
+  S=self(),
+  Pids = [spawn_link(fun() -> S ! {self(), {change_ext(Erl, beam),compile:file(Erl,[binary])}} end) || Erl <- Erl_Files],
   Bin = [receive
            {Pid,{File,{ok,_Mod,Bin}}} -> {File,Bin};
            {Pid,Error} -> error(Error)
          end || Pid <- Pids],
   escriptise(Bin),
   halt(0);
-%case compile:file(Erl, [binary]) of
-%  {ok, _mod, Bin} -> Bin;
-%  Err -> error({Err, Erl})
-%end
-
 
 % For ease, no arguments compiles everything
 main(_) -> main(["bin/c_compiler"]).
@@ -54,7 +46,7 @@ build_common() ->
   Leex_Files = filelib:wildcard("src/erl/parsing/*.xrl"),
   [leex:file(Xrl) || Xrl <- Leex_Files],
   Yecc_Files = filelib:wildcard("src/erl/parsing/*.yrl"),
-  [c:y(Yrl) || Yrl <- Yecc_Files],
+  [c:y(Yrl,{report_warnings,false}) || Yrl <- Yecc_Files],
   filelib:wildcard("src/**/*.erl").
 
 
@@ -145,10 +137,9 @@ change_ext(File, beam) -> filename:basename(File, "erl") ++ "beam";
 change_ext(File, so) -> filename:basename(File, "cpp") ++ "so".
 
 escriptise(Bin) ->
-  Status = escript:create("bin/c_compiler",
-                 [shebang,
-                  {archive, Bin, []}]),
-  io:fwrite("~p~n", [Status]),
+  ok = escript:create("bin/c_compiler",
+                      [shebang,
+                       {archive, Bin, []}]),
   case os:type() of
     {_,nt} -> ok;
     _ ->
