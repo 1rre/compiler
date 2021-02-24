@@ -14,7 +14,7 @@ main(["-vm",File]) -> run_vm(File);
 
 main(_) -> main(["test/test.c"]).
 
-run_vm(File) -> run_vm(File,[],main).
+run_vm(File) -> run_vm(File,main,[]).
 run_vm(File,Fn,Args) ->
   {ok,Ir} = main([File]),
   ir_vm:run(Ir,Fn,Args).

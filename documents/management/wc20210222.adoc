@@ -62,5 +62,5 @@ One way of fixing this would be to essentially calculate the more memory efficie
 * We also need to work on accepting arguments to functions
 
 == 2021/02/24
-TODO:
-* Add for loops & while loops (at least)
+* Added support for for and while loops to the IR
+* Made a VM to test the output we're getting for the VR

@@ -48,6 +48,7 @@ run_st([{test,Data,{f,Lb}}|St],Context,Ir) ->
     true -> run_st(St,Context,Ir)
   end;
 
+% / is a special case as erlang treats float & integer division differently
 run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
@@ -114,7 +115,7 @@ find_lb(_,Lb) -> error({no_label,Lb}).
 do_op('+',A,B) -> A+B;
 do_op('-',A,B) -> A-B;
 do_op('*',A,B) -> A*B;
-do_op('%',A,B) -> A div B;
+do_op('%',A,B) -> A rem B;
 do_op('==',A,B) -> A==B;
 do_op('!=',A,B) -> A/=B;
 do_op('>=',A,B) -> A>=B;

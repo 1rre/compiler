@@ -108,7 +108,7 @@ process({{'while',_},Test,Do}, Context) ->
   {ok,Pred_Context,Pred_St} = process(Test,replace(lbcnt, Lb_Cnt+2, Context)),
   Test_St = {test,{x,proplists:get_value(lvcnt, Context)},{f,Lb_Cnt+2}},
   {ok, Do_Context, Do_St} = process(Do, replace(lbcnt,proplists:get_value(lbcnt, Pred_Context),Context)),
-  Jump = {jump,{f,Lb_Cnt}},
+  Jump = {jump,{f,Lb_Cnt+1}},
   End_Label = {label,Lb_Cnt+2},
   {ok,replace(lbcnt,proplists:get_value(lbcnt, Do_Context),Context),[Start_Label|Pred_St]++[Test_St|Do_St]++[Jump,End_Label]};
 % Do While
@@ -122,15 +122,16 @@ process({{'do',_},Do,Test}, Context) ->
 % For
 process({{for,_},{First,Pred,St},Loop},Context) ->
   Lb_Cnt = proplists:get_value(lbcnt, Context),
+  Lv_Cnt = proplists:get_value(lvcnt,Context),
   {ok,F_Context,F_St} = process(First,replace(lbcnt,Lb_Cnt+3,Context)),
   P_Label = {label,Lb_Cnt+1},
-  {ok,P_Context,P_St} = process(Pred,replace(lvcnt,proplists:get_value(lvcnt,Context),F_Context)),
+  {ok,P_Context,P_St} = process(Pred,replace(lvcnt,Lv_Cnt,F_Context)),
   P_Test = {test,{x,proplists:get_value(lvcnt, F_Context)},{f,Lb_Cnt+2}},
-  {ok,N_Context,N_St} = process(St,replace(lvcnt,proplists:get_value(lvcnt,Context),P_Context)),
-  {ok,L_Context,L_St} = process(Loop,replace(lvcnt,proplists:get_value(lvcnt,Context),N_Context)),
+  {ok,L_Context,L_St} = process(Loop,replace(lvcnt,Lv_Cnt,P_Context)),
+  {ok,N_Context,N_St} = process(St,replace(lbcnt,proplists:get_value(lbcnt,L_Context),replace(lvcnt,Lv_Cnt,F_Context))),
   Jump = {jump, {f,Lb_Cnt+1}},
   E_Label = {label,Lb_Cnt+2},
-  {ok,replace(lbcnt,proplists:get_value(lbcnt,L_Context),Context),F_St++[P_Label|P_St]++[P_Test|N_St++L_St]++[Jump,E_Label]};
+  {ok,replace(lbcnt,proplists:get_value(lbcnt,N_Context),Context),F_St++[P_Label|P_St]++[P_Test|L_St++N_St]++[Jump,E_Label]};
 
 
 %% Return
