@@ -35,7 +35,7 @@ process({declaration, O_Type, O_Specs}, Context) ->
   Lv_Cnt = proplists:get_value(lvcnt,N_Context),
   if
     N_St =:= [] -> {ok,N_Context,[]};
-    true -> {ok,N_Context,N_St ++ [{move,{y,Rv_Cnt},{x,Lv_Cnt}}]}
+    true -> {ok,N_Context,N_St ++ [{move,{x,Lv_Cnt},{y,Rv_Cnt}}]}
   end;
 
 process({assign, {'=',Ln}, O_Specs}, Context) ->
@@ -44,7 +44,7 @@ process({assign, {'=',Ln}, O_Specs}, Context) ->
   case proplists:get_value(Ident, Variables) of
     {_Type, X} ->
       Lv_Cnt = proplists:get_value(lvcnt,Context),
-      {ok,Context,N_St++[{move,X,{x,Lv_Cnt}}]};
+      {ok,Context,N_St++[{move,{x,Lv_Cnt},X}]};
     Other -> error({Other,Ident,{line,Ln},{context,Context}})
   end;
 
@@ -61,7 +61,7 @@ process({bif,T,[A,B]}, Context) ->
 %% Literal values
 process({int_l,_,Val,_Suf}, Context) ->
   V_Cnt = proplists:get_value(lvcnt,Context),
-  {ok,increment(lvcnt,Context),[{move,{x,V_Cnt},{integer,Val}}]};
+  {ok,increment(lvcnt,Context),[{move,{integer,Val},{x,V_Cnt}}]};
 
 %% Identifiers
 process({identifier,Ln,Ident}, Context) ->
@@ -69,7 +69,7 @@ process({identifier,Ln,Ident}, Context) ->
   case proplists:get_value(Ident, Variables) of
     {_Type, X} ->
       V_Cnt = proplists:get_value(lvcnt,Context),
-      {ok,increment(lvcnt,Context),[{move,{x,V_Cnt},X}]};
+      {ok,increment(lvcnt,Context),[{move,X,{x,V_Cnt}}]};
     Other -> error({Other, Ident, {line, Ln}, {context, Context}})
   end;
 
@@ -88,18 +88,41 @@ process({{identifier,Ln,Ident},{apply,Args}}, Context) ->
       error({Other, Ident, {args, Args}, {line, Ln}, {context, Context}})
   end;
 
+%% Jump Statements
+% If
 process({{'if',_},Test,True,False}, Context) ->
   {ok,If_Context,If_St} = process(Test, Context),
   Test_Eq = {test,{x,proplists:get_value(lvcnt, Context)},{f,proplists:get_value(lbcnt, If_Context)+1}},
   {ok,T_Context,T_St} = process(True, replace(lbcnt,proplists:get_value(lbcnt,If_Context),Context)),
-  Label = {label,proplists:get_value(lbcnt, T_Context)+1},
-  {ok,F_Context,F_St} = process(False, increment(lbcnt, T_Context)),
-  {ok,F_Context,If_St++[Test_Eq|T_St]++[Label|F_St]};
+  Lb_Cnt = proplists:get_value(lbcnt, T_Context),
+  Jump = {jump,{f,Lb_Cnt+2}},
+  Start_Label = {label,Lb_Cnt+1},
+  {ok,F_Context,F_St} = process(False, replace(lbcnt, Lb_Cnt+2, T_Context)),
+  End_Label = {label,Lb_Cnt+2},
+  {ok,F_Context,If_St++[Test_Eq|T_St]++[Jump,Start_Label|F_St]++[End_Label]};
+% While
+process({{'while',_},Test,Do}, Context) ->
+  Lb_Cnt = proplists:get_value(lbcnt,Context),
+  Start_Label = {label,Lb_Cnt+1},
+  {ok,Pred_Context,Pred_St} = process(Test,replace(lbcnt, Lb_Cnt+2, Context)),
+  Test_St = {test,{x,proplists:get_value(lvcnt, Context)},{f,Lb_Cnt+2}},
+  {ok, Do_Context, Do_St} = process(Do, replace(lbcnt,proplists:get_value(lbcnt, Pred_Context),Context)),
+  Jump = {jump,{f,Lb_Cnt}},
+  End_Label = {label,Lb_Cnt+2},
+  {ok,replace(lbcnt,proplists:get_value(lbcnt, Do_Context),Context),[Start_Label|Pred_St]++[Test_St|Do_St]++[Jump,End_Label]};
+% Do While
+process({{'do',_},Do,Test}, Context) ->
+  Lb_Cnt = proplists:get_value(lbcnt,Context),
+  Label = {label,Lb_Cnt+1},
+  {ok,Do_Context,Do_St} = process(Do,increment(lbcnt,Context)),
+  {ok,T_Context,Test_St} = process(Test,replace(lbcnt,proplists:get_value(lbcnt,Do_Context),Context)),
+  Jump = {test,{x,proplists:get_value(lvcnt,Context)},{f,Lb_Cnt+1}},
+  {ok,replace(lbcnt,proplists:get_value(lbcnt,T_Context),Context),[Label|Do_St]++Test_St++[Jump]};
 
 %% Return
 process({{return,_},Statement}, Context) ->
   {ok,_N_Context,N_St} = process(Statement, Context),
-  {ok,Context,N_St};
+  {ok,Context,N_St++[return]};
 
 %% Base Case
 process(Part, Context) ->
@@ -113,7 +136,11 @@ get_decl_specs([{{identifier,_,Ident},{'=',_},St}],Context) ->
   {ok, Ident, N_St};
 get_decl_specs([{identifier,_,Ident},St],Context) ->
   {ok, N_Context, N_St} = process(St,Context),
-  {ok, Ident, N_St}.
+  {ok, Ident, N_St};
+get_decl_specs(Unkn,Context) ->
+  io:fwrite("Unknown, ~p", [Unkn]),
+  {ok,nil,[]}.
+
 
 
 check_typedef(Type, Context) ->
@@ -132,7 +159,7 @@ get_type(Type) -> error({unknown_type, Type}).
 increment(Key, List) ->
   Value = proplists:get_value(Key, List),
   [{Key,Value+1} | proplists:delete(Key,List)].
-  
+
 replace(Key, Value, List) ->
   [{Key, Value} | proplists:delete(Value, List)].
 

@@ -60,3 +60,7 @@ which will inevitibly result in an infinite number of registers being requested 
 One way of fixing this would be to essentially calculate the more memory efficient order in which to calculate the operands for each operation, however this would probably take a while.
 
 * We also need to work on accepting arguments to functions
+
+== 2021/02/24
+TODO:
+* Add for loops & while loops (at least)

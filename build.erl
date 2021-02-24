@@ -21,13 +21,19 @@ main(["compile"]) ->
 main(["bin/c_compiler"]) ->
   file:make_dir("bin"),
   Erl_Files = build_common(),
-  Bin = [{change_ext(Erl, beam),
-          case compile:file(Erl, [binary]) of
-            {ok, _mod, Bin} -> Bin;
-            Err -> error({Err, Erl})
-          end} || Erl <- Erl_Files],
+  Self=self(),
+  Pids = [spawn_link(fun() -> Self ! {self(), {change_ext(Erl, beam),compile:file(Erl,[binary])}} end) || Erl <- Erl_Files],
+  Bin = [receive
+           {Pid,{File,{ok,_Mod,Bin}}} -> {File,Bin};
+           {Pid,Error} -> error(Error)
+         end || Pid <- Pids],
   escriptise(Bin),
   halt(0);
+%case compile:file(Erl, [binary]) of
+%  {ok, _mod, Bin} -> Bin;
+%  Err -> error({Err, Erl})
+%end
+
 
 % For ease, no arguments compiles everything
 main(_) -> main(["bin/c_compiler"]).
