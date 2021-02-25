@@ -5,7 +5,7 @@ Up to date as of 11am on 24/02/2021
 [%header,cols="4,5"]
 |===
 |Syntax | Usage
-|`{move,${data},${rd}}` | Copy the value of `data` (register, memory or immediate) to `rd` (register or stack)
+|`{move,${data},${rd}}` | Copy the value of `data` (register, stack or immediate) to `rd` (register or stack)
 |`{${op},${rd},[${ra},${rb}]}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
 |`{test,${ra},${lb}}` | Branch to `lb` (label) if the value in `ra` is 0
 |`{call,${fn},${ar},${ra}}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (register)
@@ -13,6 +13,7 @@ Up to date as of 11am on 24/02/2021
 |`{jump,${lb}}` | Unconditionally jump to `lb` (label)
 |`return` | Return the value in register 0 to the calling function (this is fine for all functions as return value of void functions is undefined)
 |`{allocate,${type}}` | Allocate an appropriate space on the heap for `type` (type) & store a pointer to it at the top of the stack
-|`{ref,${rs},${rd}}` | Finds the memory location of the object in `rs` (register or stack) & stores a pointer to it in `rd` (register)
-|`{heap,${rs},${rd}}` | Finds the memory location pointed to by the `${rs}` (register or stack) & stores the value in `${rd}` (register)
+|`{address,${rs},${rd}}` | Finds the memory location of the object in `rs` (register or stack) & stores a pointer to it in `rd` (register)
+|`{get_heap,${rs},${rd}}` | Finds the memory location pointed to by `rs` (register or stack) & stores the value in `rd` (register)
+|`{put_heap,${rs},${rd}}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register or stack)
 |===
