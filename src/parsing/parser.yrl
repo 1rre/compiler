@@ -69,8 +69,8 @@ expression -> expression shift_operator expression : {bif,element(1,'$2'),['$1',
 expression -> expression addition_operator expression : {bif,element(1,'$2'),['$1','$3']}.
 expression -> expression multiplication_operator expression : {bif, element(1,'$2'),['$1','$3']}.
 expression -> cast expression : {cast,'$1','$2'}.
-expression -> unary_operator expression : {element(1,'$1'),'$2'}.
-expression -> expression postfix_operator : {'$1',element(1,'$2')}.
+expression -> unary_operator expression : {'$1','$2'}.
+expression -> expression postfix_operator : {'$1','$2'}.
 expression -> expression postfix_list : {'$1','$2'}.
 expression -> sizeof '(' type_name ')' : {sizeof,'$3'}. % Is the 2nd part a cast?
 expression -> identifier : '$1'.

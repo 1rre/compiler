@@ -12,7 +12,9 @@ main([File]) ->
 
 main(["-vm",File]) -> halt(run_vm(File));
 
-main(_) -> main(["test/test.c"]).
+main(_) ->
+  {ok,Ast} = main(["test/test.c"]),
+  io:fwrite("~p~n",[Ast]).
 
 run_vm(File) -> run_vm(File,main,[]).
 run_vm(File,Fn,Args) ->

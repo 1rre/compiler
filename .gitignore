@@ -7,3 +7,4 @@ test/
 .vagrant/
 .ccls-cache/
 bin/
+**/erl_crash.dump
