@@ -26,6 +26,20 @@ process({identifier,Ln,Ident}, State) ->
 
 %TODO: Process function calls
 
+process({{identifier,Ln,Ident},{apply,Args}}, State) ->
+  {ok,Arg_State,Arg_St} = lists:foldl(fun
+    (Arg,{ok,Acc_State,Acc_St}) ->
+      {ok,Acc_Rtn_State,Acc_Rtn_St} = process(Arg,Acc_State),
+      Lv_Cnt = Acc_State#state.lvcnt,
+      {ok,copy_lbcnt(Acc_Rtn_State,Acc_State#state{lvcnt=Lv_Cnt+1}),Acc_St++Acc_Rtn_St}
+  end, {ok,State,[]}, Args),
+  case maps:get(Ident,Arg_State#state.fn, undefined) of
+    {_Type, Arity} when Arity =:= length(Args) ->
+      {ok,copy_lbcnt(Arg_State,State),Arg_St++[{call,Ident,Arity,{x,State#state.lvcnt}}]};
+    Other ->
+      error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})
+  end;
+
 process({function,Fn_Specs}, State) ->
   get_fn_specs(Fn_Specs, State);
 
@@ -177,6 +191,7 @@ get_decl_specs(Type, [Raw_Ident], State) ->
 
 get_decl_specs(Type, Other, State) -> error(Other).
 
+% TODO: Add referencing
 get_ident_specs({{'*',_},Rest}, State) ->
   {ok, Ident, Ptr_Ident} = get_ident_specs(Rest, State),
   {ok, Ident, {'*',Ptr_Ident}};
@@ -194,25 +209,24 @@ allocate_mem(_Type,{'*',Ident},State) ->
 allocate_mem(Type,Ident,State) ->
   {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,Type}]}.
 
-% TODO: Make this work on pointers
+% TODO:Completely overhaul this
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   {ok,Ident,Ptr_Ident} = get_ident_specs(Raw_Ident, State),
   {ok, Ptr} = case maps:get(Ident,State#state.var,undefined) of
     {_Type,Ptr_Loc} -> {ok,Ptr_Loc};
     Other -> {error, {undeclared,Ident}}
   end,
-  {ok,Ptr_State,Ptr_St} = get_ptr(Ptr_Ident,Ptr,State),
+  {ok,Ptr_State,Ptr_St} = get_ptr(Ptr_Ident,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
   {ok,Assign_State,Assign_St} = process(Raw_St,State),
-  Next_State = copy_lvcnt(State,Assign_State),
   Lv_Cnt = State#state.lvcnt,
   case Ptr_St of
     [] ->
       Next_St = Assign_St++[{move,{x,Lv_Cnt},Ptr}],
-      {ok,copy_lvcnt(State,Next_State),Next_St};
+      {ok,copy_lbcnt(Assign_State,State),Next_St};
     _ ->
-      {get_heap,Src,Dest} = lists:last(Ptr_St),
-      Next_St = Ptr_St ++ Assign_St ++ [{put_heap,{x,Lv_Cnt},Src}],
-      {ok,copy_lvcnt(State,Next_State),Next_St}
+      {_,Src,_} = lists:last(Assign_St),
+      Next_St = Assign_St ++ Ptr_St ++ [{put_heap,Src,{x,Lv_Cnt + 1}}],
+      {ok,copy_lbcnt(Assign_State,State),Next_St}
   end;
 
 get_assign_specs(Op,[Raw_Ident,Raw_St], State) ->
