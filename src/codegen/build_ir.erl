@@ -39,6 +39,43 @@ process({{return,_},Raw_St}, State) ->
   {ok, Rtn_State, Rtn_St} = process(Raw_St, State),
   {ok, Rtn_State#state{lvcnt=0,rvcnt=0}, Rtn_St++[return]};
 
+process({bif,T,[A,B]}, State) ->
+  Way_1 = process_bif(T,A,B,State),
+  Way_2 = process_bif(T,B,A,State),
+  case {(element(2,Way_1))#state.lvcnt,(element(2,Way_2))#state.lvcnt} of
+    {_A,_B} when _A>_B -> Way_2;
+    _ -> Way_1
+  end;
+
+process({{'&',Ln},Raw_St}, State) ->
+  {ok, Ref_State, Ref_St} = process(Raw_St, State),
+  case lists:last(Ref_St) of
+    {move,Src,Dest} ->
+      Next_St = lists:droplast(Ref_St) ++ [{ref,Src,Dest}],
+      {ok,Ref_State#state{lvcnt=State#state.lvcnt},Next_St};
+    {heap,Src,Dest} ->
+      Next_St = Ref_St ++ [{ref,Dest,Dest}],
+      {ok,Ref_State#state{lvcnt=State#state.lvcnt},Next_St};
+    {ref,Src,Dest} ->
+      Next_St = Ref_St ++ [{ref,Dest,Dest}],
+      {ok,Ref_State#state{lvcnt=State#state.lvcnt},Next_St};
+    Other -> error({ref_err,Other})
+    end;
+
+process({{'*',Ln},Raw_St},State) ->
+  {ok, Ptr_State, Ptr_St} = process(Raw_St, State),
+  case lists:last(Ptr_St) of
+    {move,Src,Dest} ->
+      Next_St = lists:droplast(Ptr_St) ++ [{heap,Src,Dest}],
+      {ok,Ptr_State#state{lvcnt=State#state.lvcnt},Next_St};
+    {heap,Src,Dest} ->
+      Next_St = Ptr_St ++ [{heap,Dest,Dest}],
+      {ok,Ptr_State#state{lvcnt=State#state.lvcnt},Next_St};
+    {ref,Src,Dest} ->
+      Next_St = Ptr_St ++ [{heap,Dest,Dest}],
+      {ok,Ptr_State#state{lvcnt=State#state.lvcnt},Next_St};
+    Other -> error({ref_err,Other})
+  end;
 
 process(Other, State) -> error(Other).
 
@@ -65,7 +102,8 @@ get_decl_specs(Type, [{Raw_Ident,Op,Raw_St}], State) ->
   Rv_Cnt = Decl_State#state.rvcnt,
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Decl_State#state.var),
   Next_State = Decl_State#state{var=New_Var,rvcnt=Rv_Cnt+1,lvcnt=State#state.lvcnt},
-  {ok, Next_State, Mem_St ++ Decl_St++[{move,{x,State#state.lvcnt},{y,Rv_Cnt}}]};
+  Next_St = Mem_St ++ Decl_St ++ [{move,{x,State#state.lvcnt},{y,Rv_Cnt}}],
+  {ok, Next_State, Next_St};
 
 get_decl_specs(Type, [Raw_Ident], State) ->
   {ok, Ident, Ptr_Ident} = get_ident_specs(Raw_Ident, State),
@@ -80,6 +118,9 @@ get_decl_specs(Type, Other, State) -> error(Other).
 get_ident_specs({{'*',_},Rest}, State) ->
   {ok, Ident, Ptr_Ident} = get_ident_specs(Rest, State),
   {ok, Ident, {'*',Ptr_Ident}};
+get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
+  {ok, Ident, Ptr_Ident} = get_ident_specs({Ptr,Rest}, State),
+  {ok, Ident, {'*',Ptr_Ident}};
 get_ident_specs({identifier,_,Ident}, State) ->
   {ok, Ident, Ident}.
 
@@ -87,21 +128,18 @@ get_ident({_,Next}) -> get_ident(Next);
 get_ident(Ident) -> {ok,Ident}.
 
 allocate_mem(Type,{'*',Ident},State) ->
-  {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,ptr}]};
+  {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,ref}]};
 allocate_mem(Type,Ident,State) ->
   {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,Type}]}.
 
 % TODO: Make this work on pointers
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
-  {ok,Ident,Ident} = get_ident_specs(Raw_Ident, State),
-  {ok, Mem_Loc} = case maps:get(Ident,State#state.var,undefined) of
-    {_Type,Hp} -> {ok,Hp};
-    Other -> {error, {undeclared,Ident}}
-  end,
-  {ok,Assign_State,Assign_St} = process(Raw_St,State),
-  Next_State = Assign_State#state{lvcnt=State#state.lvcnt},
-  Next_St = Assign_St ++ [{move,{x,Assign_State#state.lvcnt},Mem_Loc}],
-  {ok,Next_State,Next_St};
+  case get_ident_specs(Raw_Ident, State) of
+    {ok, Ident, Ident} ->
+      assign_noptr(Ident,State,Raw_St);
+    {ok, Ident, Ptr_Ident} ->
+      assign_ptr(Ident,Ptr_Ident,State,Raw_St)
+  end;
 
 get_assign_specs(Op,[Raw_Ident,Raw_St], State) ->
   {ok,_,Ptr_Ident} = get_ident_specs(Raw_Ident, State),
@@ -109,3 +147,40 @@ get_assign_specs(Op,[Raw_Ident,Raw_St], State) ->
 
 get_assign_specs(_Op, Other, State) ->
   error(Other).
+
+assign_noptr(Ident,State,Raw_St) ->
+  {ok, Mem_Loc} = case maps:get(Ident,State#state.var,undefined) of
+    {_Type,Hp} -> {ok,Hp};
+    Other -> {error, {undeclared,Ident}}
+  end,
+  {ok,Assign_State,Assign_St} = process(Raw_St,State),
+  Next_State = Assign_State#state{lvcnt=State#state.lvcnt},
+  Next_St = Assign_St ++ [{move,{x,Assign_State#state.lvcnt},Mem_Loc}],
+  {ok,Next_State,Next_St}.
+
+assign_ptr(Ident,Ptr_Ident,State,Raw_St) ->
+  {ok, Ptr} = case maps:get(Ident,State#state.var,undefined) of
+    {_Type,Ptr_Loc} -> {ok,Ptr_Loc};
+    Other -> {error, {undeclared,Ident}}
+  end,
+  {ok,Ptr_State,Ptr_St} = get_ptr(Ptr_Ident,Ptr,State),
+  {ok,Assign_State,Assign_St} = process(Raw_St,State),
+  Next_State = Assign_State#state{lvcnt=State#state.lvcnt},
+  error(Ptr_St).
+
+
+get_ptr({'*',Ptr_Ident}, Ptr, State) ->
+  Next_St = {heap,Ptr,{x,State#state.lvcnt}},
+  {ok,State,Ptr_St} = get_ptr(Ptr_Ident,{x,State#state.lvcnt},State),
+  {ok,State,[Next_St|Ptr_St]};
+
+get_ptr(Ptr_Ident, Ptr, State) ->
+  {ok,State,[]}.
+
+process_bif(Type,A,B,State) ->
+  {ok,A_State,A_St} = process(A,State),
+  N_A_State = A_State#state{lvcnt=State#state.lvcnt+1},
+  {ok,B_State,B_St} = process(B,N_A_State),
+  Lv_Cnt = State#state.lvcnt,
+  Statement = A_St ++ B_St ++ [{Type,{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
+  {ok,B_State,Statement}.
