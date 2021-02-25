@@ -1,14 +1,8 @@
-src/erl/parsing/*.erl
+src/parsing/*.erl
 _build/
-.metals/
-.bloop/
 .vscode/
-out/
-type.hrl.ignore
 test/
 .eunit/
-src/parser.erl
-priv/
 .build/
 .vagrant/
 .ccls-cache/

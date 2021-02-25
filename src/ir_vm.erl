@@ -3,7 +3,11 @@
 
 -record(context,{global=[],stack=[],heap=[],reg=[],fn=main}).
 
-run(Ir) -> run(Ir,main,[]).
+run(Ir) ->
+  case lists:search(fun ({function,_,_,_,_}) -> true; (_) -> false end, Ir) of
+    {value, {function,_,Fn,_,_}} -> run(Ir,Fn,[]);
+    _ -> error({no_fn,Ir})
+  end.
 run(Ir,Fn,Args) ->
   io:fwrite("Running ~s:~n~p~n~n",[Fn,Ir]),
   Context = #context{global=[{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir],fn=Fn,stack=Args},

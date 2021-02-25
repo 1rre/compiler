@@ -164,6 +164,7 @@ check_typedef(Type, Context) ->
 get_type([{long,_},{long,_},{int,_}]) -> int64;
 get_type([{long,_},{int,_}]) -> int64;
 get_type([{int,_}]) -> int32;
+get_type([{void,_}]) -> nil;
 get_type(Type) -> error({unknown_type, Type}).
 
 get_decl_specs([{identifier,_,Ident}]) ->
@@ -172,9 +173,7 @@ get_decl_specs([{{identifier,_,Ident},{'=',_},St}]) ->
   {ok, Ident, St};
 get_decl_specs([{identifier,_,Ident},St]) ->
   {ok, Ident, St};
-get_decl_specs(Unkn) ->
-  io:fwrite("Unknown, ~p", [Unkn]),
-  {ok,nil,[]}.
+get_decl_specs(Unkn) -> error({unknown,Unkn}).
 
 process_bif(Type,A,B,Context) ->
   {ok,A_Context,A_St} = process(A,Context),

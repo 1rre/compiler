@@ -1,3 +1,4 @@
+#!/usr/bin/env escript
 -module(build).
 -export([main/1]).
 %% Main function
