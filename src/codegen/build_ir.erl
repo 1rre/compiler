@@ -39,6 +39,28 @@ process({{return,_},Raw_St}, State) ->
   {ok, Rtn_State, Rtn_St} = process(Raw_St, State),
   {ok, Rtn_State#state{lvcnt=0,rvcnt=0}, Rtn_St++[return]};
 
+process({{'if',_},Predicate,True,False}, State) ->
+  Lb_Cnt = State#state.lbcnt,
+  Lv_Cnt = State#state.lvcnt,
+  {ok,If_State,If_St} = process(Predicate,State#state{lbcnt=Lb_Cnt+2}),
+  Test_State = If_State#state{lvcnt=Lv_Cnt},
+  Test_Jump = {test,{x,Lv_Cnt},{f,Lb_Cnt+1}},
+  {ok,True_State,True_St} = process(True,Test_State),
+  False_Label = {label,Lb_Cnt+1},
+  {ok,False_State,False_St} = process(False,Test_State#state{lbcnt=True_State#state.lbcnt}),
+  if
+    False_St =:= [] ->
+      Rtn_State = Test_State#state{lbcnt=False_State#state.lbcnt},
+      Rtn_St = If_St++[Test_Jump|True_St]++[False_Label],
+      {ok,Rtn_State,Rtn_St};
+    true ->
+      True_Jump = {jump,{f,Lb_Cnt+2}},
+      True_Label = {label,Lb_Cnt+2},
+      Rtn_State = Test_State#state{lbcnt=False_State#state.lbcnt},
+      Rtn_St = If_St++[Test_Jump|True_St]++[True_Jump,False_Label|False_St]++[True_Label],
+      {ok,Rtn_State,Rtn_St}
+  end;
+
 process({bif,T,[A,B]}, State) ->
   Way_1 = process_bif(T,A,B,State),
   Way_2 = process_bif(T,B,A,State),
