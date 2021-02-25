@@ -12,12 +12,23 @@ HEX_ESCAPE = \\x[0-9a-fA-F]+
 SYMBOL = \<\<\=|\>\>\=|\{|\}|\.\.\.|\<\<|\>\>|\<|\>|\<\=|\>\=|\=\=|\!\=|\^|\||\&\&|\?|\:|\*\=|\/\=|\%\=|\+\=|\-\=|\&\=|\^\=|\|\=|\-\>|\+\+|\-\-|\;|\[|\]|\(|\)|\.|\&|\||\*|\+|\-|\~|\!|\/|\%|\=|\,|\#\#|\#
 SIMPLE_ESCAPE = \\[abefnrtv'"\\?]
 BLANK = [\s\n]
+FRA = ((([0-9]+)(\.)([0-9]*))|(([0-9]*)(\.)([0-9]+)))(([eE]([+-]?)[0-9]+)?)
+EXP = ([eE]([+-]?)[0-9]+)
+OCT = [0][0-7]*
+DEC = [1-9][0-9]*
+HEX = 0[xX][0-9A-Fa-f]+
+INS = ([uU][lL]?)|([lL][uU]?)
+FLS = [fFlL]
 
 Rules.
 {COMMENT} : skip_token.
-"({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{S_CHAR})*"  : string_escape(TokenLine, tl(TokenChars)). 
+"({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{S_CHAR})*"  : string_escape(TokenLine, tl(TokenChars)).
 '({OCTAL_ESCAPE}|{HEX_ESCAPE}|{SIMPLE_ESCAPE}|{C_CHAR})+'  : char_to_int(TokenLine, tl(TokenChars)).
-{NUMBER}  : parse_num(TokenLine, TokenChars).
+{FRA}({FLS}?) : {token, ffloat(TokenChars, TokenLine)}.
+[0-9]+{EXP}({FLS}?) : {token, ifloat(TokenChars, TokenLine)}.
+{OCT}({INS}?) : {token, oct(TokenChars, TokenLine)}.
+{DEC}({INS}?) : {token, dec(TokenChars, TokenLine)}.
+{HEX}({INS}?) : {token, hex(TokenChars, TokenLine)}.
 {KEYWORD} : {token, {list_to_atom(TokenChars), TokenLine}}.
 {IDENT}   : {token, {identifier, TokenLine, list_to_atom(TokenChars)}}.
 {SYMBOL}  : {token, {list_to_atom(TokenChars), TokenLine}}.
@@ -44,7 +55,7 @@ string_escape(Line, Chars) ->
   end.
 
 % Simple escape
-resolve_escapes([$\\,C | List], Type) when ?SIMPLE_ESCAPE(C) -> 
+resolve_escapes([$\\,C | List], Type) when ?SIMPLE_ESCAPE(C) ->
   case resolve_escapes(List, Type) of
     {error, Error} -> {error, Error};
     Esc -> [simple_escape(C) | Esc]
@@ -71,7 +82,7 @@ resolve_escapes([$\\,C | List], Type) when ?OCT_DIGIT(C) ->
         Esc -> [(C-$0)*8+(hd(List)-$0) | Esc]
       end
     end;
-  true -> 
+  true ->
     case resolve_escapes(List, Type) of
       {error, Error} -> {error, Error};
       Esc -> [(C-$0) | Esc]
@@ -80,7 +91,7 @@ resolve_escapes([$\\,C | List], Type) when ?OCT_DIGIT(C) ->
 resolve_escapes([$\\ | _List], _Type) -> {error, "Invalid Escape"};
 resolve_escapes([$'], char) -> [];
 resolve_escapes([$"], string) -> [];
-resolve_escapes([C | List], Type) -> 
+resolve_escapes([C | List], Type) ->
   case resolve_escapes(List, Type) of
     {error, Error} -> {error, Error};
     Esc -> [C | Esc]
@@ -100,11 +111,29 @@ simple_escape($") -> $\x22;
 simple_escape($?) -> $\x3f;
 simple_escape($\\)-> $\x5c.
 
-parse_num(Line, Chars) -> 
-  case number_lexer:string(Chars) of
-    {ok, [{T, N, S}], _} -> {token, {T, Line, N, S}};
-    {error, {_,_,M}, _} -> {error, M}
+ffloat(Chars, Line) ->
+  {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $f) and (X =/= $F) and (X =/= $l) and (X =/= $L) end, [$0 | Chars]),
+  case string:split(Str, "e") of
+    [Man, Exp] -> {float_l,list_to_float(Man ++ [$0]) * math:pow(10, list_to_integer(Exp)), Suffix};
+    [Man] -> {float_l, Line, list_to_float(Man ++ [$0]), Suffix}
   end.
+
+ifloat(Chars, Line) ->
+  {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $f) and (X =/= $F) and (X =/= $l) and (X =/= $L) end, [$0 | Chars]),
+  [Man, Exp] = string:split(Str, "e"),
+  {float_l, Line, list_to_integer(Man) * math:pow(10, list_to_integer(Exp)), Suffix}.
+oct(Chars, Line) ->
+  {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $u) and (X =/= $U) and (X =/= $l) and (X =/= $L) end, Chars),
+  {int_l, Line, list_to_integer(Str, 8), Suffix}.
+
+dec(Chars, Line) ->
+  {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $u) and (X =/= $U) and (X =/= $l) and (X =/= $L) end, Chars),
+  {int_l, Line, list_to_integer(Str, 10), Suffix}.
+
+hex([_,_|Chars], Line) ->
+  {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $u) and (X =/= $U) and (X =/= $l) and (X =/= $L) end, Chars),
+  {int_l, Line, list_to_integer(Str, 16), Suffix}.
+
 
 -undef(OCT_DIGIT).
 -undef(HEX_DIGIT).
