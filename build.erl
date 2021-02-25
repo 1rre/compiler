@@ -50,7 +50,6 @@ build_common() ->
   [c:y(Yrl,{report_warnings,false}) || Yrl <- Yecc_Files],
   filelib:wildcard("src/**/*.erl").
 
-
 %% Collate the dependencies for compilation
 % C++ compiler
 get_dep(cxx) ->
@@ -82,7 +81,6 @@ get_dep(erts) ->
       end
   end.
 
-
 %% Autodetect the dependencies for compilation
 % Erlang runtime system include directory
 find(erts) ->
@@ -104,7 +102,6 @@ find(cxx, [Cxx | Rest]) ->
       Exec
   end.
 
-
 %% Asynchronously compile a C++ file
 compile(Cxx, Nif, Include) ->
   open_port(
@@ -116,7 +113,6 @@ compile(Cxx, Nif, Include) ->
         "-fpic",
         "-shared",
         Nif]}]).
-
 
 %% Ensure that all C++ files have compiled correctly
 wait_exe(0, true) ->
@@ -132,15 +128,13 @@ wait_exe(N, Is_Ok) ->
     _Message -> wait_exe(N, true)
   end.
 
-
 %% Change a file's 4 character extention, such as '.cpp' or '.xrl' to a different extention
 change_ext(File, beam) -> filename:basename(File, "erl") ++ "beam";
 change_ext(File, so) -> filename:basename(File, "cpp") ++ "so".
 
+%% Create an escript archive with all the compiled modules & make it executable
 escriptise(Bin) ->
-  ok = escript:create("bin/c_compiler",
-                      [shebang,
-                       {archive, Bin, []}]),
+  ok = escript:create("bin/c_compiler",[shebang,{archive,Bin,[]}]),
   case os:type() of
     {_,nt} -> ok;
     _ ->
