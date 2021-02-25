@@ -6,7 +6,7 @@
 main(["clean"]) ->
   file:del_dir_r(".build"),
   file:del_dir_r("bin"),
-  [file:delete(File) || File <- filelib:wildcard("src/erl/parsing/*.erl")];
+  [file:delete(File) || File <- filelib:wildcard("src/parsing/*.erl")];
 
 % Compile everything
 main(["compile"]) ->
@@ -43,9 +43,9 @@ build_common() ->
   Cxx_Files = filelib:wildcard("src/cpp/*.cpp"),
   [compile(Cxx, Nif, Include) || Nif <- Cxx_Files],
   wait_exe(length(Cxx_Files), false),
-  Leex_Files = filelib:wildcard("src/erl/parsing/*.xrl"),
+  Leex_Files = filelib:wildcard("src/parsing/*.xrl"),
   [leex:file(Xrl) || Xrl <- Leex_Files],
-  Yecc_Files = filelib:wildcard("src/erl/parsing/*.yrl"),
+  Yecc_Files = filelib:wildcard("src/parsing/*.yrl"),
   [c:y(Yrl,{report_warnings,false}) || Yrl <- Yecc_Files],
   filelib:wildcard("src/**/*.erl").
 
