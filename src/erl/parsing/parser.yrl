@@ -83,16 +83,16 @@ postfix_list -> '(' expression_list ')' : {apply,'$2'}.
 postfix_list -> '(' ')' : {apply,[]}.
 
 assignment_operator -> '='   : '$1'.
-assignment_operator -> '*='  : '$1'.
-assignment_operator -> '/='  : '$1'.
-assignment_operator -> '%='  : '$1'.
-assignment_operator -> '+='  : '$1'.
-assignment_operator -> '-='  : '$1'.
-assignment_operator -> '<<=' : '$1'.
-assignment_operator -> '>>=' : '$1'.
-assignment_operator -> '&='  : '$1'.
-assignment_operator -> '^='  : '$1'.
-assignment_operator -> '|='  : '$1'.
+assignment_operator -> '*='  : {'*',element(2,'$1')}.
+assignment_operator -> '/='  : {'/',element(2,'$1')}.
+assignment_operator -> '%='  : {'%',element(2,'$1')}.
+assignment_operator -> '+='  : {'+',element(2,'$1')}.
+assignment_operator -> '-='  : {'-',element(2,'$1')}.
+assignment_operator -> '<<=' : {'<<',element(2,'$1')}.
+assignment_operator -> '>>=' : {'>>',element(2,'$1')}.
+assignment_operator -> '&='  : {'&',element(2,'$1')}.
+assignment_operator -> '^='  : {'^',element(2,'$1')}.
+assignment_operator -> '|='  : {'|',element(2,'$1')}.
 
 equality_operator -> '==' : '$1'.
 equality_operator -> '!=' : '$1'.

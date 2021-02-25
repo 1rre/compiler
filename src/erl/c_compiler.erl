@@ -10,7 +10,7 @@ main([File]) ->
   {ok, _Context, Statement} = build_ir:process(Result),
   {ok, Statement};
 
-main(["-vm",File]) -> run_vm(File);
+main(["-vm",File]) -> halt(run_vm(File));
 
 main(_) -> main(["test/test.c"]).
 

@@ -76,8 +76,14 @@ process({assign, {'=',Ln}, Raw_Specs}, Context) ->
   Next_Context = Decl_Context#context{lvcnt=Lv_Cnt},
   case maps:get(Ident, Next_Context#context.var, undefined) of
     {_Type, Mem_Loc} -> {ok, Context, Decl_St ++ [{move,{x,Lv_Cnt},Mem_Loc}]};
-    undefined -> error({undeclared,Ident,{line,Ln}})
+    undefined -> error({undeclared,Ident,{line,Ln},{context,Context}})
   end;
+
+process({assign, {Op,Ln}, Raw_Specs}, Context) ->
+  {ok,Ident,Raw_Decl_St} = get_decl_specs(Raw_Specs),
+  Raw_Ident = {identifier,Ln,Ident},
+  Bif = [{bif,Op,[Raw_Ident,Raw_Decl_St]}],
+  process([{assign,{'=',Ln},[Raw_Ident,Bif]}], Context);
 
 %% Jump Statements
 process({{'if',_},Test,True,False}, Context) ->
