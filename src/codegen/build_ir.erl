@@ -152,7 +152,7 @@ process({{'&',Ln},Raw_St}, State) ->
     {move,Src,Dest} ->
       Next_St = lists:droplast(Ref_St) ++ [{address,Src,Dest}],
       {ok,copy_lvcnt(State,Ref_State),Next_St};
-    {get_heap,_Src,Dest} ->
+    {load,_Src,Dest} ->
       Next_St = Ref_St ++ [{address,Dest,Dest}],
       {ok,copy_lvcnt(State,Ref_State),Next_St};
     {address,_Src,Dest} ->
@@ -165,13 +165,13 @@ process({{'*',Ln},Raw_St},State) ->
   {ok, Ptr_State, Ptr_St} = process(Raw_St, State),
   case lists:last(Ptr_St) of
     {move,Src,Dest} ->
-      Next_St = lists:droplast(Ptr_St) ++ [{get_heap,Src,Dest}],
+      Next_St = lists:droplast(Ptr_St) ++ [{load,Src,Dest}],
       {ok,copy_lvcnt(State,Ptr_State),Next_St};
-    {get_heap,_Src,Dest} ->
-      Next_St = Ptr_St ++ [{get_heap,Dest,Dest}],
+    {load,_Src,Dest} ->
+      Next_St = Ptr_St ++ [{load,Dest,Dest}],
       {ok,copy_lvcnt(State,Ptr_State),Next_St};
     {address,_Src,Dest} ->
-      Next_St = Ptr_St ++ [{get_heap,Dest,Dest}],
+      Next_St = Ptr_St ++ [{load,Dest,Dest}],
       {ok,copy_lvcnt(State,Ptr_State),Next_St};
     Other -> error({Other,{line,Ln}})
   end;
@@ -250,7 +250,7 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
       {ok,copy_lbcnt(Assign_State,State),Next_St};
     _ ->
       {_,Src,_} = lists:last(Assign_St),
-      Next_St = Assign_St ++ Ptr_St ++ [{put_heap,Src,{x,Lv_Cnt + 1}}],
+      Next_St = Assign_St ++ Ptr_St ++ [{store,Src,{x,Lv_Cnt + 1}}],
       {ok,copy_lbcnt(Assign_State,State),Next_St}
   end;
 
@@ -263,7 +263,7 @@ get_assign_specs(Op, Other, State) ->
   error({Op,Other,State}).
 
 get_ptr({'*',Ptr_Ident}, Ptr, State) ->
-  Next_St = {get_heap,Ptr,{x,State#state.lvcnt}},
+  Next_St = {load,Ptr,{x,State#state.lvcnt}},
   {ok,State,Ptr_St} = get_ptr(Ptr_Ident,{x,State#state.lvcnt},State),
   {ok,State,[Next_St|Ptr_St]};
 
