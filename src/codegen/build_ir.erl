@@ -24,7 +24,6 @@ process({identifier,Ln,Ident}, State) ->
     Other -> error({Other,Ident,{line,Ln},{state,State}})
   end;
 
-% TODO: Not allocate heap for pass-by-reference
 process({{identifier,Ln,Ident},{apply,Args}}, State) ->
   {ok,Arg_State,Arg_St} = lists:foldl(fun
     (Arg,{ok,Acc_State,Acc_St}) ->
@@ -34,6 +33,9 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
   end, {ok,State,[]}, Args),
   case maps:get(Ident,Arg_State#state.fn, undefined) of
     {_Type, Arity, Allocation} when Arity =:= length(Args) ->
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      % This looks wrong but changing things breaks it %
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       Lv_Cnt = State#state.lvcnt,
       Rv_Cnt = State#state.rvcnt,
       Alloc_St = [{allocate,32} || _ <- lists:seq(0,Lv_Cnt)],
@@ -47,6 +49,9 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
           Mv_0_St = {move,{x,0},{x,Lv_Cnt}},
           Arg_St++Alloc_St++Mv_To_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
       end,
+      %%%%%%%%%%%%%%%%
+      % End of Wrong %
+      %%%%%%%%%%%%%%%%
       {ok,copy_lbcnt(Arg_State,State),New_St};
     Other ->
       error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})

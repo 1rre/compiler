@@ -15,7 +15,6 @@ run(Ir,Fn,Args) ->
       {<<Arg:32,Heap/bits>>,[C1+32,C1|Ch]}
     end, {<<>>,[0]}, Args),
   Init_Stack = [32*N||N<-lists:seq(length(Args)-1,0,-1)],
-  %io:fwrite("Running:~n~p~n~nCalling: ~s with~nargs: ~p~nheap: ~p~n",[Ir,Fn,Init_Stack,Init_Heap]),
   Init_Global = [{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir],
   Context = #context{global=Init_Global,fn=Fn,stack=Init_Stack,heap=Init_Heap,chunks=Init_Chunks},
   {ok, End_Context} = call_fn(Fn,Context,Ir),
