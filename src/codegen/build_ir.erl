@@ -248,9 +248,10 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
     [] ->
       Next_St = Assign_St++[{move,{x,Lv_Cnt},Ptr}],
       {ok,copy_lbcnt(Assign_State,State),Next_St};
-    _ ->
+    Ptr_St ->
+      {load,A,B} = lists:last(Ptr_St),
       {_,Src,_} = lists:last(Assign_St),
-      Next_St = Assign_St ++ Ptr_St ++ [{store,Src,{x,Lv_Cnt + 1}}],
+      Next_St = Assign_St ++ lists:droplast(Ptr_St) ++ [{move,A,B},{store,Src,{x,Lv_Cnt + 1}}],
       {ok,copy_lbcnt(Assign_State,State),Next_St}
   end;
 
@@ -263,7 +264,7 @@ get_assign_specs(Op, Other, State) ->
   error({Op,Other,State}).
 
 get_ptr({'*',Ptr_Ident}, Ptr, State) ->
-  Next_St = {move,Ptr,{x,State#state.lvcnt}},
+  Next_St = {load,Ptr,{x,State#state.lvcnt}},
   {ok,State,Ptr_St} = get_ptr(Ptr_Ident,{x,State#state.lvcnt},State),
   {ok,State,[Next_St|Ptr_St]};
 
