@@ -1,7 +1,10 @@
 -module(ir_vm).
 -export([run/1,run/2,run/3]).
 
--record(context,{global = [], addr_buf = [], reg = [], stack = <<>>, fn = main, chunks = [0]}).
+-define(GLOBL_PTR,16#10008000).
+-define(STACK_PTR,16#7FFFFFFF).
+
+-record(context,{reg,addr_buf,global,stack,s_bounds,heap,h_bounds,fn}).
 
 run(Ir) -> run(Ir,[]).
 run(Ir,Args) ->
@@ -10,15 +13,21 @@ run(Ir,Args) ->
     _ -> error({no_fn,Ir})
   end.
 run(Ir,Fn,Args) ->
-  {Init_Stack,Init_Chunks} = lists:foldl(fun
+  {Init_Stack,Init_S_Bounds} = lists:foldl(fun
     (Arg,{Stack,[C1|Ch]}) ->
       {<<Arg:32,Stack/bits>>,[C1+32,C1|Ch]}
     end, {<<>>,[0]}, Args),
-  Init_Buf = [32*N||N<-lists:seq(length(Args)-1,0,-1)],
   Init_Global = [{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir],
-  Context = #context{global=Init_Global,fn=Fn,addr_buf=Init_Buf,stack=Init_Stack,chunks=Init_Chunks},
+  Context = #context{reg = [],                 % List (runtime -> registers & memory)
+                     addr_buf = Init_S_Bounds, % List (compile-time only)
+                     global = Init_Global,     % List (runtime -> labels)
+                     stack = Init_Stack,       % Bits (runtime -> memory)
+                     s_bounds = Init_S_Bounds, % List (compile-time only)
+                     heap = <<>>,              % Bits (runtime -> memory)
+                     h_bounds = [0],           % List (compile-time only)
+                     fn = Fn},                 % Atom (debugging only)
   {ok, End_Context} = call_fn(Fn,Context,Ir),
-  io:fwrite("End Stack:~n~p~n",[End_Context#context.stack]),
+  io:fwrite("End Stack:~n~p~n~nEnd Heap:~n~p~n",[End_Context#context.stack,End_Context#context.heap]),
   lists:last(End_Context#context.reg).
 
 call_fn(Fn,Context,Ir) ->
@@ -34,22 +43,33 @@ run_st([return|_],Context,_Ir) ->
 
 run_st([{allocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
-  Chunks = Context#context.chunks,
   N_Stack = <<Stack/bits,0:N>>,
-  N_Chunks = [N+bit_size(Stack)|Chunks],
+  S_Bounds = Context#context.s_bounds,
+  N_S_Bounds = [N+bit_size(Stack)|S_Bounds],
   N_Buf = [bit_size(Stack)|Context#context.addr_buf],
-  N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,chunks=N_Chunks},
+  N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
   run_st(Rest,N_Context,Ir);
 
 run_st([{deallocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   Size = bit_size(Stack) - N,
-  Chunks = Context#context.chunks,
-  N_Chunks = rm_chunks(Chunks,Size),
+  S_Bounds = Context#context.s_bounds,
+  N_S_Bounds = rm_chunks(S_Bounds,Size),
   <<N_Stack:Size/bits,_/bits>> = Stack,
   Buf = Context#context.addr_buf,
-  N_Buf = lists:nthtail(length(Chunks)-length(N_Chunks),Buf),
-  N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,chunks=N_Chunks},
+  N_Buf = lists:nthtail(length(S_Bounds)-length(N_S_Bounds),Buf),
+  N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
+  run_st(Rest,N_Context,Ir);
+
+run_st([{heap,Data_Size,Src,Dest}|Rest],Context,Ir) ->
+  Heap = Context#context.heap,
+  N = get_data(Src,Context),
+  Size = Data_Size * N,
+  N_Heap = <<Heap/bits,0:Size>>,
+  New_Mem = [bit_size(Heap) + X * Data_Size || X <- lists:seq(N,1,-1)],
+  H_Bounds = Context#context.h_bounds,
+  N_H_Bounds = New_Mem ++ H_Bounds,
+  N_Context = Context#context{heap=N_Heap,h_bounds=N_H_Bounds},
   run_st(Rest,N_Context,Ir);
 
 run_st([{address,Src,Dest}|Rest],Context,Ir) ->
@@ -123,7 +143,7 @@ get_data({y,N},Context) ->
 get_data(nil,_Context) ->
   {ok,nil};
 get_data(Address,Context) when is_integer(Address) ->
-  Size = get_stack_size(Address,Context#context.chunks),
+  Size = get_stack_size(Address,Context#context.s_bounds),
   <<_:Address,Data:Size,_/bits>> = Context#context.stack,
   {ok,Data};
 get_data(Data,_Context) ->
@@ -137,7 +157,7 @@ set_data({y,N},Data,Context) ->
   Buf = Context#context.addr_buf,
   set_data(lists:nth(length(Buf)-N, Buf),Data,Context);
 set_data(Address,Data,Context) when is_integer(Address) ->
-  Size = get_stack_size(Address,Context#context.chunks),
+  Size = get_stack_size(Address,Context#context.s_bounds),
   <<Init:Address,_:Size,Rest/bits>> = Context#context.stack,
   N_Stack = <<Init:Address,Data:Size,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
@@ -158,10 +178,10 @@ get_address(_,_) -> error("").
 
 get_stack_size(C1,[C2,C1|_]) ->
   C2-C1;
-get_stack_size(C1,[C2,C3|Chunks]) when (C2 > C1) and (C1 > C3) ->
-  error({stack_boundary,{C1,[C2,C3|Chunks]}});
-get_stack_size(C1,[_|Chunks]) ->
-  get_stack_size(C1,Chunks).
+get_stack_size(C1,[C2,C3|S_Bounds]) when (C2 > C1) and (C1 > C3) ->
+  error({stack_boundary,{C1,[C2,C3|S_Bounds]}});
+get_stack_size(C1,[_|S_Bounds]) ->
+  get_stack_size(C1,S_Bounds).
 
 gc_list(_,_,[]) -> {[],[]};
 gc_list(First,Arity,[_|Reg]) when length(Reg) >= First + Arity -> gc_list(First,Arity,Reg);
@@ -184,12 +204,12 @@ find_lb([{label,_Lb}|St],_Lb) -> St;
 find_lb([_|St],Lb) -> find_lb(St,Lb);
 find_lb(_,Lb) -> error({no_label,Lb}).
 
-rm_chunks([Chunk|Chunks],Size) when Chunk =:= Size ->
-  [Chunk|Chunks];
-rm_chunks([C1,C2|Chunks],Size) when (C1>Size) and (C2 < Size) ->
-  error(stack_boundary,{[C1,C2|Chunks],Size});
-rm_chunks([_|Chunks],Size) ->
-  rm_chunks(Chunks,Size).
+rm_chunks([Chunk|Bounds],Size) when Chunk =:= Size ->
+  [Chunk|Bounds];
+rm_chunks([C1,C2|Bounds],Size) when (C1>Size) and (C2 < Size) ->
+  error({boundary_violation,{request,Size},{bounds,{C2,C1}}});
+rm_chunks([_|Bounds],Size) ->
+  rm_chunks(Bounds,Size).
 
 do_op('+',A,B) -> A+B;
 do_op('-',A,B) -> A-B;
