@@ -33,9 +33,6 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
   end, {ok,State,[]}, Args),
   case maps:get(Ident,Arg_State#state.fn, undefined) of
     {_Type, Arity, Allocation} when Arity =:= length(Args) ->
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      % This looks wrong but changing things breaks it %
-      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       Lv_Cnt = State#state.lvcnt,
       Rv_Cnt = State#state.rvcnt,
       Alloc_St = [{allocate,32} || _ <- lists:seq(0,Lv_Cnt+Arity-1)],
@@ -49,9 +46,6 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
           Mv_0_St = {move,{x,0},{x,Lv_Cnt}},
           Arg_St++Alloc_St++Mv_To_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
       end,
-      %%%%%%%%%%%%%%%%
-      % End of Wrong %
-      %%%%%%%%%%%%%%%%
       {ok,copy_lbcnt(Arg_State,State),New_St};
     Other ->
       error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})
@@ -70,7 +64,6 @@ process({assign,{Op,_Ln},Raw_Specs}, State) ->
 process({{return,_},Raw_St}, State) ->
   {ok, Rtn_State, Rtn_St} = process(Raw_St, State),
   {ok, Dealloc} = deallocate_mem(#{},Rtn_State#state.var),
-  io:fwrite("~p~n",[Rtn_State#state.var]),
   {ok, Rtn_State#state{lvcnt=0,rvcnt=0}, Rtn_St++[Dealloc,return]};
 
 process({{'if',_},Predicate,True,False}, State) ->

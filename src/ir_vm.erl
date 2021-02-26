@@ -93,7 +93,6 @@ run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
   Fn_Context = Context#context{addr_buf=Args,fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
   N_Context = Fn_End#context{addr_buf=Other,fn=Context#context.fn},
-  io:fwrite("~p~n",[N_Context#context.addr_buf]),
   run_st(Rest,N_Context,Ir);
 
 run_st([{test,Data,{f,Lb}}|St],Context,Ir) ->
@@ -131,13 +130,13 @@ get_data({y,N},Context) ->
   get_data(lists:nth(length(Buf)-N, Buf),Context);
 get_data(nil,_Context) ->
   {ok,nil};
-get_data(Address,Context) when Address >= 16#7000000 ->
+get_data(Address,Context) when is_integer(Address) and (Address >= 16#7000000) ->
   Size = get_mem_size(Address,Context#context.s_bounds)*8,
-  Offset = (?STACK_PTR - Address)*8 - Size,
+  Offset = (?STACK_PTR - Address)*8,
   <<_:Offset,Data:Size,_/bits>> = Context#context.stack,
   {ok,Data};
 get_data(Address,Context) when is_integer(Address) ->
-  Size = get_mem_size(Address,Context#context.s_bounds)*8,
+  Size = get_mem_size(Address,Context#context.h_bounds)*8,
   Offset = (Address-?GLOBL_PTR)*8 - Size,
   <<_:Offset,Data:Size,_/bits>> = Context#context.heap,
   {ok,Data};
@@ -153,14 +152,14 @@ set_data({y,N},Data,Context) ->
   set_data(lists:nth(length(Buf)-N, Buf),Data,Context);
 set_data(Address,Data,Context) when is_integer(Address) and (Address >= 16#7000000) ->
   Size = get_mem_size(Address,Context#context.s_bounds) * 8,
-  Offset = (?STACK_PTR - Address)*8 - Size,
+  Offset = (?STACK_PTR - Address)*8,
   <<Init:Offset,_:Size,Rest/bits>> = Context#context.stack,
   N_Stack = <<Init:Offset,Data:Size,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
   {ok,N_Context};
 set_data(Address,Data,Context) when is_integer(Address) ->
-  Size = get_mem_size(Address,Context#context.s_bounds) * 8,
-  Offset = (Address - ?GLOBL_PTR)*8 - Size,
+  Size = get_mem_size(Address,Context#context.h_bounds) * 8,
+  Offset = (Address - ?GLOBL_PTR)*8,
   <<Init:Offset,_:Size,Rest/bits>> = Context#context.heap,
   N_Heap = <<Init:Offset,Data:Size,Rest/bits>>,
   N_Context = Context#context{heap=N_Heap},
@@ -179,10 +178,10 @@ get_address({x,N},Context) ->
   get_data({x,N},Context);
 get_address(_,_) -> error("").
 
-get_mem_size(C1,[C1,C2|_]) ->
-  abs(C2-C1);
-get_mem_size(C1,[C2,C3|S_Bounds]) when (C2 > C1) /= (C1 > C3) ->
-  error({stack_boundary,{C1,[C2,C3|S_Bounds]}});
+get_mem_size(C1,[C2,C1|_]) ->
+  abs(C1-C2);
+get_mem_size(C1,[C2,C3|S_Bounds]) when (C2 > C1) /= (C3 > C1) ->
+  error({stack_boundary,{C1,{C2,C3}}});
 get_mem_size(C1,[_|S_Bounds]) ->
   get_mem_size(C1,S_Bounds).
 
@@ -200,8 +199,8 @@ find_lb(_,Lb) -> error({no_label,Lb}).
 
 rm_chunks([Chunk|S_Bounds],Size) when Chunk =:= Size ->
   [Chunk|S_Bounds];
-rm_chunks([C1,C2|S_Bounds],Size) when (C1>Size) and (C2 < Size) ->
-  error(stack_boundary,{[C1,C2|S_Bounds],Size});
+rm_chunks([C1,C2|S_Bounds],Size) when (C1>Size) /= (C2>Size) ->
+  error({boundary_error,{Size,{C1,C2}}});
 rm_chunks([_|S_Bounds],Size) ->
   rm_chunks(S_Bounds,Size).
 
