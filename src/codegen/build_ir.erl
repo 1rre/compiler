@@ -24,8 +24,7 @@ process({identifier,Ln,Ident}, State) ->
     Other -> error({Other,Ident,{line,Ln},{state,State}})
   end;
 
-%TODO: Process function calls
-
+% TODO: Not allocate heap for pass-by-reference
 process({{identifier,Ln,Ident},{apply,Args}}, State) ->
   {ok,Arg_State,Arg_St} = lists:foldl(fun
     (Arg,{ok,Acc_State,Acc_St}) ->
@@ -34,8 +33,21 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
       {ok,copy_lbcnt(Acc_Rtn_State,Acc_State#state{lvcnt=Lv_Cnt+1}),Acc_St++Acc_Rtn_St}
   end, {ok,State,[]}, Args),
   case maps:get(Ident,Arg_State#state.fn, undefined) of
-    {_Type, Arity} when Arity =:= length(Args) ->
-      {ok,copy_lbcnt(Arg_State,State),Arg_St++[{call,Ident,Arity,{x,State#state.lvcnt}}]};
+    {_Type, Arity, Allocation} when Arity =:= length(Args) ->
+      Lv_Cnt = State#state.lvcnt,
+      Rv_Cnt = State#state.rvcnt,
+      Alloc_St = [{allocate,32} || _ <- lists:seq(0,Lv_Cnt)],
+      Mv_To_St = [{move,{x,N},{y,Rv_Cnt+N}} || N <- lists:seq(0,Lv_Cnt+Arity-1)],
+      Call_St = {call,Ident,Arity,{y,Rv_Cnt+Lv_Cnt}},
+      Mv_Bk_St = [{move,{y,Rv_Cnt+N},{x,N}} || N <- lists:seq(0,Lv_Cnt-1)],
+      Dealloc_St = {deallocate,32*(Lv_Cnt)},
+      New_St = if
+        Lv_Cnt =:= 0 -> Arg_St++Alloc_St++Mv_To_St++[Call_St|Mv_Bk_St] ++ [Dealloc_St];
+        true ->
+          Mv_0_St = {move,{x,0},{x,Lv_Cnt}},
+          Arg_St++Alloc_St++Mv_To_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
+      end,
+      {ok,copy_lbcnt(Arg_State,State),New_St};
     Other ->
       error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})
   end;
@@ -69,12 +81,12 @@ process({{'if',_},Predicate,True,False}, State) ->
   Rtn_State = copy_lbcnt(False_State,State),
   if
     False_St =:= [] ->
-      Rtn_St = If_St++[Test_Jump|True_St]++True_Dealloc++[False_Label],
+      Rtn_St = If_St++[Test_Jump|True_St]++[True_Dealloc,False_Label],
       {ok,Rtn_State,Rtn_St};
     true ->
       True_Jump = {jump,{f,Lb_Cnt+2}},
       True_Label = {label,Lb_Cnt+2},
-      Rtn_St = If_St++[Test_Jump|True_St]++True_Dealloc++[True_Jump,False_Label|False_St]++False_Dealloc++[True_Label],
+      Rtn_St = If_St++[Test_Jump|True_St]++[True_Dealloc,True_Jump,False_Label|False_St]++[False_Dealloc,True_Label],
       {ok,Rtn_State,Rtn_St}
   end;
 
@@ -84,22 +96,24 @@ process({{while,_},Predicate,Do}, State) ->
   {ok,Pred_State,Pred_St} = process(Predicate,State#state{lbcnt=Lb_Cnt+1}),
   Test_Jump = {test,{x,State#state.lvcnt},{f,Lb_Cnt+1}},
   {ok,Do_State,Do_St} = process(Do,copy_lvcnt(State,Pred_State)),
+  {ok,Do_Dealloc} = deallocate_mem(Pred_State#state.var,Do_State#state.var),
   Jump = {jump,{f,Lb_Cnt}},
   End_Label = {label,Lb_Cnt + 1},
   Rtn_State = copy_lbcnt(Do_State,State),
-  Rtn_St = [Start_Label|Pred_St] ++ [Test_Jump|Do_St] ++ [Jump,End_Label],
+  Rtn_St = [Start_Label|Pred_St] ++ [Test_Jump|Do_St] ++ [Do_Dealloc,Jump,End_Label],
   {ok,Rtn_State,Rtn_St};
 
 process({{do,_},Do,Predicate}, State) ->
   Lb_Cnt = State#state.lbcnt,
   Start_Label = {label,Lb_Cnt + 1},
   {ok,Do_State,Do_St} = process(Do,State#state{lbcnt=Lb_Cnt+2}),
+  {ok,Do_Dealloc} = deallocate_mem(State#state.var,Do_State#state.var),
   {ok,Pred_State,Pred_St} = process(Predicate,copy_lbcnt(Do_State,State)),
   Test_Jump = {test,{x,State#state.lvcnt},{f,Lb_Cnt+2}},
   Jump = {jump,{f,Lb_Cnt+1}},
   End_Label = {label,Lb_Cnt + 2},
   Rtn_State = copy_lbcnt(Pred_State,State),
-  Rtn_St = [Start_Label|Do_St] ++ Pred_St ++ [Test_Jump,Jump,End_Label],
+  Rtn_St = [Start_Label|Do_St] ++ [Do_Dealloc|Pred_St] ++ [Test_Jump,Jump,End_Label],
   {ok,Rtn_State,Rtn_St};
 
 process({{for,_},{Init,Predicate,Update},Loop}, State) ->
@@ -159,13 +173,12 @@ process({{'*',Ln},Raw_St},State) ->
 
 process(Other, State) -> error({Other,State}).
 
-% TODO: Add analysis of `Ident` (eg. returning pointer)
-% TODO: Analysis of args for pass-by-reference?
+% TODO: Add analysis of `Ident` (eg. returning pointer) (done?)
 get_fn_specs({Raw_Type,{Raw_Ident,Raw_Args},Raw_St}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
   {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident,State),
-  {ok, Arg_State, _Arg_St} = process(Raw_Args, State),
-  New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
+  {ok, Arg_State, Arg_St} = process(Raw_Args, State),
+  New_Fn = maps:put(Ident,{Type,length(Raw_Args),Arg_St},Arg_State#state.fn),
   {ok, N_State, N_St} = process(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = [{function,Type,Ident,length(Raw_Args),N_St}],
   {ok,copy_lvcnt(State,N_State),Rtn_St}.
@@ -206,7 +219,6 @@ get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
 get_ident_specs({identifier,_,Ident}, _State) ->
   {ok, Ident, Ident}.
 
-% Do we need to say what it's a pointer to?
 allocate_mem(_Type,{'*',_Ident},State) ->
   {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,sizeof(pointer,State)}]};
 allocate_mem(Type,_Ident,State) ->

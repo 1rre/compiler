@@ -1,18 +1,25 @@
 -module(ir_vm).
--export([run/1,run/3]).
+-export([run/1,run/2,run/3]).
 
 -record(context,{global = [], stack = [], reg = [], heap = <<>>, fn = main, chunks = [0]}).
 
-run(Ir) ->
+run(Ir) -> run(Ir,[]).
+run(Ir,Args) ->
   case lists:search(fun ({function,_,_,_,_}) -> true; (_) -> false end, Ir) of
-    {value, {function,_,Fn,_,_}} -> run(Ir,Fn,[]);
+    {value, {function,_,Fn,_,_}} -> run(Ir,Fn,Args);
     _ -> error({no_fn,Ir})
   end.
 run(Ir,Fn,Args) ->
-  io:fwrite("Running ~s:~n~p~n~n",[Fn,Ir]),
-  Context = #context{global=[{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir],fn=Fn,stack=Args},
+  {Init_Heap,Init_Chunks} = lists:foldl(fun
+    (Arg,{Heap,[C1|Ch]}) ->
+      {<<Arg:32,Heap/bits>>,[C1+32,C1|Ch]}
+    end, {<<>>,[0]}, Args),
+  Init_Stack = [32*N||N<-lists:seq(length(Args)-1,0,-1)],
+  %io:fwrite("Running:~n~p~n~nCalling: ~s with~nargs: ~p~nheap: ~p~n",[Ir,Fn,Init_Stack,Init_Heap]),
+  Init_Global = [{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir],
+  Context = #context{global=Init_Global,fn=Fn,stack=Init_Stack,heap=Init_Heap,chunks=Init_Chunks},
   {ok, End_Context} = call_fn(Fn,Context,Ir),
-  io:fwrite("End heap was ~p~n", [End_Context#context.heap]),
+  io:fwrite("End Heap:~n~p~n",[End_Context#context.heap]),
   lists:last(End_Context#context.reg).
 
 call_fn(Fn,Context,Ir) ->
@@ -72,16 +79,13 @@ run_st([{label,_}|Rest],Context,Ir) -> run_st(Rest,Context,Ir);
 
 run_st([{jump,{f,Lb}}|_],Context,Ir) -> jump(Lb,Context,Ir);
 
-run_st([{call,Fn,Arity,{x,First}}|Rest],Context,Ir) ->
-  {Args,Other} = gc_list(First,Arity,Context#context.reg),
-  Fn_Context = #context{global=Context#context.global,
-                        stack=Args,
-                        heap=Context#context.heap,
-                        fn=Fn},
+run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
+  Stack = Context#context.stack,
+  {Args,Other} = lists:split(length(Stack)-First,Stack),
+  %io:fwrite("Calling: ~s with~nargs: ~p~nheap: ~p~n",[Fn,Args,Context#context.heap]),
+  Fn_Context = Context#context{stack=Args,fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
-  N_Context = Fn_End#context{stack=Context#context.stack,
-                             fn=Context#context.fn,
-                             reg=[lists:last(Fn_End#context.reg)|Other]},
+  N_Context = Fn_End#context{stack=Other,fn=Context#context.fn},
   run_st(Rest,N_Context,Ir);
 
 run_st([{test,Data,{f,Lb}}|St],Context,Ir) ->

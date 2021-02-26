@@ -17,20 +17,25 @@ main([File]) ->
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
-  io:fwrite("~p~n",[Result]),
   {ok, _Context, Statement} = build_ir:process(Result),
   {ok, Statement};
 
-main(["-vm",File]) -> halt(run_vm(File));
+main(["-vm",File|Args]) -> halt(run_vm(File,[list_to_integer(N)||N<-Args]));
 
 main(_) ->
   {ok,Ast} = main(["test/test.c"]),
   io:fwrite("~p~n",[Ast]).
 
-run_vm(File) -> run_vm(File,main,[]).
+% Reversing the IR for now as we want main to be at the start rather than at the end
+run_vm(File) ->
+  {ok,Ir} = main([File]),
+  ir_vm:run(lists:reverse(Ir)).
+run_vm(File,Args) ->
+  {ok,Ir} = main([File]),
+  ir_vm:run(lists:reverse(Ir),lists:reverse(Args)).
 run_vm(File,Fn,Args) ->
   {ok,Ir} = main([File]),
-  ir_vm:run(Ir,Fn,Args).
+  ir_vm:run(lists:reverse(Ir),Fn,lists:reverse(Args)).
 
 read_file(Io_Stream) ->
   case file:read_line(Io_Stream) of
