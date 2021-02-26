@@ -47,12 +47,13 @@ process({declaration,Raw_Type,Raw_St}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
   get_decl_specs(Type,Raw_St,State);
 
-process({assign,{Op,Ln},Raw_Specs}, State) ->
+process({assign,{Op,_Ln},Raw_Specs}, State) ->
   get_assign_specs(Op,Raw_Specs,State);
 
 process({{return,_},Raw_St}, State) ->
   {ok, Rtn_State, Rtn_St} = process(Raw_St, State),
-  {ok, Rtn_State#state{lvcnt=0,rvcnt=0}, Rtn_St++[return]};
+  {ok,Dealloc} = deallocate_mem(#{},Rtn_State#state.var),
+  {ok, Rtn_State#state{lvcnt=0,rvcnt=0}, Rtn_St++[Dealloc,return]};
 
 process({{'if',_},Predicate,True,False}, State) ->
   Lb_Cnt = State#state.lbcnt,
@@ -61,17 +62,19 @@ process({{'if',_},Predicate,True,False}, State) ->
   Test_State = If_State#state{lvcnt=Lv_Cnt},
   Test_Jump = {test,{x,Lv_Cnt},{f,Lb_Cnt+1}},
   {ok,True_State,True_St} = process(True,Test_State),
+  {ok,True_Dealloc} = deallocate_mem(Test_State#state.var,True_State#state.var),
   False_Label = {label,Lb_Cnt+1},
   {ok,False_State,False_St} = process(False,copy_lbcnt(True_State,Test_State)),
+  {ok,False_Dealloc} = deallocate_mem(Test_State#state.var,False_State#state.var),
   Rtn_State = copy_lbcnt(False_State,State),
   if
     False_St =:= [] ->
-      Rtn_St = If_St++[Test_Jump|True_St]++[False_Label],
+      Rtn_St = If_St++[Test_Jump|True_St]++True_Dealloc++[False_Label],
       {ok,Rtn_State,Rtn_St};
     true ->
       True_Jump = {jump,{f,Lb_Cnt+2}},
       True_Label = {label,Lb_Cnt+2},
-      Rtn_St = If_St++[Test_Jump|True_St]++[True_Jump,False_Label|False_St]++[True_Label],
+      Rtn_St = If_St++[Test_Jump|True_St]++True_Dealloc++[True_Jump,False_Label|False_St]++False_Dealloc++[True_Label],
       {ok,Rtn_State,Rtn_St}
   end;
 
@@ -108,11 +111,12 @@ process({{for,_},{Init,Predicate,Update},Loop}, State) ->
   {ok,Pred_State,Pred_St} = process(Predicate,Root_State),
   Pred_Test = {test,{x,Lv_Cnt},{f,Lb_Cnt+2}},
   {ok,Loop_State,Loop_St} = process(Loop,copy_lbcnt(Pred_State,Root_State)),
+  {ok,Dealloc} = deallocate_mem(Init_State#state.var,Loop_State#state.var),
   {ok,Update_State,Update_St} = process(Update,copy_lbcnt(Loop_State,Root_State)),
   Jump = {jump,{f,Lb_Cnt+1}},
   End_Label = {label,Lb_Cnt+2},
   Next_State = copy_lbcnt(Update_State,State),
-  Next_St = Init_St ++ [Pred_Label|Pred_St] ++ [Pred_Test|Loop_St] ++ Update_St ++ [Jump,End_Label],
+  Next_St = Init_St ++ [Pred_Label|Pred_St] ++ [Pred_Test|Loop_St] ++ [Dealloc|Update_St] ++ [Jump,End_Label],
   {ok,Next_State,Next_St};
 
 process({bif,T,[A,B]}, State) ->
@@ -129,13 +133,13 @@ process({{'&',Ln},Raw_St}, State) ->
     {move,Src,Dest} ->
       Next_St = lists:droplast(Ref_St) ++ [{address,Src,Dest}],
       {ok,copy_lvcnt(State,Ref_State),Next_St};
-    {get_heap,Src,Dest} ->
+    {get_heap,_Src,Dest} ->
       Next_St = Ref_St ++ [{address,Dest,Dest}],
       {ok,copy_lvcnt(State,Ref_State),Next_St};
-    {address,Src,Dest} ->
+    {address,_Src,Dest} ->
       Next_St = Ref_St ++ [{address,Dest,Dest}],
       {ok,copy_lvcnt(State,Ref_State),Next_St};
-    Other -> error({address_error,Other})
+    Other -> error({address_error,Other,{line,Ln}})
     end;
 
 process({{'*',Ln},Raw_St},State) ->
@@ -144,22 +148,23 @@ process({{'*',Ln},Raw_St},State) ->
     {move,Src,Dest} ->
       Next_St = lists:droplast(Ptr_St) ++ [{get_heap,Src,Dest}],
       {ok,copy_lvcnt(State,Ptr_State),Next_St};
-    {get_heap,Src,Dest} ->
+    {get_heap,_Src,Dest} ->
       Next_St = Ptr_St ++ [{get_heap,Dest,Dest}],
       {ok,copy_lvcnt(State,Ptr_State),Next_St};
-    {address,Src,Dest} ->
+    {address,_Src,Dest} ->
       Next_St = Ptr_St ++ [{get_heap,Dest,Dest}],
-      {ok,copy_lvcnt(State,Ptr_State),Next_St}
+      {ok,copy_lvcnt(State,Ptr_State),Next_St};
+    Other -> error({Other,{line,Ln}})
   end;
 
-process(Other, State) -> error(Other).
+process(Other, State) -> error({Other,State}).
 
 % TODO: Add analysis of `Ident` (eg. returning pointer)
 % TODO: Analysis of args for pass-by-reference?
 get_fn_specs({Raw_Type,{Raw_Ident,Raw_Args},Raw_St}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
-  {ok, Ident, Ptr_Ident} = get_ident_specs(Raw_Ident,State),
-  {ok, Arg_State, Arg_St} = process(Raw_Args, State),
+  {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident,State),
+  {ok, Arg_State, _Arg_St} = process(Raw_Args, State),
   New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
   {ok, N_State, N_St} = process(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = [{function,Type,Ident,length(Raw_Args),N_St}],
@@ -171,7 +176,7 @@ get_type([{int,_}],_) -> {ok,int32};
 get_type([{void,_}],_) -> {ok,nil};
 get_type(Type,_) -> {error,{unknown_type, Type}}.
 
-get_decl_specs(Type, [{Raw_Ident,Op,Raw_St}], State) when Raw_Ident =/= identifier ->
+get_decl_specs(Type, [{Raw_Ident,{'=',_},Raw_St}], State) when Raw_Ident =/= identifier ->
   {ok, Ident, Ptr_Ident} = get_ident_specs(Raw_Ident, State),
   {ok, Mem_State, Mem_St} = allocate_mem(Type, Ptr_Ident, State),
   {ok, Decl_State, Decl_St} = process(Raw_St, Mem_State),
@@ -182,14 +187,14 @@ get_decl_specs(Type, [{Raw_Ident,Op,Raw_St}], State) when Raw_Ident =/= identifi
   {ok, Next_State, Next_St};
 
 get_decl_specs(Type, [Raw_Ident], State) ->
-  {ok, Ident, Ptr_Ident} = get_ident_specs(Raw_Ident, State),
+  {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident, State),
   {ok, Mem_State, Mem_St} = allocate_mem(Type, Ident, State),
   Rv_Cnt = Mem_State#state.rvcnt,
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1},
   {ok,Next_State,Mem_St};
 
-get_decl_specs(Type, Other, State) -> error(Other).
+get_decl_specs(Type, Other, State) -> error({Type,Other,State}).
 
 % TODO: Add referencing
 get_ident_specs({{'*',_},Rest}, State) ->
@@ -198,25 +203,28 @@ get_ident_specs({{'*',_},Rest}, State) ->
 get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
   {ok, Ident, Ptr_Ident} = get_ident_specs({Ptr,Rest}, State),
   {ok, Ident, {'*',Ptr_Ident}};
-get_ident_specs({identifier,_,Ident}, State) ->
+get_ident_specs({identifier,_,Ident}, _State) ->
   {ok, Ident, Ident}.
 
-get_ident({_,Next}) -> get_ident(Next);
-get_ident(Ident) -> {ok,Ident}.
+% Do we need to say what it's a pointer to?
+allocate_mem(_Type,{'*',_Ident},State) ->
+  {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,sizeof(pointer,State)}]};
+allocate_mem(Type,_Ident,State) ->
+  {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,sizeof(Type,State)}]}.
 
-allocate_mem(_Type,{'*',Ident},State) ->
-  {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,pointer}]};
-allocate_mem(Type,Ident,State) ->
-  {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,Type}]}.
+deallocate_mem(State_1,State_2) ->
+  Dealloc_Mem = [maps:get(Key,State_2,undef) || Key <- maps:keys(State_2),
+                                                maps:get(Key,State_1,undef) /= maps:get(Key,State_2,undef)],
+  Dealloc = [sizeof(Type,State_2) || {Type,_} <- Dealloc_Mem],
+  {ok, {deallocate,lists:sum(Dealloc)}}.
 
-% TODO:Completely overhaul this
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   {ok,Ident,Ptr_Ident} = get_ident_specs(Raw_Ident, State),
   {ok, Ptr} = case maps:get(Ident,State#state.var,undefined) of
     {_Type,Ptr_Loc} -> {ok,Ptr_Loc};
-    Other -> {error, {undeclared,Ident}}
+    Other -> {error, {Other,{undeclared,Ident}}}
   end,
-  {ok,Ptr_State,Ptr_St} = get_ptr(Ptr_Ident,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
+  {ok,_Ptr_State,Ptr_St} = get_ptr(Ptr_Ident,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
   {ok,Assign_State,Assign_St} = process(Raw_St,State),
   Lv_Cnt = State#state.lvcnt,
   case Ptr_St of
@@ -229,19 +237,20 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
       {ok,copy_lbcnt(Assign_State,State),Next_St}
   end;
 
+% This seems useless maybe?
 get_assign_specs(Op,[Raw_Ident,Raw_St], State) ->
-  {ok,_,Ptr_Ident} = get_ident_specs(Raw_Ident, State),
+  {ok,_,_} = get_ident_specs(Raw_Ident, State),
   get_assign_specs('=',[Raw_Ident,{bif,Op,[Raw_Ident,Raw_St]}], State);
 
-get_assign_specs(_Op, Other, State) ->
-  error(Other).
+get_assign_specs(Op, Other, State) ->
+  error({Op,Other,State}).
 
 get_ptr({'*',Ptr_Ident}, Ptr, State) ->
   Next_St = {get_heap,Ptr,{x,State#state.lvcnt}},
   {ok,State,Ptr_St} = get_ptr(Ptr_Ident,{x,State#state.lvcnt},State),
   {ok,State,[Next_St|Ptr_St]};
 
-get_ptr(Ptr_Ident, Ptr, State) ->
+get_ptr(_Ptr_Ident, _Ptr, State) ->
   {ok,State,[]}.
 
 process_bif(Type,A,B,State) ->
@@ -251,6 +260,10 @@ process_bif(Type,A,B,State) ->
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{Type,{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
   {ok,B_State,Statement}.
+
+sizeof(int32,_) -> 32;
+sizeof(pointer,_) -> 32;
+sizeof(Type,State) -> error({type,Type}).
 
 copy_lbcnt(State_1,State_2) -> State_2#state{lbcnt=State_1#state.lbcnt}.
 copy_lvcnt(State_1,State_2) -> State_2#state{lvcnt=State_1#state.lvcnt}.

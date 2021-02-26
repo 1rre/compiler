@@ -12,7 +12,8 @@ Up to date as of 11am on 24/02/2021
 |`{label,${lb}}` | Create `lb` (label) which can be jumped to using `test`
 |`{jump,${lb}}` | Unconditionally jump to `lb` (label)
 |`return` | Return the value in register 0 to the calling function (this is fine for all functions as return value of void functions is undefined)
-|`{allocate,${type}}` | Allocate an appropriate space on the heap for `type` (type) & store a pointer to it at the top of the stack
+|`{allocate,${n}}` | Allocate `n` (integer) bits on the heap
+|`{deallocate,${n}}` | Delete/deallocate `n` (integer) bits on the heap
 |`{address,${rs},${rd}}` | Finds the memory location of the object in `rs` (register or stack) & stores a pointer to it in `rd` (register)
 |`{get_heap,${rs},${rd}}` | Finds the memory location pointed to by `rs` (register or stack) & stores the value in `rd` (register)
 |`{put_heap,${rs},${rd}}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register or stack)

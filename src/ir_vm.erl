@@ -1,7 +1,7 @@
 -module(ir_vm).
 -export([run/1,run/3]).
 
--record(context,{global = [], stack = [], reg = [], heap = <<>>, fn = main}).
+-record(context,{global = [], stack = [], reg = [], heap = <<>>, fn = main, chunks = [0]}).
 
 run(Ir) ->
   case lists:search(fun ({function,_,_,_,_}) -> true; (_) -> false end, Ir) of
@@ -23,14 +23,44 @@ call_fn(Fn,Context,Ir) ->
     _ -> error({not_found, Fn})
   end.
 
-run_st([return|_],Context,_Ir) -> {ok,Context};
-%% TODO: Allocate
-run_st([{allocate,Type}|Rest],Context,Ir) ->
-  Size = sizeof(Type),
+run_st([return|_],Context,_Ir) ->
+  {ok,Context};
+
+run_st([{allocate,N}|Rest],Context,Ir) ->
   Heap = Context#context.heap,
-  N_Heap = <<Heap/bits,0:Size>>,
-  N_Stack = [{erlang:bit_size(Heap),Size}|Context#context.stack],
-  N_Context = Context#context{heap=N_Heap,stack=N_Stack},
+  Chunks = Context#context.chunks,
+  N_Heap = <<Heap/bits,0:N>>,
+  N_Chunks = [N+bit_size(Heap)|Chunks],
+  N_Stack = [bit_size(Heap)|Context#context.stack],
+  N_Context = Context#context{heap=N_Heap,stack=N_Stack,chunks=N_Chunks},
+  run_st(Rest,N_Context,Ir);
+
+run_st([{deallocate,N}|Rest],Context,Ir) ->
+  Heap = Context#context.heap,
+  Size = bit_size(Heap) - N,
+  Chunks = Context#context.chunks,
+  N_Chunks = rm_chunks(Chunks,Size),
+  <<N_Heap:Size/bits,_/bits>> = Heap,
+  Stack = Context#context.stack,
+  N_Stack = lists:nthtail(length(Chunks)-length(N_Chunks),Stack),
+  N_Context = Context#context{heap=N_Heap,stack=N_Stack,chunks=N_Chunks},
+  run_st(Rest,N_Context,Ir);
+
+run_st([{address,Src,Dest}|Rest],Context,Ir) ->
+  {ok,Address} = get_address(Src,Context),
+  {ok,N_Context} = set_data(Dest,Address,Context),
+  run_st(Rest,N_Context,Ir);
+
+run_st([{get_heap,Src,Dest}|Rest],Context,Ir) ->
+  {ok,Address} = get_address(Src,Context),
+  {ok,Value} = get_data(Address,Context),
+  {ok,N_Context} = set_data(Dest,Value,Context),
+  run_st(Rest,N_Context,Ir);
+
+run_st([{put_heap,Src,Dest}|Rest],Context,Ir) ->
+  {ok,Value} = get_data(Src,Context),
+  {ok,Address} = get_data(Dest,Context),
+  {ok,N_Context} = set_data(Address,Value,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{move,Data,Dest}|Rest],Context,Ir) ->
@@ -77,8 +107,8 @@ run_st([{Op,Dest,[A,B]}|Rest],Context,Ir) ->
   {ok,N_Context} = set_data(Dest,do_op(Op,A_Val,B_Val),Context),
   run_st(Rest,N_Context,Ir);
 
-run_st(St,_Context,_Ir) ->
-  error({unknown,St}).
+run_st(St,Context,_Ir) ->
+  error({{unknown,St},{context,Context}}).
 
 get_data({integer,N},_Context) -> {ok,N};
 get_data({x,N},Context) ->
@@ -86,11 +116,13 @@ get_data({x,N},Context) ->
   {ok,lists:nth(length(Reg) - N, Reg)};
 get_data({y,N},Context) ->
   Stack = Context#context.stack,
-  {Start,Size} = lists:nth(length(Stack)-N, Stack),
-  <<_:Start,Data:Size,_/bits>> = Context#context.heap,
-  {ok, Data};
+  get_data(lists:nth(length(Stack)-N, Stack),Context);
 get_data(nil,_Context) ->
   {ok,nil};
+get_data(Address,Context) when is_integer(Address) ->
+  Size = get_heap_size(Address,Context#context.chunks),
+  <<_:Address,Data:Size,_/bits>> = Context#context.heap,
+  {ok,Data};
 get_data(Data,_Context) ->
   error({unknown,Data}).
 
@@ -100,9 +132,11 @@ set_data({x,N},Data,Context) ->
   {ok,Context#context{reg=set_data(Context#context.reg,N,Data)}};
 set_data({y,N},Data,Context) ->
   Stack = Context#context.stack,
-  {Start,Size} = lists:nth(length(Stack)-N, Stack),
-  <<Init:Start,_:Size,Rest/bits>> = Context#context.heap,
-  N_Heap = <<Init:Start,Data:Size,Rest/bits>>,
+  set_data(lists:nth(length(Stack)-N, Stack),Data,Context);
+set_data(Address,Data,Context) when is_integer(Address) ->
+  Size = get_heap_size(Address,Context#context.chunks),
+  <<Init:Address,_:Size,Rest/bits>> = Context#context.heap,
+  N_Heap = <<Init:Address,Data:Size,Rest/bits>>,
   N_Context = Context#context{heap=N_Heap},
   {ok,N_Context};
 set_data([_|Reg],N,Data) when length(Reg) =:= N -> [Data | Reg];
@@ -111,6 +145,20 @@ set_data([],0,Data) -> [Data];
 set_data([Hd|Reg],N,Data) -> [Hd|set_data(Reg,N,Data)];
 set_data(Dest,_N,_Data) -> error({no_loc,Dest}).
 
+get_address({y,N},Context) ->
+  Stack = Context#context.stack,
+  Addr = lists:nth(length(Stack)-N, Stack),
+  {ok, Addr};
+get_address({x,N},Context) ->
+  get_data({x,N},Context);
+get_address(_,_) -> error("").
+
+get_heap_size(C1,[C2,C1|_]) ->
+  C2-C1;
+get_heap_size(C1,[C2,C3|Chunks]) when (C2 > C1) and (C1 > C3) ->
+  error({heap_boundary,{C1,[C2,C3|Chunks]}});
+get_heap_size(C1,[_|Chunks]) ->
+  get_heap_size(C1,Chunks).
 
 gc_list(_,_,[]) -> {[],[]};
 gc_list(First,Arity,[_|Reg]) when length(Reg) >= First + Arity -> gc_list(First,Arity,Reg);
@@ -120,7 +168,6 @@ gc_list(First,Arity,[Hd|Reg]) when length(Reg) >= First ->
 gc_list(First,Arity,[Hd|Reg]) ->
   {_,Tl} = gc_list(First,Arity,Reg),
   {[],[Hd|Tl]}.
-
 
 jump(Lb,Context,Ir) ->
   Fn = Context#context.fn,
@@ -134,9 +181,12 @@ find_lb([{label,_Lb}|St],_Lb) -> St;
 find_lb([_|St],Lb) -> find_lb(St,Lb);
 find_lb(_,Lb) -> error({no_label,Lb}).
 
-sizeof(int32) -> 32;
-sizeof(pointer) -> 32;
-sizeof(Type) -> error({unknown,Type}).
+rm_chunks([Chunk|Chunks],Size) when Chunk =:= Size ->
+  [Chunk|Chunks];
+rm_chunks([C1,C2|Chunks],Size) when (C1>Size) and (C2 < Size) ->
+  error(heap_boundary,{[C1,C2|Chunks],Size});
+rm_chunks([_|Chunks],Size) ->
+  rm_chunks(Chunks,Size).
 
 do_op('+',A,B) -> A+B;
 do_op('-',A,B) -> A-B;
