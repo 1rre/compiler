@@ -1,7 +1,7 @@
 -module(build_ir).
 -export([process/1]).
 
--record(state,{lbcnt=0,hpcnt=0,rvcnt=0,lvcnt=0,fn=#{},var=#{},typedef=#{},struct=#{},enum=#{}}).
+-record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},var=#{},typedef=#{},struct=#{},enum=#{}}).
 
 process(Ast) ->
   process(Ast, #state{}).
@@ -69,7 +69,8 @@ process({assign,{Op,_Ln},Raw_Specs}, State) ->
 
 process({{return,_},Raw_St}, State) ->
   {ok, Rtn_State, Rtn_St} = process(Raw_St, State),
-  {ok,Dealloc} = deallocate_mem(#{},Rtn_State#state.var),
+  {ok, Dealloc} = deallocate_mem(#{},Rtn_State#state.var),
+  io:fwrite("~p~n",[Rtn_State#state.var]),
   {ok, Rtn_State#state{lvcnt=0,rvcnt=0}, Rtn_St++[Dealloc,return]};
 
 process({{'if',_},Predicate,True,False}, State) ->
@@ -186,7 +187,7 @@ get_fn_specs({Raw_Type,{Raw_Ident,Raw_Args},Raw_St}, State) ->
   New_Fn = maps:put(Ident,{Type,length(Raw_Args),Arg_St},Arg_State#state.fn),
   {ok, N_State, N_St} = process(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = [{function,Type,Ident,length(Raw_Args),N_St}],
-  {ok,copy_lvcnt(State,N_State),Rtn_St}.
+  {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St}.
 
 get_type([{long,_},{long,_},{int,_}],_) -> {ok,int64};
 get_type([{long,_},{int,_}],_) -> {ok,int64};
@@ -225,9 +226,9 @@ get_ident_specs({identifier,_,Ident}, _State) ->
   {ok, Ident, Ident}.
 
 allocate_mem(_Type,{'*',_Ident},State) ->
-  {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,sizeof(pointer,State)}]};
+  {ok,State,[{allocate,sizeof(pointer,State)}]};
 allocate_mem(Type,_Ident,State) ->
-  {ok,State#state{hpcnt=State#state.hpcnt+1},[{allocate,sizeof(Type,State)}]}.
+  {ok,State,[{allocate,sizeof(Type,State)}]}.
 
 deallocate_mem(State_1,State_2) ->
   Dealloc_Mem = [maps:get(Key,State_2,undef) || Key <- maps:keys(State_2),
