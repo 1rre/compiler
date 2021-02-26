@@ -37,6 +37,10 @@ call_fn(Fn,Context,Ir) ->
     _ -> error({not_found, Fn})
   end.
 
+
+run_st([],Context,_Ir) ->
+  {ok,Context};
+
 run_st([return|_],Context,_Ir) ->
   {ok,Context};
 
@@ -68,13 +72,14 @@ run_st([{address,Src,Dest}|Rest],Context,Ir) ->
 
 run_st([{load,Src,Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address(Src,Context),
-  {ok,Value} = get_data(Address,Context),
+  {ok,Ptr} = get_data(Address,Context),
+  {ok,Value} = get_data(Ptr,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{store,Src,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Src,Context),
-  {ok,Address} = get_data(Dest,Context),
+  {ok,Address} = get_address(Dest,Context),
   {ok,N_Context} = set_data(Address,Value,Context),
   run_st(Rest,N_Context,Ir);
 

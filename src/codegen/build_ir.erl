@@ -179,7 +179,13 @@ get_fn_specs({Raw_Type,{Raw_Ident,Raw_Args},Raw_St}, State) ->
   {ok, Arg_State, Arg_St} = process(Raw_Args, State),
   New_Fn = maps:put(Ident,{Type,length(Raw_Args),Arg_St},Arg_State#state.fn),
   {ok, N_State, N_St} = process(Raw_St,Arg_State#state{fn=New_Fn}),
-  Rtn_St = [{function,Type,Ident,length(Raw_Args),N_St}],
+  Rtn_St = case lists:last(N_St) of
+    return ->
+      [{function,Type,Ident,length(Raw_Args),N_St}];
+    _ ->
+      {ok, Dealloc} = deallocate_mem(#{},N_State#state.var),
+      [{function,Type,Ident,length(Raw_Args),N_St++[Dealloc,return]}]
+  end,
   {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St}.
 
 get_type([{long,_},{long,_},{int,_}],_) -> {ok,int64};
@@ -257,7 +263,7 @@ get_assign_specs(Op, Other, State) ->
   error({Op,Other,State}).
 
 get_ptr({'*',Ptr_Ident}, Ptr, State) ->
-  Next_St = {load,Ptr,{x,State#state.lvcnt}},
+  Next_St = {move,Ptr,{x,State#state.lvcnt}},
   {ok,State,Ptr_St} = get_ptr(Ptr_Ident,{x,State#state.lvcnt},State),
   {ok,State,[Next_St|Ptr_St]};
 
