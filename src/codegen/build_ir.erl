@@ -38,7 +38,7 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       Lv_Cnt = State#state.lvcnt,
       Rv_Cnt = State#state.rvcnt,
-      Alloc_St = [{allocate,32} || _ <- lists:seq(0,Lv_Cnt)],
+      Alloc_St = [{allocate,32} || _ <- lists:seq(0,Lv_Cnt+Arity-1)],
       Mv_To_St = [{move,{x,N},{y,Rv_Cnt+N}} || N <- lists:seq(0,Lv_Cnt+Arity-1)],
       Call_St = {call,Ident,Arity,{y,Rv_Cnt+Lv_Cnt}},
       Mv_Bk_St = [{move,{y,Rv_Cnt+N},{x,N}} || N <- lists:seq(0,Lv_Cnt-1)],

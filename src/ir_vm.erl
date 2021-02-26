@@ -93,6 +93,7 @@ run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
   Fn_Context = Context#context{addr_buf=Args,fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
   N_Context = Fn_End#context{addr_buf=Other,fn=Context#context.fn},
+  io:fwrite("~p~n",[N_Context#context.addr_buf]),
   run_st(Rest,N_Context,Ir);
 
 run_st([{test,Data,{f,Lb}}|St],Context,Ir) ->
