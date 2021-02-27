@@ -30,6 +30,7 @@ run(Ir,Fn,Args) ->
   lists:last(End_Context#context.reg).
 
 call_fn(Fn,Context,Ir) ->
+  io:fwrite("Call: ~s~n",[Fn]),
   case lists:search(fun ({function,_Type,Fun,_Arity,_St}) -> Fun =:= Fn end, Ir) of
     {value, {function,_Type,Fn,_Arity,St}} ->
       Result = run_st(St,Context,Ir),
@@ -42,6 +43,7 @@ run_st([],Context,_Ir) ->
   {ok,Context};
 
 run_st([return|_],Context,_Ir) ->
+  io:fwrite("Return from ~s", [Context#context.fn]),
   {ok,Context};
 
 run_st([{allocate,N}|Rest],Context,Ir) ->
@@ -51,6 +53,7 @@ run_st([{allocate,N}|Rest],Context,Ir) ->
   N_S_Bounds = [hd(S_Bounds) - N div 8 | S_Bounds],
   Buf = Context#context.addr_buf,
   N_Buf = [hd(N_S_Bounds) | Buf],
+  io:fwrite("{allocate,~B}~nOld Stack: ~p~nNew Stack: ~p~nOld Buf: ~p~nNew Buf: ~p~n",[N,Stack,N_Stack,Buf,N_Buf]),
   N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
   run_st(Rest,N_Context,Ir);
 
@@ -58,19 +61,22 @@ run_st([{deallocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   Size = bit_size(Stack) - N,
   S_Bounds = Context#context.s_bounds,
-  N_S_Bounds = rm_chunks(S_Bounds,?STACK_PTR - Size div 8),
+  N_S_Bounds = rm_chunks(?STACK_PTR - Size div 8, S_Bounds),
   <<N_Stack:Size/bits,_/bits>> = Stack,
   Buf = Context#context.addr_buf,
   N_Buf = lists:nthtail(length(S_Bounds)-length(N_S_Bounds),Buf),
+  io:fwrite("{deallocate,~B}~nOld Stack: ~p~nNew Stack: ~p~nOld Buf: ~p~nNew Buf: ~p~n",[N,Stack,N_Stack,Buf,N_Buf]),
   N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
   run_st(Rest,N_Context,Ir);
 
 run_st([{address,Src,Dest}|Rest],Context,Ir) ->
+  io:fwrite("{~p,~p,~p}~n",[address,Src,Dest]),
   {ok,Address} = get_address(Src,Context),
   {ok,N_Context} = set_data(Dest,Address,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{load,Src,Dest}|Rest],Context,Ir) ->
+  io:fwrite("{~p,~p,~p}~n",[load,Src,Dest]),
   {ok,Address} = get_address(Src,Context),
   {ok,Ptr} = get_data(Address,Context),
   {ok,Value} = get_data(Ptr,Context),
@@ -78,12 +84,14 @@ run_st([{load,Src,Dest}|Rest],Context,Ir) ->
   run_st(Rest,N_Context,Ir);
 
 run_st([{store,Src,Dest}|Rest],Context,Ir) ->
+  io:fwrite("{~p,~p,~p}~n",[store,Src,Dest]),
   {ok,Value} = get_data(Src,Context),
   {ok,Address} = get_address(Dest,Context),
   {ok,N_Context} = set_data(Address,Value,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{move,Data,Dest}|Rest],Context,Ir) ->
+  io:fwrite("{~p,~p,~p}~n",[move,Data,Dest]),
   {ok,Value} = get_data(Data,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
   run_st(Rest,N_Context,Ir);
@@ -94,9 +102,10 @@ run_st([{jump,{f,Lb}}|_],Context,Ir) -> jump(Lb,Context,Ir);
 
 run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
   Buf = Context#context.addr_buf,
-  {Args,Other} = lists:split(length(Buf)-First,Buf),
-  Fn_Context = Context#context{addr_buf=Args,fn=Fn},
+  {Args,Other} = lists:split(length(Buf)-First-1,Buf),
+  Fn_Context = Context#context{addr_buf=Args++[hd(Other)],fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
+  io:fwrite(" to ~p~n",[Context#context.fn]),
   N_Context = Fn_End#context{addr_buf=Other,fn=Context#context.fn},
   run_st(Rest,N_Context,Ir);
 
@@ -136,6 +145,7 @@ get_data({y,N},Context) ->
 get_data(nil,_Context) ->
   {ok,nil};
 get_data(Address,Context) when is_integer(Address) and (Address >= 16#7000000) ->
+  % Address to get_mem_size is off by 32?
   Size = get_mem_size(Address,Context#context.s_bounds)*8,
   Offset = (?STACK_PTR - Address)*8,
   <<_:Offset,Data:Size,_/bits>> = Context#context.stack,
@@ -185,10 +195,10 @@ get_address(_,_) -> error("").
 
 get_mem_size(C1,[C2,C1|_]) ->
   abs(C1-C2);
-get_mem_size(C1,[C2,C3|S_Bounds]) when (C2 > C1) /= (C3 > C1) ->
+get_mem_size(C1,[C2,C3|Bounds]) when (C2 > C1) /= (C3 > C1) ->
   error({stack_boundary,{C1,{C2,C3}}});
-get_mem_size(C1,[_|S_Bounds]) ->
-  get_mem_size(C1,S_Bounds).
+get_mem_size(C1,[_|Bounds]) ->
+  get_mem_size(C1,Bounds).
 
 jump(Lb,Context,Ir) ->
   Fn = Context#context.fn,
@@ -202,12 +212,12 @@ find_lb([{label,_Lb}|St],_Lb) -> St;
 find_lb([_|St],Lb) -> find_lb(St,Lb);
 find_lb(_,Lb) -> error({no_label,Lb}).
 
-rm_chunks([Chunk|S_Bounds],Size) when Chunk =:= Size ->
-  [Chunk|S_Bounds];
-rm_chunks([C1,C2|S_Bounds],Size) when (C1>Size) /= (C2>Size) ->
-  error({boundary_error,{Size,{C1,C2}}});
-rm_chunks([_|S_Bounds],Size) ->
-  rm_chunks(S_Bounds,Size).
+rm_chunks(C1,[C1|Bounds]) ->
+  [C1|Bounds];
+rm_chunks(C1,[C2,C3|Bounds]) when (C2 > C1) /= (C3 > C1) ->
+  error({boundary_error,{C1,{C2,C3}}});
+rm_chunks(C1,[_|Bounds]) ->
+  rm_chunks(C1,Bounds).
 
 do_op('+',A,B) -> A+B;
 do_op('-',A,B) -> A-B;

@@ -39,10 +39,10 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
       Mv_To_St = [{move,{x,N},{y,Rv_Cnt+N}} || N <- lists:seq(0,Lv_Cnt+Arity-1)],
       Call_St = {call,Ident,Arity,{y,Rv_Cnt+Lv_Cnt}},
       Mv_Bk_St = [{move,{y,Rv_Cnt+N},{x,N}} || N <- lists:seq(0,Lv_Cnt-1)],
-      Dealloc_St = {deallocate,32*(Lv_Cnt)},
       New_St = if
-        Lv_Cnt =:= 0 -> Arg_St++Alloc_St++Mv_To_St++[Call_St|Mv_Bk_St] ++ [Dealloc_St];
+        Lv_Cnt =:= 0 -> Arg_St++Alloc_St++Mv_To_St++[Call_St|Mv_Bk_St];
         true ->
+          Dealloc_St = {deallocate,32*(Lv_Cnt)},
           Mv_0_St = {move,{x,0},{x,Lv_Cnt}},
           Arg_St++Alloc_St++Mv_To_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
       end,
