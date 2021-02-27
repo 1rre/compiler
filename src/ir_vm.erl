@@ -1,49 +1,46 @@
 -module(ir_vm).
--export([run/1,run/2,run/3]).
+-export([run/3,run/4]).
 
 -define(STACK_PTR,16#7fffffff).
 -define(GLOBL_PTR,16#10008000).
 
--record(context,{fn=main,global=[],addr_buf=[],reg=[],
-                 stack= <<>>,s_bounds=[?STACK_PTR],heap= <<>>, h_bounds=[?GLOBL_PTR]}).
+-record(context,{fn=main,global=[],addr_buf=[],reg=[],debug=false,
+                 stack= <<>>,s_bounds=[?STACK_PTR],heap= <<>>,h_bounds=[?GLOBL_PTR]}).
 
-run(Ir) -> run(Ir,[]).
-run(Ir,Args) ->
+run(Ir,Args,Flags) ->
   case lists:search(fun ({function,_,_,_,_}) -> true; (_) -> false end, Ir) of
-    {value, {function,_,Fn,_,_}} -> run(Ir,Fn,Args);
+    {value, {function,_,Fn,_,_}} -> run(Ir,Fn,Args,Flags);
     _ -> error({no_fn,Ir})
   end.
-run(Ir,Fn,Args) ->
-  io:fwrite("~p~n~nRunning: ~s~n",[Ir,Fn]),
+run(Ir,Fn,Args,Flags) ->
   {Init_Stack,Init_S_Bounds} = lists:foldl(fun
     (Arg,{Stack,[C1|Ch]}) ->
       {<<Arg:32,Stack/bits>>,[C1-4,C1|Ch]}
     end, {<<>>,[?STACK_PTR]}, Args),
   Init_Global = [{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir],
   Context = #context{fn=Fn,
+                     debug=lists:member(debug,Flags),
                      global=Init_Global,
                      addr_buf=Init_S_Bounds,
                      stack=Init_Stack,
                      s_bounds=Init_S_Bounds},
+  debug_print([Ir],Context#context.debug),
   {ok, End_Context} = call_fn(Fn,Context,Ir),
-  io:fwrite("End Stack:~n~p~n~nEnd Heap:~n~p~n",[End_Context#context.stack,End_Context#context.heap]),
   lists:last(End_Context#context.reg).
 
 call_fn(Fn,Context,Ir) ->
-  io:fwrite("Call: ~s~n",[Fn]),
   case lists:search(fun ({function,_Type,Fun,_Arity,_St}) -> Fun =:= Fn end, Ir) of
     {value, {function,_Type,Fn,_Arity,St}} ->
+      debug_print(St,Context#context.debug),
       Result = run_st(St,Context,Ir),
       Result;
     _ -> error({not_found, Fn})
   end.
 
-
 run_st([],Context,_Ir) ->
   {ok,Context};
 
 run_st([return|_],Context,_Ir) ->
-  io:fwrite("Return from ~s", [Context#context.fn]),
   {ok,Context};
 
 run_st([{allocate,N}|Rest],Context,Ir) ->
@@ -53,8 +50,8 @@ run_st([{allocate,N}|Rest],Context,Ir) ->
   N_S_Bounds = [hd(S_Bounds) - N div 8 | S_Bounds],
   Buf = Context#context.addr_buf,
   N_Buf = [hd(N_S_Bounds) | Buf],
-  io:fwrite("{allocate,~B}~nOld Stack: ~p~nNew Stack: ~p~nOld Buf: ~p~nNew Buf: ~p~n",[N,Stack,N_Stack,Buf,N_Buf]),
   N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
+debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{deallocate,N}|Rest],Context,Ir) ->
@@ -65,55 +62,62 @@ run_st([{deallocate,N}|Rest],Context,Ir) ->
   <<N_Stack:Size/bits,_/bits>> = Stack,
   Buf = Context#context.addr_buf,
   N_Buf = lists:nthtail(length(S_Bounds)-length(N_S_Bounds),Buf),
-  io:fwrite("{deallocate,~B}~nOld Stack: ~p~nNew Stack: ~p~nOld Buf: ~p~nNew Buf: ~p~n",[N,Stack,N_Stack,Buf,N_Buf]),
   N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
+debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{address,Src,Dest}|Rest],Context,Ir) ->
-  io:fwrite("{~p,~p,~p}~n",[address,Src,Dest]),
   {ok,Address} = get_address(Src,Context),
   {ok,N_Context} = set_data(Dest,Address,Context),
+debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{load,Src,Dest}|Rest],Context,Ir) ->
-  io:fwrite("{~p,~p,~p}~n",[load,Src,Dest]),
   {ok,Address} = get_address(Src,Context),
   {ok,Ptr} = get_data(Address,Context),
   {ok,Value} = get_data(Ptr,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
+debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{store,Src,Dest}|Rest],Context,Ir) ->
-  io:fwrite("{~p,~p,~p}~n",[store,Src,Dest]),
   {ok,Value} = get_data(Src,Context),
   {ok,Address} = get_address(Dest,Context),
   {ok,N_Context} = set_data(Address,Value,Context),
+debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{move,Data,Dest}|Rest],Context,Ir) ->
-  io:fwrite("{~p,~p,~p}~n",[move,Data,Dest]),
   {ok,Value} = get_data(Data,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
+debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
-run_st([{label,_}|Rest],Context,Ir) -> run_st(Rest,Context,Ir);
+run_st([{label,_}|Rest],Context,Ir) ->
+debug_print(Rest,Context#context.debug),
+  run_st(Rest,Context,Ir);
 
-run_st([{jump,{f,Lb}}|_],Context,Ir) -> jump(Lb,Context,Ir);
+run_st([{jump,{f,Lb}}|_],Context,Ir) ->
+  jump(Lb,Context,Ir);
 
 run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
   Buf = Context#context.addr_buf,
   {Args,Other} = lists:split(length(Buf)-First-1,Buf),
   Fn_Context = Context#context{addr_buf=Args++[hd(Other)],fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
-  io:fwrite(" to ~p~n",[Context#context.fn]),
   N_Context = Fn_End#context{addr_buf=Other,fn=Context#context.fn},
+debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
-run_st([{test,Data,{f,Lb}}|St],Context,Ir) ->
+run_st([{test,Data,{f,Lb}}|Rest],Context,Ir) ->
   {ok,Data_Val} = get_data(Data,Context),
   if
     Data_Val == 0 -> jump(Lb,Context,Ir);
-    true -> run_st(St,Context,Ir)
+    true ->
+      if Context#context.debug and (length(Rest)>0) ->
+        io:fwrite("~p~n",[hd(Rest)])
+      end,
+      run_st(Rest,Context,Ir)
   end;
 
 % / is a special case as erlang treats float & integer division differently
@@ -124,12 +128,14 @@ run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
     is_float(A_Val) or is_float(B_Val) -> set_data(Dest,A_Val / B_Val,Context);
     true -> set_data(Dest,A_Val div B_Val,Context)
   end,
+debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{Op,Dest,[A,B]}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = set_data(Dest,do_op(Op,A_Val,B_Val),Context),
+debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st(St,Context,_Ir) ->
@@ -204,7 +210,9 @@ jump(Lb,Context,Ir) ->
   Fn = Context#context.fn,
   case lists:search(fun ({function,_,Fun,_,_}) -> Fun =:= Fn end, Ir) of
     {value, {function,_,_,_,St}} ->
-      run_st(find_lb(St,Lb),Context,Ir);
+      Rest = find_lb(St,Lb),
+      debug_print(Rest,Context#context.debug),
+      run_st(Rest,Context,Ir);
     _ -> error({not_found, Fn})
   end.
 
@@ -230,3 +238,6 @@ do_op('<=',A,B) -> B>=A;
 do_op('>',A,B) -> A>B;
 do_op('<',A,B) -> B>A;
 do_op(Op,_,_) -> error({unknown,Op}).
+
+debug_print([Hd|_],true) -> io:fwrite("~p~n",[Hd]);
+debug_print(_,_) -> ok.
