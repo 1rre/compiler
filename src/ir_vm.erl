@@ -24,7 +24,8 @@ run(Ir,Fn,Args,Flags) ->
                      addr_buf=Init_S_Bounds,
                      stack=Init_Stack,
                      s_bounds=Init_S_Bounds},
-  debug_print([Ir],Context#context.debug),
+  if Context#context.debug -> io:fwrite("~p~n~n~n",[Ir]) end,
+  debug_print([{call,Fn,length(Args),{y,0}}],Context#context.debug),
   {ok, End_Context} = call_fn(Fn,Context,Ir),
   lists:last(End_Context#context.reg).
 

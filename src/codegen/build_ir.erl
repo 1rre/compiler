@@ -3,19 +3,55 @@
 
 -record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},var=#{},typedef=#{},struct=#{},enum=#{}}).
 
+%% @doc Takes a slightly convoluted & complex AST and compiles them into a more human-readable form.
+%       This form is also a lot closer to the target language (MIPS ASM) than an AST.
+
+%% Arity 1 function for default arguments
 process(Ast) ->
   process(Ast, #state{}).
 
+%% On a leaf node of the AST, return the current state
 process([], State) -> {ok, State, []};
+
+%% For a node with branches, process the node, then the branch & return the merged IR code
 process([Hd|Tl], State) ->
   {ok, Hd_State, Hd_St} = process(Hd,State),
   {ok, Tl_State, Tl_St} = process(Tl,Hd_State),
   {ok,Tl_State,Hd_St++Tl_St};
 
+%% Process a declaration of a function by adding specification about it to the state,
+%  processing the branches of the function node (arguments & statement list) and then
+%  deallocating the memory used for the arguments.
+%% TODO: #17
+%        Modify the argument handling so that it is more platform-independent,
+%        especially for MIPS ASM given the current IR is sub-optimal for it.
+process({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
+  {ok, Type} = get_type(Raw_Type, State),
+  {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident,State),
+  {ok, Arg_State, Arg_St} = process(Raw_Args, State),
+  New_Fn = maps:put(Ident,{Type,length(Raw_Args),Arg_St},Arg_State#state.fn),
+  {ok, N_State, N_St} = process(Raw_St,Arg_State#state{fn=New_Fn}),
+  Rtn_St = case lists:last(N_St) of
+    return ->
+      [{function,Type,Ident,length(Raw_Args),N_St}];
+    _ ->
+      {ok, Dealloc} = deallocate_mem(#{},N_State#state.var),
+      [{function,Type,Ident,length(Raw_Args),N_St++[Dealloc,return]}]
+  end,
+  {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St};
+
+%% As there are multiple cases for declaration, it is delegated to a helper function.
+process({declaration,Raw_Type,Raw_St}, State) ->
+  {ok, Type} = get_type(Raw_Type, State),
+  get_decl_specs(Type,Raw_St,State);
+
+%% Process an integer node by moving the literal value to the active register
 process({int_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
   {ok, State, [{move,{integer,Val},{x,Lv_Cnt}}]};
 
+%% Process an identifier by finding the integer's location on the stack
+%  and moving it to the active register
 process({identifier,Ln,Ident}, State) ->
   case maps:get(Ident,State#state.var,undefined) of
     {_Type, X} ->
@@ -24,6 +60,12 @@ process({identifier,Ln,Ident}, State) ->
     Other -> error({Other,Ident,{line,Ln},{state,State}})
   end;
 
+%% Process a function call by storing the current register state on the stack,
+% storing the arguments to the function on the stack,
+% calling the function, then restoring the register state.
+%% TODO: #17
+%        Modify the argument handling so that it is more platform-independent,
+%        especially for MIPS ASM given the current IR is sub-optimal for it.
 process({{identifier,Ln,Ident},{apply,Args}}, State) ->
   {ok,Arg_State,Arg_St} = lists:foldl(fun
     (Arg,{ok,Acc_State,Acc_St}) ->
@@ -51,21 +93,22 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
       error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})
   end;
 
-process({function,Fn_Specs}, State) ->
-  get_fn_specs(Fn_Specs, State);
-
-process({declaration,Raw_Type,Raw_St}, State) ->
-  {ok, Type} = get_type(Raw_Type, State),
-  get_decl_specs(Type,Raw_St,State);
-
+%% As there are multiple cases for assignment, it is delegated to a helper function.
 process({assign,{Op,_Ln},Raw_Specs}, State) ->
   get_assign_specs(Op,Raw_Specs,State);
 
+%% Process a return value by deallocating any memory used (and args),
+%  processing the expression which calculates the value to return
+%  and storing it in the active register (which should always be 0)
 process({{return,_},Raw_St}, State) ->
   {ok, Rtn_State, Rtn_St} = process(Raw_St, State),
   {ok, Dealloc} = deallocate_mem(#{},Rtn_State#state.var),
   {ok, Rtn_State#state{lvcnt=0,rvcnt=0}, Rtn_St++[Dealloc,return]};
 
+%% Process an if statement by processing each of the predicate, the "if true" statement
+%  and the "if false" statement, then controlling the PC flow with jumps.
+%  For simple 'if's, only the "if true" statement is returned, and for 'if/else'
+%  both are returned.
 process({{'if',_},Predicate,True,False}, State) ->
   Lb_Cnt = State#state.lbcnt,
   Lv_Cnt = State#state.lvcnt,
@@ -89,6 +132,9 @@ process({{'if',_},Predicate,True,False}, State) ->
       {ok,Rtn_State,Rtn_St}
   end;
 
+%% Process a while loop by processing each of the predicate and the loop body,
+%  having the PC jump to beyond the end of the loop if the predicate evaluates to zero
+%  and having an unconditional jump to before the predicate at the end of the loop.
 process({{while,_},Predicate,Do}, State) ->
   Lb_Cnt = State#state.lbcnt + 1,
   Start_Label = {label,Lb_Cnt},
@@ -102,6 +148,9 @@ process({{while,_},Predicate,Do}, State) ->
   Rtn_St = [Start_Label|Pred_St] ++ [Test_Jump|Do_St] ++ [Do_Dealloc,Jump,End_Label],
   {ok,Rtn_State,Rtn_St};
 
+%% Process a do while loop by processing each of the loop body and the predicate
+%  and having the PC jump back to the start of the loop if the predicate,
+%  which is evaluated after the loop body, evaluates to non-zero.
 process({{do,_},Do,Predicate}, State) ->
   Lb_Cnt = State#state.lbcnt,
   Start_Label = {label,Lb_Cnt + 1},
@@ -115,6 +164,10 @@ process({{do,_},Do,Predicate}, State) ->
   Rtn_St = [Start_Label|Do_St] ++ [Do_Dealloc|Pred_St] ++ [Test_Jump,Jump,End_Label],
   {ok,Rtn_State,Rtn_St};
 
+%% Process a for loop by processing the initialiser,
+%  creating a snapshot of the state & then using this as a root state to process
+%  each of the predicate, loop body and the 'update' statement.
+%  If the predicate evaluates to zero, the PC jumps beyond the end of the loop.
 process({{for,_},{Init,Predicate,Update},Loop}, State) ->
   Lb_Cnt = State#state.lbcnt,
   Lv_Cnt = State#state.lvcnt,
@@ -132,6 +185,15 @@ process({{for,_},{Init,Predicate,Update},Loop}, State) ->
   Next_St = Init_St ++ [Pred_Label|Pred_St] ++ [Pred_Test|Loop_St] ++ [Dealloc|Update_St] ++ [Jump,End_Label],
   {ok,Next_State,Next_St};
 
+%% Process an arity 2 built-in function (such as add or bitwise and)
+%  by calculating whether processing the 1st or 2nd operand first would be less register
+%  intensive, then returning the way which is less register intensive.
+%% TODO: #N/A
+%        Find a more efficient way to do this, as this is exponential complexity.
+%% TODO: #10
+%        Most built-in functions are different for floats and integers,
+%        so we will have to indicate that the operation should be done on a float
+%        either here or at compile time.
 process({bif,T,[A,B]}, State) ->
   Way_1 = process_bif(T,A,B,State),
   Way_2 = process_bif(T,B,A,State),
@@ -140,6 +202,9 @@ process({bif,T,[A,B]}, State) ->
     _ -> Way_1
   end;
 
+%% Process an address operator by adding an expression to take the address of
+%  the value which was loaded to a register or put on the stack in the last instruction
+%  and store it in the destination of the last instruction.
 process({{'&',Ln},Raw_St}, State) ->
   {ok, Ref_State, Ref_St} = process(Raw_St, State),
   case lists:last(Ref_St) of
@@ -155,6 +220,12 @@ process({{'&',Ln},Raw_St}, State) ->
     Other -> error({address_error,Other,{line,Ln}})
     end;
 
+%% Process a dereference operator by finding the location of the variable we are
+%  dereferencing and either replacing the `move` statement with a `load` statement
+%  or adding a `load` statement to the end, depending on what we are dereferncing.
+%% TODO: N/A
+%        Figure out if this can be replaced with `get_ptr/3`.
+%        They appear to perform the same function so it'd probably make sense to use it here?
 process({{'*',Ln},Raw_St},State) ->
   {ok, Ptr_State, Ptr_St} = process(Raw_St, State),
   case lists:last(Ptr_St) of
@@ -170,30 +241,35 @@ process({{'*',Ln},Raw_St},State) ->
     Other -> error({Other,{line,Ln}})
   end;
 
+%% Any other nodes of the AST are currently unsupported.
+%  Currently we raise an error, dumping the unsupported node as well as the current state.
+%% TODO: #11
+%        I need to look further into globabl variables,
+%        but it'd be very helpful to be able to differentiate them here.
+%% TODO: #2
+%        We need to add unary and postfix operators like `++` and `-`.
+%% TODO: #10
+%        We need to support float literals from here (as well as chars etc.)
+%% TODO: #5
+%        We need to support array declarations and accesses,
+%        which will be done using the `[]` operators and the `offset` token.
 process(Other, State) -> error({Other,State}).
 
-% TODO: Add analysis of `Ident` (eg. returning pointer) (done?)
-get_fn_specs({Raw_Type,{Raw_Ident,Raw_Args},Raw_St}, State) ->
-  {ok, Type} = get_type(Raw_Type, State),
-  {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident,State),
-  {ok, Arg_State, Arg_St} = process(Raw_Args, State),
-  New_Fn = maps:put(Ident,{Type,length(Raw_Args),Arg_St},Arg_State#state.fn),
-  {ok, N_State, N_St} = process(Raw_St,Arg_State#state{fn=New_Fn}),
-  Rtn_St = case lists:last(N_St) of
-    return ->
-      [{function,Type,Ident,length(Raw_Args),N_St}];
-    _ ->
-      {ok, Dealloc} = deallocate_mem(#{},N_State#state.var),
-      [{function,Type,Ident,length(Raw_Args),N_St++[Dealloc,return]}]
-  end,
-  {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St}.
-
+%% Get a shortened name of a type
+%% TODO: #10
+%        We need to support float literals from here (as well as chars etc.)
+%% TODO: #18
+%        We need to add a typedef, enum & struct resolver here
 get_type([{long,_},{long,_},{int,_}],_) -> {ok,int64};
 get_type([{long,_},{int,_}],_) -> {ok,int64};
 get_type([{int,_}],_) -> {ok,int32};
 get_type([{void,_}],_) -> {ok,nil};
 get_type(Type,_) -> {error,{unknown_type, Type}}.
 
+%% Delegated function for declarations.
+%% Declarations with an initialisation are processed by allocating memory
+%  for them on the stack, processing the initialisation value and storing
+%  the initialisation value in the newly allocated stack slot.
 get_decl_specs(Type, [{Raw_Ident,{'=',_},Raw_St}], State) when Raw_Ident =/= identifier ->
   {ok, Ident, Ptr_Ident} = get_ident_specs(Raw_Ident, State),
   {ok, Mem_State, Mem_St} = allocate_mem(Type, Ptr_Ident, State),
@@ -204,6 +280,8 @@ get_decl_specs(Type, [{Raw_Ident,{'=',_},Raw_St}], State) when Raw_Ident =/= ide
   Next_St = Mem_St ++ Decl_St ++ [{move,{x,State#state.lvcnt},{y,Rv_Cnt}}],
   {ok, Next_State, Next_St};
 
+%% Declarations without an initialisation are processed by allocating memory
+%  for them on the stack and then updating the state to indicate the new stack size.
 get_decl_specs(Type, [Raw_Ident], State) ->
   {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident, State),
   {ok, Mem_State, Mem_St} = allocate_mem(Type, Ident, State),
@@ -212,9 +290,19 @@ get_decl_specs(Type, [Raw_Ident], State) ->
   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1},
   {ok,Next_State,Mem_St};
 
+%% Any other declaration types are currently unsupported.
+%% TODO: #5
+%        We need to support array declarations and accesses,
+%        which will be done using the `[]` operators and the `offset` token
 get_decl_specs(Type, Other, State) -> error({Type,Other,State}).
 
-% TODO: Add referencing
+%% Function for getting information about an identifier.
+%% Strips superfluous information (line numbers etc) from the identifier
+%  and returns the identifier and the a version with dereference etc. operators maintained.
+%% TODO: #4
+%        Currently we can take the address of a variable just fine, however chaining
+%        dereference & address operators (eg `*&x = 10;`) passes the parser but
+%        cannot be processed. The fix here is easy but I believe other fixes are needed.
 get_ident_specs({{'*',_},Rest}, State) ->
   {ok, Ident, Ptr_Ident} = get_ident_specs(Rest, State),
   {ok, Ident, {'*',Ptr_Ident}};
@@ -224,17 +312,27 @@ get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
 get_ident_specs({identifier,_,Ident}, _State) ->
   {ok, Ident, Ident}.
 
+%% To allocate stack memory for a pointer variable, allocate the size of a pointer
 allocate_mem(_Type,{'*',_Ident},State) ->
   {ok,State,[{allocate,sizeof(pointer,State)}]};
+%% To allocate stack memory for a variable, allocate the size of the variable type.
 allocate_mem(Type,_Ident,State) ->
   {ok,State,[{allocate,sizeof(Type,State)}]}.
 
+%% To deallocate memory due to variables going out of scope,
+%  such as at the end of a compound statement or for a return statement,
+%  the difference between the declared variables is found & a deallocate statement
+%  for an appropriatly sized chunck of memory is returned.
 deallocate_mem(State_1,State_2) ->
   Dealloc_Mem = [maps:get(Key,State_2,undef) || Key <- maps:keys(State_2),
                                                 maps:get(Key,State_1,undef) /= maps:get(Key,State_2,undef)],
   Dealloc = [sizeof(Type,State_2) || {Type,_} <- Dealloc_Mem],
   {ok, {deallocate,lists:sum(Dealloc)}}.
 
+%% Delegated function for assignment.
+%% For a normal assignment, the value to be assigned is processed and stored in the
+%  active register. The destination is evaluated as to whether it is a variable or
+%  a memory location and then the appropriate move/store instructions are returned.
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   {ok,Ident,Ptr_Ident} = get_ident_specs(Raw_Ident, State),
   {ok, Ptr} = case maps:get(Ident,State#state.var,undefined) of
@@ -255,22 +353,37 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
       {ok,copy_lbcnt(Assign_State,State),Next_St}
   end;
 
-% This seems useless maybe?
+%% A non-normal assignment such as `+=` is confirmed into an assignment and
+%  a built-in function to calulate the result of the operation.
 get_assign_specs(Op,[Raw_Ident,Raw_St], State) ->
-  {ok,_,_} = get_ident_specs(Raw_Ident, State),
   get_assign_specs('=',[Raw_Ident,{bif,Op,[Raw_Ident,Raw_St]}], State);
 
+%% Any other declaration types are currently unsupported.
+%% I'm not certain that there are any, however if there are then it will cause an error.
 get_assign_specs(Op, Other, State) ->
   error({Op,Other,State}).
 
+%% Function to dereference the result a statement
+%% When there is a dereference operator, a "load" statement is added to
+%  get the value which is pointed to by the result of the statement.
 get_ptr({'*',Ptr_Ident}, Ptr, State) ->
   Next_St = {load,Ptr,{x,State#state.lvcnt}},
   {ok,State,Ptr_St} = get_ptr(Ptr_Ident,{x,State#state.lvcnt},State),
   {ok,State,[Next_St|Ptr_St]};
 
+%% When there is no dereference operator, an empty statement is returned.
+%% TODO: #4
+%        I believe that once we add address operators to the LHS of assignments,
+%        this condition will be triggered, therefore we should probably add an extra
+%        case to catch these.
 get_ptr(_Ptr_Ident, _Ptr, State) ->
   {ok,State,[]}.
 
+%% Delegated function for processing built-in functions.
+%% Arity 2 BIFs are processed by processing each of their operands and
+%  adding a statement which will take the active register and the register above it,
+%  perform the built-in function in the values in those registers and store the result
+%  in the active register.
 process_bif(Type,A,B,State) ->
   {ok,A_State,A_St} = process(A,State),
   N_A_State = A_State#state{lvcnt=State#state.lvcnt+1},
@@ -279,9 +392,21 @@ process_bif(Type,A,B,State) ->
   Statement = A_St ++ B_St ++ [{Type,{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
   {ok,B_State,Statement}.
 
+%% Function to return the size of different types.
+%% TODO: #10
+%        Add support for size of floats, etc.
+%% TODO: #5
+%        Arrays will likely behave a bit weirdly under sizeof,
+%        so we have to establish their behaviour and implement them accordingly.
+%% TODO: #18
+%        Add support for compile-time evaluation of custom types.
+%% TODO: N/A
+%        Add support for compile-time evaluation of the size of variables,
+%        if this is possible (confirm that allocation is done at declaration time?).
 sizeof(int32,_) -> 32;
 sizeof(pointer,_) -> 32;
 sizeof(Type,State) -> error({type,Type}).
 
+%% 2x helper functions to copy the label/local variable count from 1 state to another.
 copy_lbcnt(State_1,State_2) -> State_2#state{lbcnt=State_1#state.lbcnt}.
 copy_lvcnt(State_1,State_2) -> State_2#state{lvcnt=State_1#state.lvcnt}.
