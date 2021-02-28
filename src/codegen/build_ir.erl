@@ -8,7 +8,6 @@
 
 %% Arity 1 function for default arguments
 process(Ast) ->
-  io:fwrite("building ~p~n",[Ast]),
   process(Ast, #state{}).
 
 %% On a leaf node of the AST, return the current state
@@ -77,6 +76,8 @@ process({identifier,Ln,Ident}, State) ->
 %% TODO: #17
 %        Modify the argument handling so that it is more platform-independent,
 %        especially for MIPS ASM given the current IR is sub-optimal for it.
+%% TODO: N/A
+%        Debug arg processing order; Potentially it is in the wrong order.
 process({{identifier,Ln,Ident},{apply,Args}}, State) ->
   {ok,Arg_State,Arg_St} = lists:foldl(fun
     (Arg,{ok,Acc_State,Acc_St}) ->
@@ -241,7 +242,6 @@ process({{'&',Ln},Raw_St}, State) ->
 %        Figure out if this can be replaced with `get_ptr/3`.
 %        They appear to perform the same function so it'd probably make sense to use it here?
 process({{'*',Ln},Raw_St},State) ->
-  io:fwrite("*:~n~p~n",[State#state.typecheck]),
   {ok, Ptr_State, Ptr_St} = process(Raw_St, State),
   Active_Reg = {x,State#state.lvcnt},
   {N,T,S} = maps:get(Active_Reg,Ptr_State#state.typecheck,undefined),
@@ -352,10 +352,12 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   end,
   {ok,Ptr_Type,Ptr_St} = get_ptr(Ptr_Depth,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
   {ok,Assign_State,Assign_St} = process(Raw_St,State),
+  io:fwrite("~p~n",[Raw_St]),
+  io:fwrite("~p~n~n",[Assign_St]),
   Lv_Cnt = State#state.lvcnt,
   case Ptr_St of
     [] ->
-      Next_St = Assign_St++[],
+      Next_St = Assign_St ++ [{move,{x,Lv_Cnt},Ptr}],
       {ok,copy_lbcnt(Assign_State,State),Next_St};
     Ptr_St ->
       {_,Src,_} = lists:last(Assign_St),
@@ -378,16 +380,19 @@ get_assign_specs(Op, Other, State) ->
 %        I believe that once we add address operators to the LHS of assignments,
 %        this condition will be triggered, therefore we should probably add an extra
 %        case to catch these.
+get_ptr(0,Ptr,State) ->
+  Type = maps:get(Ptr,State#state.typecheck,undefined),
+  {ok,Type,[]};
 get_ptr(Ptr_Depth,Ptr,State) ->
   {N,T,S} = maps:get(Ptr,State#state.typecheck,undefined),
   Type = {N-Ptr_Depth,T,S},
   Active_Reg = {x,State#state.lvcnt},
   %% Should this be -1?
-  Load_St = get_ptr_load_st(Ptr_Depth-1,Ptr,Active_Reg),
+  Load_St = [{move,Ptr,Active_Reg}|get_ptr_load_st(Ptr_Depth,Active_Reg,Ptr)],
   {ok,Type,Load_St}.
 
-get_ptr_load_st(0,Ptr,Reg) -> [{move,Ptr,Reg}];
-get_ptr_load_st(N,Ptr,Reg) -> [{load,Ptr,Reg}|get_ptr_load_st(N-1,Reg,Reg)].
+get_ptr_load_st(1,Reg,Ptr) -> [];
+get_ptr_load_st(N,Reg,Ptr) -> [{load,Ptr,Reg}|get_ptr_load_st(N-1,Reg,Reg)].
 
 %% Delegated function for processing built-in functions.
 %% A special case for operations which can be done on pointers
@@ -396,9 +401,9 @@ get_ptr_load_st(N,Ptr,Reg) -> [{load,Ptr,Reg}|get_ptr_load_st(N-1,Reg,Reg)].
 process_bif('+',A,B,State) ->
   Lv_Cnt = State#state.lvcnt,
   {ok,A_State,A_St} = process(A,State),
+  A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
   N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
   {ok,B_State,B_St} = process(B,N_A_State),
-  A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   R_Type = case {A_Type,B_Type} of
     {{0,T,S_A},{0,T,S_B}} -> {0,i,max(S_A,S_B)};
@@ -406,9 +411,8 @@ process_bif('+',A,B,State) ->
     {{0,i,S_A},{N,T,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
     Types -> error({{undefined_op_cast,'+'},Types})
   end,
-  io:fwrite("~p + ~p: ~p~n",[A_Type,B_Type,R_Type]),
   Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{'-',{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
+  Statement = A_St ++ B_St ++ [{'+',{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
   {ok,B_State,Statement};
 
 process_bif('-',A,B,State) ->
@@ -423,7 +427,6 @@ process_bif('-',A,B,State) ->
     {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
     Types -> error({{undefined_op_cast,'-'},Types})
   end,
-  io:fwrite("~p + ~p: ~p~n",[A_Type,B_Type,R_Type]),
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{'-',{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
   {ok,B_State,Statement};
@@ -443,7 +446,6 @@ process_bif(Type,A,B,State) ->
     {{0,i,S_A},{0,i,S_B}} -> {0,i,max(S_A,S_B)};
     Types -> error({{undefined_op_cast,Type},Types})
   end,
-  io:fwrite("~p + ~p: ~p~n",[A_Type,B_Type,R_Type]),
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{Type,{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
   {ok,B_State,Statement}.

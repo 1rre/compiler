@@ -12,6 +12,7 @@ run(Ir,Args,Flags) ->
     {value, {function,_,Fn,_,_}} -> run(Ir,Fn,Args,Flags);
     _ -> error({no_fn,Ir})
   end.
+
 run(Ir,Fn,Args,Flags) ->
   {Init_Stack,Init_S_Bounds} = lists:foldl(fun
     (Arg,{Stack,[C1|Ch]}) ->
@@ -26,16 +27,16 @@ run(Ir,Fn,Args,Flags) ->
                      stack=Init_Stack,
                      s_bounds=Init_S_Bounds},
   if Context#context.debug -> io:fwrite("~p~n~n~n",[Ir]); true -> ok end,
-  debug_print([{call,Fn,length(Args),{y,0}}],Context#context.debug),
+  debug_print([{call,Fn,length(Args),{y,0}}],Context),
   {ok, End_Context} = call_fn(Fn,Context,Ir),
   End_Reg = [io_lib:format("~B",[N])||N<-End_Context#context.reg],
-  io:fwrite("End Reg:~n~p~n",[End_Reg]), 
+  if Context#context.debug -> io:fwrite("End Reg:~n~p~n",[End_Reg]); true -> ok end,
   lists:last(End_Context#context.reg).
 
 call_fn(Fn,Context,Ir) ->
   case lists:search(fun ({function,_Type,Fun,_Arity,_St}) -> Fun =:= Fn end, Ir) of
     {value, {function,_Type,Fn,_Arity,St}} ->
-      debug_print(St,Context#context.debug),
+      debug_print(St,Context),
       Result = run_st(St,Context,Ir),
       Result;
     _ -> error({not_found, Fn})
@@ -53,9 +54,9 @@ run_st([{allocate,N}|Rest],Context,Ir) ->
   N_Stack = <<Stack/bits,0:N>>,
   N_S_Bounds = [hd(S_Bounds) - N div 8 | S_Bounds],
   Buf = Context#context.addr_buf,
-  N_Buf = [nil | Buf],
+  N_Buf = [{nil,N} | Buf],
   N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{deallocate,N}|Rest],Context,Ir) ->
@@ -67,38 +68,45 @@ run_st([{deallocate,N}|Rest],Context,Ir) ->
   Buf = Context#context.addr_buf,
   N_Buf = lists:nthtail(length(S_Bounds)-length(N_S_Bounds),Buf),
   N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{address,Src,Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address(Src,Context),
   {ok,N_Context} = set_data(Dest,Address,Context),
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
-run_st([{load,Src,Dest}|Rest],Context,Ir) ->
-  {ok,Address} = get_address(Src,Context),
+%% These 2 are fairly buggy (maybe due to inconsistencies in instr form?)
+run_st([{load,{y,N},Dest}|Rest],Context,Ir) ->
+  {ok,Address} = get_address({y,N},Context),
   {ok,Ptr} = get_data(Address,Context),
   {ok,Value} = get_data(Ptr,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
+  run_st(Rest,N_Context,Ir);
+run_st([{load,{x,N},Dest}|Rest],Context,Ir) ->
+  {ok,Address} = get_address({y,N},Context),
+  {ok,Value} = get_data(Address,Context),
+  {ok,N_Context} = set_data(Dest,Value,Context),
+  debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{store,Src,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Src,Context),
   {ok,Address} = get_address(Dest,Context),
   {ok,N_Context} = set_data(Address,Value,Context),
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{move,Data,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Data,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{label,_}|Rest],Context,Ir) ->
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
   run_st(Rest,Context,Ir);
 
 run_st([{jump,{f,Lb}}|_],Context,Ir) ->
@@ -107,10 +115,10 @@ run_st([{jump,{f,Lb}}|_],Context,Ir) ->
 run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
   Buf = Context#context.addr_buf,
   {Args,Other} = lists:split(length(Buf)-First-1,Buf),
-  Fn_Context = Context#context{addr_buf=Args++[nil],fn=Fn},
+  Fn_Context = Context#context{addr_buf=Args++[{nil,0}],fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
   N_Context = Fn_End#context{addr_buf=Other,fn=Context#context.fn},
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{test,Data,{f,Lb}}|Rest],Context,Ir) ->
@@ -118,7 +126,7 @@ run_st([{test,Data,{f,Lb}}|Rest],Context,Ir) ->
   if
     Data_Val == 0 -> jump(Lb,Context,Ir);
     true ->
-      debug_print(Rest,Context#context.debug),
+      debug_print(Rest,Context),
       run_st(Rest,Context,Ir)
   end;
 
@@ -130,14 +138,14 @@ run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
     is_float(A_Val) or is_float(B_Val) -> set_data(Dest,A_Val / B_Val,Context);
     true -> set_data(Dest,A_Val div B_Val,Context)
   end,
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{Op,Dest,[A,B]}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = set_data(Dest,do_op(Op,A_Val,B_Val),Context),
-  debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st(St,Context,_Ir) ->
@@ -227,6 +235,9 @@ get_address({x,N},Context) ->
   get_data({x,N},Context);
 get_address(_,_) -> error("").
 
+%% TODO: N/A
+%        Replace this function with inline/less buggy functions
+%        We shouldn't have to exclusively access memory at boundaries
 get_mem_size(C1,[C2,C1|_]) ->
   abs(C1-C2);
 get_mem_size(C1,[C2,C3|Bounds]) when (C2 > C1) /= (C3 > C1) ->
@@ -239,7 +250,7 @@ jump(Lb,Context,Ir) ->
   case lists:search(fun ({function,_,Fun,_,_}) -> Fun =:= Fn end, Ir) of
     {value, {function,_,_,_,St}} ->
       Rest = find_lb(St,Lb),
-      debug_print(Rest,Context#context.debug),
+      debug_print(Rest,Context),
       run_st(Rest,Context,Ir);
     _ -> error({not_found, Fn})
   end.
@@ -277,5 +288,7 @@ get_literal_type(_Val) when is_float(_Val) -> f32;
 get_literal_type(_Val) when is_integer(_Val) -> i32;
 get_literal_type(Val) -> error({{expected,'i32|f32'},{got,Val}}).
 
-debug_print([Hd|_],true) -> io:fwrite("~p~n",[Hd]);
+debug_print([Hd|_],Context) when Context#context.debug ->
+  io:fwrite("Reg: ~p~nType Buffer:~p~nStack: ~p~nNext St: ~p~n~n",
+            [Context#context.reg,Context#context.addr_buf,Context#context.stack,Hd]);
 debug_print(_,_) -> ok.
