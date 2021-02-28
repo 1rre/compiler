@@ -1,6 +1,7 @@
 #!/usr/bin/env escript
 -module(build).
 -export([main/1]).
+-define(ERLC_FLAGS,[{i,"./include"},{d,'TARGET_ARCH',mips32}]).
 %% Main function
 
 % Remove all generated files
@@ -12,15 +13,14 @@ main(["clean"]) ->
 % Compile everything
 main(["compile"]) ->
   Erl_Files = build_common(),
-  [compile:file(Erl, [{outdir, ".build"}, report_errors, report_warnings]) || Erl <- Erl_Files],
+  [compile:file(Erl, [{outdir,".build"},report|?ERLC_FLAGS]) || Erl <- Erl_Files],
   halt(0);
 
 % Compile everything
 main(["bin/c_compiler"]) ->
   file:make_dir("bin"),
   Erl_Files = build_common(),
-  S=self(),
-  Pids = [spawn_link(fun() -> S ! {self(), {change_ext(Erl, beam),compile:file(Erl,[binary])}} end) || Erl <- Erl_Files],
+  Pids = [compile_erl(Erl) || Erl <- Erl_Files],
   Bin = [receive
            {Pid,{File,{ok,_Mod,Bin}}} -> {File,Bin};
            {Pid,Error} -> error(Error)
@@ -29,7 +29,16 @@ main(["bin/c_compiler"]) ->
   halt(0);
 
 % For ease, no arguments compiles everything
-main(_) -> main(["bin/c_compiler"]).
+main([File]) ->
+  Files = filelib:wildcard([$*,$*,$/|File]),
+  lists:search(fun (F) ->
+    case filelib:is_file(F) and (filename:extension(F) =:= ".erl") of
+      true -> compile:file(F,[report,binary|?ERLC_FLAGS]);
+      _ -> false
+    end =:= ok
+  end, Files);
+
+main([]) -> main(["bin/c_compiler"]).
 
 %% Common tasks for compiling to beam files (shared object files) and an escript (a binary file)
 build_common() ->
@@ -49,6 +58,12 @@ build_common() ->
   Yecc_Files = filelib:wildcard("src/parsing/*.yrl"),
   [c:y(Yrl,{report_warnings,false}) || Yrl <- Yecc_Files],
   filelib:wildcard("src/**/*.erl").
+
+compile_erl(Erl) ->
+  S = self(),
+  spawn_link(fun() ->
+    S ! {self(), {change_ext(Erl, beam),compile:file(Erl,[binary|?ERLC_FLAGS])}}
+  end).
 
 %% Collate the dependencies for compilation
 % C++ compiler

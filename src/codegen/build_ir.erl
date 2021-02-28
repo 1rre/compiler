@@ -8,6 +8,7 @@
 
 %% Arity 1 function for default arguments
 process(Ast) ->
+  io:fwrite("building ~p~n",[Ast]),
   process(Ast, #state{}).
 
 %% On a leaf node of the AST, return the current state
@@ -447,21 +448,34 @@ process_bif(Type,A,B,State) ->
   Statement = A_St ++ B_St ++ [{Type,{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
   {ok,B_State,Statement}.
 
+-include("arch_type_consts.hrl").
+
 %% Get a shortened name of a type
-%% TODO: #10
-%        We need to support float literals from here (as well as chars etc.)
 %% TODO: #18
 %        We need to add a typedef, enum & struct resolver here
 get_type([{unsigned,_}|Type],C) ->
-  {ok,{P,i,N}} = get_type(Type,C),
-  {ok,{P,u,N}};
-get_type([{float,_}],_) -> {ok,{0,f,32}};
-get_type([{double,_}],_) -> {ok,{0,f,64}};
-get_type([{long,_},{double,_}],_) -> {ok,{0,f,64}};
-get_type([{long,_}|_],_) -> {ok,{0,i,64}};
-get_type([{int,_}],_) -> {ok,{0,i,32}};
-get_type([{void,_}],_) -> {ok,{0,nil,nil}};
-get_type(Type,_) -> {error,{unknown_type, Type}}.
+  case get_type(Type,C) of
+    {ok,{P,i,N}} -> {ok,{P,u,N}};
+    {error,{unknown_type,T}} -> {error,{unknown_type,[unsigned|T]}};
+    _ -> {error,{unknown_type,[unsigned|Type]}}
+  end;
+get_type([{signed,_}|Type],C) ->
+  case get_type(Type,C) of
+    {ok,{P,i,N}} -> {ok,{P,i,N}};
+    {error,{unknown_type,T}} -> {error,{unknown_type,[signed|T]}};
+    _ -> {error,{unknown_type,[signed|Type]}}
+  end;
+get_type([{long,_},{double,_}],_) -> {ok,{0,f,?SIZEOF_L_DOUBLE}};
+get_type([{double,_}],_)          -> {ok,{0,f,?SIZEOF_DOUBLE}};
+get_type([{float,_}],_)           -> {ok,{0,f,?SIZEOF_FLOAT}};
+get_type([{long,_},{int,_}],_)    -> {ok,{0,i,?SIZEOF_L_INT}};
+get_type([{long,_}],_)            -> {ok,{0,i,?SIZEOF_L_INT}};
+get_type([{int,_}],_)             -> {ok,{0,i,?SIZEOF_INT}};
+get_type([{short,_},{int,_}],_)   -> {ok,{0,i,?SIZEOF_SHORT}};
+get_type([{short,_}],_)           -> {ok,{0,i,?SIZEOF_SHORT}};
+get_type([{char,_}],_)            -> {ok,{0,i,?SIZEOF_CHAR}};
+get_type([{void,_}],_)            -> {ok,{0,nil,0}};
+get_type(Type,_)                  -> {error,{unknown_type, Type}}.
 
 %% Function to return the size of different types.
 %% TODO: #10
@@ -475,7 +489,7 @@ get_type(Type,_) -> {error,{unknown_type, Type}}.
 %        Add support for compile-time evaluation of the size of variables,
 %        if this is possible (confirm that allocation is done at declaration time?).
 sizeof({0,_,S},_) -> S;
-sizeof({_,_,_},_) -> 32;
+sizeof({_,_,_},_) -> ?SIZEOF_POINTER;
 sizeof(Type,State) -> error({type,Type}).
 
 %% 2x helper functions to copy the label/local variable count from 1 state to another.
