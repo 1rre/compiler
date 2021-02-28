@@ -4,8 +4,8 @@
 -define(STACK_PTR,16#7fffffff).
 -define(GLOBL_PTR,16#10008000).
 
--record(context,{fn=main,global=[],addr_buf=[],reg=[],debug=false,
-                 stack= <<>>,s_bounds=[?STACK_PTR],heap= <<>>,h_bounds=[?GLOBL_PTR]}).
+-record(context,{fn=main,global=#{},types=#{},reg=[],debug=false,
+                 addr_buf=[],stack= <<>>,s_bounds=[?STACK_PTR]}).
 
 run(Ir,Args,Flags) ->
   case lists:search(fun ({function,_,_,_,_}) -> true; (_) -> false end, Ir) of
@@ -18,8 +18,8 @@ run(Ir,Fn,Args,Flags) ->
     (Arg,{Stack,[C1|Ch]}) ->
       {<<Arg:32,Stack/bits>>,[C1-4,C1|Ch]}
     end, {<<>>,[?STACK_PTR]}, Args),
-  Init_Global = [{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir],
-  Init_Buf = [get_literal_type(Arg)||Arg<-Args]++[{nil,0}],
+  Init_Global = maps:from_list([{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir]),
+  Init_Buf = [get_literal_type(Arg)||Arg<-Args]++[{0,nil,0}],
   Context = #context{fn=Fn,
                      debug=lists:member(debug,Flags),
                      global=Init_Global,
@@ -48,13 +48,18 @@ run_st([],Context,_Ir) ->
 run_st([return|_],Context,_Ir) ->
   {ok,Context};
 
+%% TODO: N/A
+%        Update local type register using cast
+run_st([{cast,Reg,Type}|Rest],Context,Ir) ->
+  run_st(Rest,Context,Ir);
+
 run_st([{allocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   S_Bounds = Context#context.s_bounds,
   N_Stack = <<Stack/bits,0:N>>,
   N_S_Bounds = [hd(S_Bounds) - N div 8 | S_Bounds],
   Buf = Context#context.addr_buf,
-  N_Buf = [{nil,N} | Buf],
+  N_Buf = [{0,nil,N} | Buf],
   N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
@@ -115,7 +120,7 @@ run_st([{jump,{f,Lb}}|_],Context,Ir) ->
 run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
   Buf = Context#context.addr_buf,
   {Args,Other} = lists:split(length(Buf)-First-1,Buf),
-  Fn_Context = Context#context{addr_buf=Args++[{nil,0}],fn=Fn},
+  Fn_Context = Context#context{addr_buf=Args++[{0,nil,0}],fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
   N_Context = Fn_End#context{addr_buf=Other,fn=Context#context.fn},
   debug_print(Rest,Context),
@@ -167,28 +172,18 @@ get_data({y,N},Context) ->
   get_data({lists:nth(Nth,Buf),lists:nth(Nth,S_Bounds)},Context);
 get_data(nil,_Context) ->
   {ok,nil};
-get_data({f32,Address},Context) when is_integer(Address) and (Address >= 16#7000000) ->
+get_data({f32,Address},Context) when is_integer(Address) ->
   % Address to get_mem_size is off by 32?
   Size = get_mem_size(Address,Context#context.s_bounds)*8,
   Offset = (?STACK_PTR - Address)*8,
   <<_:Offset,Data:Size/float,_/bits>> = Context#context.stack,
   {ok,Data};
-get_data({f32,Address},Context) when is_integer(Address) ->
-  Size = get_mem_size(Address,Context#context.h_bounds)*8,
-  Offset = (Address-?GLOBL_PTR)*8 - Size,
-  <<_:Offset,Data:Size/float,_/bits>> = Context#context.heap,
-  {ok,Data};
 get_data({_,Address},Context) when is_integer(Address) -> get_data(Address, Context);
-get_data(Address,Context) when is_integer(Address) and (Address >= 16#7000000) ->
+get_data(Address,Context) when is_integer(Address) ->
   % Address to get_mem_size is off by 32?
   Size = get_mem_size(Address,Context#context.s_bounds)*8,
   Offset = (?STACK_PTR - Address)*8,
   <<_:Offset,Data:Size,_/bits>> = Context#context.stack,
-  {ok,Data};
-get_data(Address,Context) when is_integer(Address) ->
-  Size = get_mem_size(Address,Context#context.h_bounds)*8,
-  Offset = (Address-?GLOBL_PTR)*8 - Size,
-  <<_:Offset,Data:Size,_/bits>> = Context#context.heap,
   {ok,Data};
 get_data(Data,_Context) ->
   error({unknown,Data}).
@@ -203,7 +198,7 @@ set_data({y,N},Data,Context) ->
   Nth = length(Buf)-N,
   N_Context = replace_buf_type(Nth,get_literal_type(Data),Context),
   set_data(lists:nth(Nth, S_Bounds),Data,N_Context);
-set_data(Address,Data,Context) when is_integer(Address) and (Address >= 16#7000000) ->
+set_data(Address,Data,Context) when is_integer(Address) ->
   Size = get_mem_size(Address,Context#context.s_bounds) * 8,
   Offset = (?STACK_PTR - Address)*8,
   <<Init:Offset,_:Size,Rest/bits>> = Context#context.stack,
@@ -212,13 +207,6 @@ set_data(Address,Data,Context) when is_integer(Address) and (Address >= 16#70000
     true -> <<Init:Offset,Data:Size,Rest/bits>>
   end,
   N_Context = Context#context{stack=N_Stack},
-  {ok,N_Context};
-set_data(Address,Data,Context) when is_integer(Address) ->
-  Size = get_mem_size(Address,Context#context.h_bounds) * 8,
-  Offset = (Address - ?GLOBL_PTR)*8,
-  <<Init:Offset,_:Size,Rest/bits>> = Context#context.heap,
-  N_Heap = <<Init:Offset,Data:Size,Rest/bits>>,
-  N_Context = Context#context{heap=N_Heap},
   {ok,N_Context};
 set_data([_|Reg],N,Data) when length(Reg) =:= N -> [Data | Reg];
 set_data(Reg,N,Data) when length(Reg) =:= N -> [Data | Reg];
@@ -266,7 +254,7 @@ rm_chunks(C1,[C2,C3|Bounds]) when (C2 > C1) /= (C3 > C1) ->
 rm_chunks(C1,[_|Bounds]) ->
   rm_chunks(C1,Bounds).
 
-replace_buf_type(1,Type,[_|Buf]) -> [Type|Buf];
+replace_buf_type(2,Type,[_|Buf]) -> [Type|Buf];
 replace_buf_type(N,Type,[Hd|Buf]) -> [Hd|replace_buf_type(N-1,Type,Buf)];
 replace_buf_type(N,Type,Context) ->
   N_Buf = replace_buf_type(N,Type,Context#context.addr_buf),

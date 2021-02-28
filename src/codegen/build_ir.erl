@@ -283,11 +283,15 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
   Type = {N+Ptr_Depth,Raw_T,Raw_S},
   {ok, Mem_State, Mem_St} = allocate_mem(Type, State),
   {ok, Decl_State, Decl_St} = process(Raw_St, Mem_State),
+  Active_Reg = {x,State#state.lvcnt},
   Rv_Cnt = Decl_State#state.rvcnt,
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Decl_State#state.var),
   New_Types = maps:put({y,Rv_Cnt},Type,Decl_State#state.typecheck),
   Next_State = (copy_lvcnt(State,Decl_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
-  Next_St = Mem_St ++ Decl_St ++ [{move,{x,State#state.lvcnt},{y,Rv_Cnt}}],
+  Next_St = case maps:get(Active_Reg,Next_State#state.typecheck,undefined) of
+    Type -> Mem_St ++ Decl_St ++ [{move,Active_Reg,{y,Rv_Cnt}}];
+    _ -> Mem_St ++ Decl_St ++ [{cast,Active_Reg,Type},{move,Active_Reg,{y,Rv_Cnt}}]
+  end,
   {ok, Next_State, Next_St};
 
 %% Declarations without an initialisation are processed by allocating memory
@@ -352,8 +356,6 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   end,
   {ok,Ptr_Type,Ptr_St} = get_ptr(Ptr_Depth,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
   {ok,Assign_State,Assign_St} = process(Raw_St,State),
-  io:fwrite("~p~n",[Raw_St]),
-  io:fwrite("~p~n~n",[Assign_St]),
   Lv_Cnt = State#state.lvcnt,
   case Ptr_St of
     [] ->
