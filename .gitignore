@@ -8,3 +8,4 @@ test/
 .ccls-cache/
 bin/
 **/erl_crash.dump
+**/*.log

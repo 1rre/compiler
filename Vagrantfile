@@ -38,11 +38,11 @@ Vagrant.configure(2) do |config|
   # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
   # documentation for more information about their specific syntax and use.
    config.vm.provision "shell", inline: <<-SHELL
-    sudo echo "deb https://packages.erlang-solutions.com/ubuntu xenial contrib" >> /etc/apt/sources.list
-    curl https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | sudo apt-key add -
+      sudo echo "deb https://packages.erlang-solutions.com/ubuntu xenial contrib" >> /etc/apt/sources.list
+      curl https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | sudo apt-key add -
       sudo apt-get update
       # Standard build tools
-      sudo apt-get -y install g++ gdb make dos2unix git
+      sudo apt-get -y install musl g++ gdb make dos2unix git
       # MIPS cross-compiler stuff
       sudo apt-get -y install g++-mips-linux-gnu gdb-multiarch
       # QEMU run-time emulator

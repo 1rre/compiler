@@ -1,7 +1,7 @@
 -module(build_ir).
 -export([process/1]).
 
--record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},var=#{},typedef=#{},struct=#{},enum=#{}}).
+-record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},var=#{},typedef=#{},struct=#{},enum=#{},typecheck=#{}}).
 
 %% @doc Takes a slightly convoluted & complex AST and compiles them into a more human-readable form.
 %       This form is also a lot closer to the target language (MIPS ASM) than an AST.
@@ -29,7 +29,7 @@ process({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
   {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident,State),
   {ok, Arg_State, Arg_St} = process(Raw_Args, State),
-  New_Fn = maps:put(Ident,{Type,length(Raw_Args),Arg_St},Arg_State#state.fn),
+  New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
   {ok, N_State, N_St} = process(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = case lists:last(N_St) of
     return ->
@@ -49,21 +49,24 @@ process({declaration,Raw_Type,Raw_St}, State) ->
 %  As longs are out of spec we currently don't differentiate however it may be useful to later
 process({int_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
-  {ok, State, [{move,{integer,Val},{x,Lv_Cnt}}]};
+  N_Types = maps:put({x,Lv_Cnt},{0,i,32},State#state.typecheck),
+  {ok,State#state{typecheck=N_Types},[{move,{integer,Val},{x,Lv_Cnt}}]};
 
 %% Process a float node by moving the literal value to the active register
 %  As doubles are out of spec we currently don't support these however it may be useful to later
 process({float_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
-  {ok, State, [{move,{float,Val},{x,Lv_Cnt}}]};
+  N_Types = maps:put({x,Lv_Cnt},{0,f,32},State#state.typecheck),
+  {ok,State#state{typecheck=N_Types},[{move,{float,Val},{x,Lv_Cnt}}]};
 
 %% Process an identifier by finding the integer's location on the stack
 %  and moving it to the active register
 process({identifier,Ln,Ident}, State) ->
   case maps:get(Ident,State#state.var,undefined) of
-    {_Type, X} ->
+    {Type, X} ->
       Lv_Cnt = State#state.lvcnt,
-      {ok,State,[{move,X,{x,Lv_Cnt}}]};
+      N_Types = maps:put({x,Lv_Cnt},Type,State#state.typecheck),
+      {ok,State#state{typecheck=N_Types},[{move,X,{x,Lv_Cnt}}]};
     Other -> error({Other,Ident,{line,Ln},{state,State}})
   end;
 
@@ -81,7 +84,7 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
       {ok,copy_lbcnt(Acc_Rtn_State,Acc_State#state{lvcnt=Lv_Cnt+1}),Acc_St++Acc_Rtn_St}
   end, {ok,State,[]}, Args),
   case maps:get(Ident,Arg_State#state.fn, undefined) of
-    {_Type, Arity, Allocation} when Arity =:= length(Args) ->
+    {Type, Arity} when Arity =:= length(Args) ->
       Lv_Cnt = State#state.lvcnt,
       Rv_Cnt = State#state.rvcnt,
       Alloc_St = [{allocate,32} || _ <- lists:seq(0,Lv_Cnt+Arity-1)],
@@ -95,7 +98,8 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
           Mv_0_St = {move,{x,0},{x,Lv_Cnt}},
           Arg_St++Alloc_St++Mv_To_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
       end,
-      {ok,copy_lbcnt(Arg_State,State),New_St};
+      N_Types = maps:put({x,Lv_Cnt},Type,State#state.typecheck),
+      {ok,copy_lbcnt(Arg_State,State#state{typecheck=N_Types}),New_St};
     Other ->
       error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})
   end;
@@ -212,6 +216,8 @@ process({bif,T,[A,B]}, State) ->
 %% Process an address operator by adding an expression to take the address of
 %  the value which was loaded to a register or put on the stack in the last instruction
 %  and store it in the destination of the last instruction.
+%% TODO: N/A
+%  Update for new type-checking system
 process({{'&',Ln},Raw_St}, State) ->
   {ok, Ref_State, Ref_St} = process(Raw_St, State),
   case lists:last(Ref_St) of
@@ -234,17 +240,22 @@ process({{'&',Ln},Raw_St}, State) ->
 %        Figure out if this can be replaced with `get_ptr/3`.
 %        They appear to perform the same function so it'd probably make sense to use it here?
 process({{'*',Ln},Raw_St},State) ->
+  io:fwrite("*:~n~p~n",[State#state.typecheck]),
   {ok, Ptr_State, Ptr_St} = process(Raw_St, State),
+  Active_Reg = {x,State#state.lvcnt},
+  {N,T,S} = maps:get(Active_Reg,Ptr_State#state.typecheck,undefined),
+  New_Types = maps:put(Active_Reg,{N-1,T,S},Ptr_State#state.typecheck),
+  N_State = Ptr_State#state{typecheck=New_Types},
   case lists:last(Ptr_St) of
     {move,Src,Dest} ->
       Next_St = lists:droplast(Ptr_St) ++ [{load,Src,Dest}],
-      {ok,copy_lvcnt(State,Ptr_State),Next_St};
+      {ok,copy_lvcnt(State,N_State),Next_St};
     {load,_Src,Dest} ->
       Next_St = Ptr_St ++ [{load,Dest,Dest}],
-      {ok,copy_lvcnt(State,Ptr_State),Next_St};
+      {ok,copy_lvcnt(State,N_State),Next_St};
     {address,_Src,Dest} ->
       Next_St = Ptr_St ++ [{load,Dest,Dest}],
-      {ok,copy_lvcnt(State,Ptr_State),Next_St};
+      {ok,copy_lvcnt(State,N_State),Next_St};
     Other -> error({Other,{line,Ln}})
   end;
 
@@ -262,42 +273,32 @@ process({{'*',Ln},Raw_St},State) ->
 %        which will be done using the `[]` operators and the `offset` token.
 process(Other, State) -> error({Other,State}).
 
-%% Get a shortened name of a type
-%% TODO: #10
-%        We need to support float literals from here (as well as chars etc.)
-%% TODO: #18
-%        We need to add a typedef, enum & struct resolver here
-get_type([{long,_},{long,_},{int,_}],_) -> {ok,int64};
-get_type([{long,_},{int,_}],_) -> {ok,int64};
-get_type([{int,_}],_) -> {ok,int32};
-get_type([{void,_}],_) -> {ok,nil};
-get_type([{float,_}],_) -> {ok,f32};
-get_type([{double,_}],_) -> {ok,f64};
-get_type([{long,_},{double,_}],_) -> {ok,f64};
-get_type(Type,_) -> {error,{unknown_type, Type}}.
-
 %% Delegated function for declarations.
 %% Declarations with an initialisation are processed by allocating memory
 %  for them on the stack, processing the initialisation value and storing
 %  the initialisation value in the newly allocated stack slot.
-get_decl_specs(Type, [{Raw_Ident,{'=',_},Raw_St}], State) when Raw_Ident =/= identifier ->
-  {ok, Ident, Ptr_Ident} = get_ident_specs(Raw_Ident, State),
-  {ok, Mem_State, Mem_St} = allocate_mem(Type, Ptr_Ident, State),
+get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
+  {ok, Ident, Ptr_Depth} = get_ident_specs(Raw_Ident, State),
+  Type = {N+Ptr_Depth,Raw_T,Raw_S},
+  {ok, Mem_State, Mem_St} = allocate_mem(Type, State),
   {ok, Decl_State, Decl_St} = process(Raw_St, Mem_State),
   Rv_Cnt = Decl_State#state.rvcnt,
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Decl_State#state.var),
-  Next_State = (copy_lvcnt(State,Decl_State))#state{var=New_Var,rvcnt=Rv_Cnt+1},
+  New_Types = maps:put({y,Rv_Cnt},Type,Decl_State#state.typecheck),
+  Next_State = (copy_lvcnt(State,Decl_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
   Next_St = Mem_St ++ Decl_St ++ [{move,{x,State#state.lvcnt},{y,Rv_Cnt}}],
   {ok, Next_State, Next_St};
 
 %% Declarations without an initialisation are processed by allocating memory
 %  for them on the stack and then updating the state to indicate the new stack size.
-get_decl_specs(Type, [Raw_Ident], State) ->
-  {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident, State),
-  {ok, Mem_State, Mem_St} = allocate_mem(Type, Ident, State),
+get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) ->
+  {ok, Ident, Ptr_Depth} = get_ident_specs(Raw_Ident, State),
+  Type = {N+Ptr_Depth,Raw_T,Raw_S},
+  {ok, Mem_State, Mem_St} = allocate_mem(Type, State),
   Rv_Cnt = Mem_State#state.rvcnt,
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
-  Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1},
+  New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
+  Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
   {ok,Next_State,Mem_St};
 
 %% Any other declaration types are currently unsupported.
@@ -314,19 +315,16 @@ get_decl_specs(Type, Other, State) -> error({Type,Other,State}).
 %        dereference & address operators (eg `*&x = 10;`) passes the parser but
 %        cannot be processed. The fix here is easy but I believe other fixes are needed.
 get_ident_specs({{'*',_},Rest}, State) ->
-  {ok, Ident, Ptr_Ident} = get_ident_specs(Rest, State),
-  {ok, Ident, {'*',Ptr_Ident}};
+  {ok, Ident, Ptr_Depth} = get_ident_specs(Rest, State),
+  {ok, Ident, Ptr_Depth+1};
 get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
-  {ok, Ident, Ptr_Ident} = get_ident_specs({Ptr,Rest}, State),
-  {ok, Ident, {'*',Ptr_Ident}};
+  {ok, Ident, Ptr_Depth} = get_ident_specs({Ptr,Rest}, State),
+  {ok, Ident, Ptr_Depth+1};
 get_ident_specs({identifier,_,Ident}, _State) ->
-  {ok, Ident, Ident}.
+  {ok, Ident, 0}.
 
-%% To allocate stack memory for a pointer variable, allocate the size of a pointer
-allocate_mem(_Type,{'*',_Ident},State) ->
-  {ok,State,[{allocate,sizeof(pointer,State)}]};
 %% To allocate stack memory for a variable, allocate the size of the variable type.
-allocate_mem(Type,_Ident,State) ->
+allocate_mem(Type,State) ->
   {ok,State,[{allocate,sizeof(Type,State)}]}.
 
 %% To deallocate memory due to variables going out of scope,
@@ -343,23 +341,24 @@ deallocate_mem(State_1,State_2) ->
 %% For a normal assignment, the value to be assigned is processed and stored in the
 %  active register. The destination is evaluated as to whether it is a variable or
 %  a memory location and then the appropriate move/store instructions are returned.
+%% TODO: N/A
+%        Store pointers properly in memory (I think?)
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
-  {ok,Ident,Ptr_Ident} = get_ident_specs(Raw_Ident, State),
+  {ok,Ident,Ptr_Depth} = get_ident_specs(Raw_Ident, State),
   {ok, Ptr} = case maps:get(Ident,State#state.var,undefined) of
     {_Type,Ptr_Loc} -> {ok,Ptr_Loc};
     Other -> {error, {Other,{undeclared,Ident}}}
   end,
-  {ok,_Ptr_State,Ptr_St} = get_ptr(Ptr_Ident,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
+  {ok,Ptr_Type,Ptr_St} = get_ptr(Ptr_Depth,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
   {ok,Assign_State,Assign_St} = process(Raw_St,State),
   Lv_Cnt = State#state.lvcnt,
   case Ptr_St of
     [] ->
-      Next_St = Assign_St++[{move,{x,Lv_Cnt},Ptr}],
+      Next_St = Assign_St++[],
       {ok,copy_lbcnt(Assign_State,State),Next_St};
     Ptr_St ->
-      {load,A,B} = lists:last(Ptr_St),
       {_,Src,_} = lists:last(Assign_St),
-      Next_St = Assign_St ++ lists:droplast(Ptr_St) ++ [{move,A,B},{store,Src,{x,Lv_Cnt + 1}}],
+      Next_St = Assign_St ++ Ptr_St ++ [{store,Src,{x,Lv_Cnt + 1}}],
       {ok,copy_lbcnt(Assign_State,State),Next_St}
   end;
 
@@ -373,34 +372,96 @@ get_assign_specs(Op,[Raw_Ident,Raw_St], State) ->
 get_assign_specs(Op, Other, State) ->
   error({Op,Other,State}).
 
-%% Function to dereference the result a statement
-%% When there is a dereference operator, a "load" statement is added to
-%  get the value which is pointed to by the result of the statement.
-get_ptr({'*',Ptr_Ident}, Ptr, State) ->
-  Next_St = {load,Ptr,{x,State#state.lvcnt}},
-  {ok,State,Ptr_St} = get_ptr(Ptr_Ident,{x,State#state.lvcnt},State),
-  {ok,State,[Next_St|Ptr_St]};
-
 %% When there is no dereference operator, an empty statement is returned.
 %% TODO: #4
 %        I believe that once we add address operators to the LHS of assignments,
 %        this condition will be triggered, therefore we should probably add an extra
 %        case to catch these.
-get_ptr(_Ptr_Ident, _Ptr, State) ->
-  {ok,State,[]}.
+get_ptr(Ptr_Depth,Ptr,State) ->
+  {N,T,S} = maps:get(Ptr,State#state.typecheck,undefined),
+  Type = {N-Ptr_Depth,T,S},
+  Active_Reg = {x,State#state.lvcnt},
+  %% Should this be -1?
+  Load_St = get_ptr_load_st(Ptr_Depth-1,Ptr,Active_Reg),
+  {ok,Type,Load_St}.
+
+get_ptr_load_st(0,Ptr,Reg) -> [{move,Ptr,Reg}];
+get_ptr_load_st(N,Ptr,Reg) -> [{load,Ptr,Reg}|get_ptr_load_st(N-1,Reg,Reg)].
 
 %% Delegated function for processing built-in functions.
+%% A special case for operations which can be done on pointers
+%% TODO: N/A
+%        Check for other pointer operations
+process_bif('+',A,B,State) ->
+  Lv_Cnt = State#state.lvcnt,
+  {ok,A_State,A_St} = process(A,State),
+  N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
+  {ok,B_State,B_St} = process(B,N_A_State),
+  A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
+  B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
+  R_Type = case {A_Type,B_Type} of
+    {{0,T,S_A},{0,T,S_B}} -> {0,i,max(S_A,S_B)};
+    {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
+    {{0,i,S_A},{N,T,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
+    Types -> error({{undefined_op_cast,'+'},Types})
+  end,
+  io:fwrite("~p + ~p: ~p~n",[A_Type,B_Type,R_Type]),
+  Lv_Cnt = State#state.lvcnt,
+  Statement = A_St ++ B_St ++ [{'-',{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
+  {ok,B_State,Statement};
+
+process_bif('-',A,B,State) ->
+  Lv_Cnt = State#state.lvcnt,
+  {ok,A_State,A_St} = process(A,State),
+  N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
+  {ok,B_State,B_St} = process(B,N_A_State),
+  A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
+  B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
+  R_Type = case {A_Type,B_Type} of
+    {{0,T,S_A},{0,T,S_B}} -> {0,i,max(S_A,S_B)};
+    {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
+    Types -> error({{undefined_op_cast,'-'},Types})
+  end,
+  io:fwrite("~p + ~p: ~p~n",[A_Type,B_Type,R_Type]),
+  Lv_Cnt = State#state.lvcnt,
+  Statement = A_St ++ B_St ++ [{'-',{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
+  {ok,B_State,Statement};
+
 %% Arity 2 BIFs are processed by processing each of their operands and
 %  adding a statement which will take the active register and the register above it,
 %  perform the built-in function in the values in those registers and store the result
 %  in the active register.
 process_bif(Type,A,B,State) ->
+  Lv_Cnt = State#state.lvcnt,
   {ok,A_State,A_St} = process(A,State),
-  N_A_State = A_State#state{lvcnt=State#state.lvcnt+1},
+  N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
   {ok,B_State,B_St} = process(B,N_A_State),
+  A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
+  B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
+  R_Type = case {A_Type,B_Type} of
+    {{0,i,S_A},{0,i,S_B}} -> {0,i,max(S_A,S_B)};
+    Types -> error({{undefined_op_cast,Type},Types})
+  end,
+  io:fwrite("~p + ~p: ~p~n",[A_Type,B_Type,R_Type]),
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{Type,{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
   {ok,B_State,Statement}.
+
+%% Get a shortened name of a type
+%% TODO: #10
+%        We need to support float literals from here (as well as chars etc.)
+%% TODO: #18
+%        We need to add a typedef, enum & struct resolver here
+get_type([{unsigned,_}|Type],C) ->
+  {ok,{P,i,N}} = get_type(Type,C),
+  {ok,{P,u,N}};
+get_type([{float,_}],_) -> {ok,{0,f,32}};
+get_type([{double,_}],_) -> {ok,{0,f,64}};
+get_type([{long,_},{double,_}],_) -> {ok,{0,f,64}};
+get_type([{long,_}|_],_) -> {ok,{0,i,64}};
+get_type([{int,_}],_) -> {ok,{0,i,32}};
+get_type([{void,_}],_) -> {ok,{0,nil,nil}};
+get_type(Type,_) -> {error,{unknown_type, Type}}.
 
 %% Function to return the size of different types.
 %% TODO: #10
@@ -413,11 +474,8 @@ process_bif(Type,A,B,State) ->
 %% TODO: N/A
 %        Add support for compile-time evaluation of the size of variables,
 %        if this is possible (confirm that allocation is done at declaration time?).
-sizeof(int32,_) -> 32;
-sizeof(int64,_) -> 64;
-sizeof(f32,_) -> 32;
-sizeof(f64,_) -> 64;
-sizeof(pointer,_) -> 32;
+sizeof({0,_,S},_) -> S;
+sizeof({_,_,_},_) -> 32;
 sizeof(Type,State) -> error({type,Type}).
 
 %% 2x helper functions to copy the label/local variable count from 1 state to another.
