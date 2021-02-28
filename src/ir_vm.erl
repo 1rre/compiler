@@ -18,15 +18,18 @@ run(Ir,Fn,Args,Flags) ->
       {<<Arg:32,Stack/bits>>,[C1-4,C1|Ch]}
     end, {<<>>,[?STACK_PTR]}, Args),
   Init_Global = [{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir],
+  Init_Buf = [get_literal_type(Arg)||Arg<-Args]++[{nil,0}],
   Context = #context{fn=Fn,
                      debug=lists:member(debug,Flags),
                      global=Init_Global,
-                     addr_buf=Init_S_Bounds,
+                     addr_buf=Init_Buf,
                      stack=Init_Stack,
                      s_bounds=Init_S_Bounds},
-  if Context#context.debug -> io:fwrite("~p~n~n~n",[Ir]) end,
+  if Context#context.debug -> io:fwrite("~p~n~n~n",[Ir]); true -> ok end,
   debug_print([{call,Fn,length(Args),{y,0}}],Context#context.debug),
   {ok, End_Context} = call_fn(Fn,Context,Ir),
+  End_Reg = [io_lib:format("~B",[N])||N<-End_Context#context.reg],
+  io:fwrite("End Reg:~n~p~n",[End_Reg]), 
   lists:last(End_Context#context.reg).
 
 call_fn(Fn,Context,Ir) ->
@@ -50,9 +53,9 @@ run_st([{allocate,N}|Rest],Context,Ir) ->
   N_Stack = <<Stack/bits,0:N>>,
   N_S_Bounds = [hd(S_Bounds) - N div 8 | S_Bounds],
   Buf = Context#context.addr_buf,
-  N_Buf = [hd(N_S_Bounds) | Buf],
+  N_Buf = [nil | Buf],
   N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{deallocate,N}|Rest],Context,Ir) ->
@@ -64,13 +67,13 @@ run_st([{deallocate,N}|Rest],Context,Ir) ->
   Buf = Context#context.addr_buf,
   N_Buf = lists:nthtail(length(S_Bounds)-length(N_S_Bounds),Buf),
   N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{address,Src,Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address(Src,Context),
   {ok,N_Context} = set_data(Dest,Address,Context),
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{load,Src,Dest}|Rest],Context,Ir) ->
@@ -78,24 +81,24 @@ run_st([{load,Src,Dest}|Rest],Context,Ir) ->
   {ok,Ptr} = get_data(Address,Context),
   {ok,Value} = get_data(Ptr,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{store,Src,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Src,Context),
   {ok,Address} = get_address(Dest,Context),
   {ok,N_Context} = set_data(Address,Value,Context),
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{move,Data,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Data,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{label,_}|Rest],Context,Ir) ->
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,Context,Ir);
 
 run_st([{jump,{f,Lb}}|_],Context,Ir) ->
@@ -104,10 +107,10 @@ run_st([{jump,{f,Lb}}|_],Context,Ir) ->
 run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
   Buf = Context#context.addr_buf,
   {Args,Other} = lists:split(length(Buf)-First-1,Buf),
-  Fn_Context = Context#context{addr_buf=Args++[hd(Other)],fn=Fn},
+  Fn_Context = Context#context{addr_buf=Args++[nil],fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
   N_Context = Fn_End#context{addr_buf=Other,fn=Context#context.fn},
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{test,Data,{f,Lb}}|Rest],Context,Ir) ->
@@ -115,9 +118,7 @@ run_st([{test,Data,{f,Lb}}|Rest],Context,Ir) ->
   if
     Data_Val == 0 -> jump(Lb,Context,Ir);
     true ->
-      if Context#context.debug and (length(Rest)>0) ->
-        io:fwrite("~p~n",[hd(Rest)])
-      end,
+      debug_print(Rest,Context#context.debug),
       run_st(Rest,Context,Ir)
   end;
 
@@ -129,28 +130,47 @@ run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
     is_float(A_Val) or is_float(B_Val) -> set_data(Dest,A_Val / B_Val,Context);
     true -> set_data(Dest,A_Val div B_Val,Context)
   end,
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st([{Op,Dest,[A,B]}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = set_data(Dest,do_op(Op,A_Val,B_Val),Context),
-debug_print(Rest,Context#context.debug),
+  debug_print(Rest,Context#context.debug),
   run_st(Rest,N_Context,Ir);
 
 run_st(St,Context,_Ir) ->
   error({{unknown,St},{context,Context}}).
 
+
+%% TODO: N/A
+%        Floats need to be differentiated here
+%        as they are currently stored as integers once being removed from the stack
 get_data({integer,N},_Context) -> {ok,N};
+get_data({float,N},_Context) -> {ok,N};
 get_data({x,N},Context) ->
   Reg = Context#context.reg,
   {ok,lists:nth(length(Reg) - N, Reg)};
 get_data({y,N},Context) ->
   Buf = Context#context.addr_buf,
-  get_data(lists:nth(length(Buf)-N, Buf),Context);
+  S_Bounds = Context#context.s_bounds,
+  Nth = length(Buf)-N,
+  get_data({lists:nth(Nth,Buf),lists:nth(Nth,S_Bounds)},Context);
 get_data(nil,_Context) ->
   {ok,nil};
+get_data({f32,Address},Context) when is_integer(Address) and (Address >= 16#7000000) ->
+  % Address to get_mem_size is off by 32?
+  Size = get_mem_size(Address,Context#context.s_bounds)*8,
+  Offset = (?STACK_PTR - Address)*8,
+  <<_:Offset,Data:Size/float,_/bits>> = Context#context.stack,
+  {ok,Data};
+get_data({f32,Address},Context) when is_integer(Address) ->
+  Size = get_mem_size(Address,Context#context.h_bounds)*8,
+  Offset = (Address-?GLOBL_PTR)*8 - Size,
+  <<_:Offset,Data:Size/float,_/bits>> = Context#context.heap,
+  {ok,Data};
+get_data({_,Address},Context) when is_integer(Address) -> get_data(Address, Context);
 get_data(Address,Context) when is_integer(Address) and (Address >= 16#7000000) ->
   % Address to get_mem_size is off by 32?
   Size = get_mem_size(Address,Context#context.s_bounds)*8,
@@ -171,12 +191,18 @@ set_data({x,N},Data,Context) ->
   {ok,Context#context{reg=set_data(Context#context.reg,N,Data)}};
 set_data({y,N},Data,Context) ->
   Buf = Context#context.addr_buf,
-  set_data(lists:nth(length(Buf)-N, Buf),Data,Context);
+  S_Bounds = Context#context.s_bounds,
+  Nth = length(Buf)-N,
+  N_Context = replace_buf_type(Nth,get_literal_type(Data),Context),
+  set_data(lists:nth(Nth, S_Bounds),Data,N_Context);
 set_data(Address,Data,Context) when is_integer(Address) and (Address >= 16#7000000) ->
   Size = get_mem_size(Address,Context#context.s_bounds) * 8,
   Offset = (?STACK_PTR - Address)*8,
   <<Init:Offset,_:Size,Rest/bits>> = Context#context.stack,
-  N_Stack = <<Init:Offset,Data:Size,Rest/bits>>,
+  N_Stack = if
+    is_float(Data) -> <<Init:Offset,Data:Size/float,Rest/bits>>;
+    true -> <<Init:Offset,Data:Size,Rest/bits>>
+  end,
   N_Context = Context#context{stack=N_Stack},
   {ok,N_Context};
 set_data(Address,Data,Context) when is_integer(Address) ->
@@ -194,7 +220,8 @@ set_data(Dest,_N,_Data) -> error({no_loc,Dest}).
 
 get_address({y,N},Context) ->
   Buf = Context#context.addr_buf,
-  Addr = lists:nth(length(Buf)-N, Buf),
+  S_Bounds = Context#context.s_bounds,
+  Addr = lists:nth(length(Buf)-N, S_Bounds),
   {ok, Addr};
 get_address({x,N},Context) ->
   get_data({x,N},Context);
@@ -203,7 +230,7 @@ get_address(_,_) -> error("").
 get_mem_size(C1,[C2,C1|_]) ->
   abs(C1-C2);
 get_mem_size(C1,[C2,C3|Bounds]) when (C2 > C1) /= (C3 > C1) ->
-  error({stack_boundary,{C1,{C2,C3}}});
+  error({boundary_get,{C1,{C2,C3}}});
 get_mem_size(C1,[_|Bounds]) ->
   get_mem_size(C1,Bounds).
 
@@ -224,9 +251,15 @@ find_lb(_,Lb) -> error({no_label,Lb}).
 rm_chunks(C1,[C1|Bounds]) ->
   [C1|Bounds];
 rm_chunks(C1,[C2,C3|Bounds]) when (C2 > C1) /= (C3 > C1) ->
-  error({boundary_error,{C1,{C2,C3}}});
+  error({boundary_rm,{C1,{C2,C3}}});
 rm_chunks(C1,[_|Bounds]) ->
   rm_chunks(C1,Bounds).
+
+replace_buf_type(1,Type,[_|Buf]) -> [Type|Buf];
+replace_buf_type(N,Type,[Hd|Buf]) -> [Hd|replace_buf_type(N-1,Type,Buf)];
+replace_buf_type(N,Type,Context) ->
+  N_Buf = replace_buf_type(N,Type,Context#context.addr_buf),
+  Context#context{addr_buf=N_Buf}.
 
 do_op('+',A,B) -> A+B;
 do_op('-',A,B) -> A-B;
@@ -238,7 +271,11 @@ do_op('>=',A,B) -> A>=B;
 do_op('<=',A,B) -> B>=A;
 do_op('>',A,B) -> A>B;
 do_op('<',A,B) -> B>A;
-do_op(Op,_,_) -> error({unknown,Op}).
+do_op(Op,_,_) -> error({bif_not_recognised,Op}).
+
+get_literal_type(_Val) when is_float(_Val) -> f32;
+get_literal_type(_Val) when is_integer(_Val) -> i32;
+get_literal_type(Val) -> error({{expected,'i32|f32'},{got,Val}}).
 
 debug_print([Hd|_],true) -> io:fwrite("~p~n",[Hd]);
 debug_print(_,_) -> ok.

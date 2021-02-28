@@ -46,9 +46,16 @@ process({declaration,Raw_Type,Raw_St}, State) ->
   get_decl_specs(Type,Raw_St,State);
 
 %% Process an integer node by moving the literal value to the active register
+%  As longs are out of spec we currently don't differentiate however it may be useful to later
 process({int_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
   {ok, State, [{move,{integer,Val},{x,Lv_Cnt}}]};
+
+%% Process a float node by moving the literal value to the active register
+%  As doubles are out of spec we currently don't support these however it may be useful to later
+process({float_l,_Line,Val,_Suffix}, State) ->
+  Lv_Cnt = State#state.lvcnt,
+  {ok, State, [{move,{float,Val},{x,Lv_Cnt}}]};
 
 %% Process an identifier by finding the integer's location on the stack
 %  and moving it to the active register
@@ -264,6 +271,9 @@ get_type([{long,_},{long,_},{int,_}],_) -> {ok,int64};
 get_type([{long,_},{int,_}],_) -> {ok,int64};
 get_type([{int,_}],_) -> {ok,int32};
 get_type([{void,_}],_) -> {ok,nil};
+get_type([{float,_}],_) -> {ok,f32};
+get_type([{double,_}],_) -> {ok,f64};
+get_type([{long,_},{double,_}],_) -> {ok,f64};
 get_type(Type,_) -> {error,{unknown_type, Type}}.
 
 %% Delegated function for declarations.
@@ -404,6 +414,9 @@ process_bif(Type,A,B,State) ->
 %        Add support for compile-time evaluation of the size of variables,
 %        if this is possible (confirm that allocation is done at declaration time?).
 sizeof(int32,_) -> 32;
+sizeof(int64,_) -> 64;
+sizeof(f32,_) -> 32;
+sizeof(f64,_) -> 64;
 sizeof(pointer,_) -> 32;
 sizeof(Type,State) -> error({type,Type}).
 
