@@ -350,20 +350,29 @@ deallocate_mem(State_1,State_2) ->
 %        Store pointers properly in memory (I think?)
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   {ok,Ident,Ptr_Depth} = get_ident_specs(Raw_Ident, State),
-  {ok, Ptr} = case maps:get(Ident,State#state.var,undefined) of
-    {_Type,Ptr_Loc} -> {ok,Ptr_Loc};
+  {ok,Raw_Type,Ptr} = case maps:get(Ident,State#state.var,undefined) of
+    {T,Ptr_Loc} -> {ok,T,Ptr_Loc};
     Other -> {error, {Other,{undeclared,Ident}}}
   end,
-  {ok,Ptr_Type,Ptr_St} = get_ptr(Ptr_Depth,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
-  {ok,Assign_State,Assign_St} = process(Raw_St,State),
+  {ok,Ptr_Type,Ptr_St} = get_ptr(Raw_Type,Ptr_Depth,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
   Lv_Cnt = State#state.lvcnt,
+  {ok,Assign_State,Assign_St} = process(Raw_St,State),
+  St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
   case Ptr_St of
     [] ->
-      Next_St = Assign_St ++ [{move,{x,Lv_Cnt},Ptr}],
+      End_St = if 
+        St_Type =/= Ptr_Type -> [{cast,{x,Lv_Cnt},Ptr_Type},{move,{x,Lv_Cnt},Ptr}];
+        true -> [{move,{x,Lv_Cnt},Ptr}]
+      end,
+      Next_St = Assign_St ++ End_St,
       {ok,copy_lbcnt(Assign_State,State),Next_St};
     Ptr_St ->
       {_,Src,_} = lists:last(Assign_St),
-      Next_St = Assign_St ++ Ptr_St ++ [{store,Src,{x,Lv_Cnt + 1}}],
+      End_St = if 
+        St_Type =/= Ptr_Type -> [{cast,{x,Lv_Cnt},Ptr_Type},{store,Src,{x,Lv_Cnt+1}}];
+        true -> [{store,Src,{x,Lv_Cnt+1}}]
+      end,
+      Next_St = Assign_St ++ Ptr_St ++ End_St,
       {ok,copy_lbcnt(Assign_State,State),Next_St}
   end;
 
@@ -382,11 +391,9 @@ get_assign_specs(Op, Other, State) ->
 %        I believe that once we add address operators to the LHS of assignments,
 %        this condition will be triggered, therefore we should probably add an extra
 %        case to catch these.
-get_ptr(0,Ptr,State) ->
-  Type = maps:get(Ptr,State#state.typecheck,undefined),
+get_ptr(Type,0,Ptr,State) ->
   {ok,Type,[]};
-get_ptr(Ptr_Depth,Ptr,State) ->
-  {N,T,S} = maps:get(Ptr,State#state.typecheck,undefined),
+get_ptr({N,T,S},Ptr_Depth,Ptr,State) ->
   Type = {N-Ptr_Depth,T,S},
   Active_Reg = {x,State#state.lvcnt},
   %% Should this be -1?

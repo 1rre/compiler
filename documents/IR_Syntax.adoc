@@ -1,8 +1,7 @@
 = Syntax of the Intermediate Representation
 
-Up to date as of 11am on 24/02/2021
 
-[%header,cols="4,5"]
+[%header,cols="3,5"]
 |===
 |Syntax | Usage
 |`{move,${data},${rd}}` | Copy the value of `data` (register, stack or immediate) to `rd` (register or stack)
@@ -17,5 +16,5 @@ Up to date as of 11am on 24/02/2021
 |`{address,${rs},${rd}}` | Finds the memory location of the object in `rs` (register or stack) & stores a pointer to it in `rd` (register)
 |`{load,${rs},${rd}}` | Finds the memory location pointed to by `rs` (register or stack) & stores the value in `rd` (register)
 |`{store,${rs},${rd}}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register or stack)
-|`{heap,${n},${rs},${rd}}` | Allocates `rs` (register) blocks of size `n` in the heap & stores the address in `rd` (register)
+|`{cast,${ra},${type}}` | Advises the compliler of a variable's `type` (in the form `reference level`, `type`, `width`) of a variable which would otherwise be incorrectly inferred, such as `char c = 5l;` -> `[{move,{long,5},${rd}}, {cast,${rd},{0,i,8}}]`
 |===
