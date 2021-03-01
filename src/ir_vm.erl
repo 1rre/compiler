@@ -4,7 +4,7 @@
 -define(STACK_PTR,16#7fffffff).
 -define(GLOBL_PTR,16#10008000).
 
--record(context,{fn=main,global=#{},types=#{},reg=[],debug=false,
+-record(context,{fn=main,global=#{},types=#{},reg=[],debug=false,s_count=0,
                  addr_buf=[],stack= <<>>,s_bounds=[?STACK_PTR]}).
 
 run(Ir,Args,Flags) ->
@@ -19,10 +19,12 @@ run(Ir,Fn,Args,Flags) ->
       {<<Arg:32,Stack/bits>>,[C1-4,C1|Ch]}
     end, {<<>>,[?STACK_PTR]}, Args),
   Init_Global = maps:from_list([{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir]),
+  Init_Types = maps:from_list([{{y,N},{0,i,32}}||N<-lists:seq(0,length(Args)-1)]),
   Init_Buf = [get_literal_type(Arg)||Arg<-Args]++[{0,nil,0}],
   Context = #context{fn=Fn,
                      debug=lists:member(debug,Flags),
                      global=Init_Global,
+                     types=Init_Types,
                      addr_buf=Init_Buf,
                      stack=Init_Stack,
                      s_bounds=Init_S_Bounds},
@@ -51,16 +53,23 @@ run_st([return|_],Context,_Ir) ->
 %% TODO: N/A
 %        Update local type register using cast
 run_st([{cast,Reg,Type}|Rest],Context,Ir) ->
-  run_st(Rest,Context,Ir);
+  Types = Context#context.types,
+  N_Types = maps:put(Reg,Type,Types),
+  Rtn_Context=Context#context{types=N_Types},
+  debug_print(Rest,Context),
+  run_st(Rest,Rtn_Context,Ir);
 
 run_st([{allocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   S_Bounds = Context#context.s_bounds,
   N_Stack = <<Stack/bits,0:N>>,
   N_S_Bounds = [hd(S_Bounds) - N div 8 | S_Bounds],
+  S_Count = Context#context.s_count,
+  N_Types = maps:put({y,S_Count},{0,nil,N},Context#context.types),
   Buf = Context#context.addr_buf,
   N_Buf = [{0,nil,N} | Buf],
-  N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
+  N_Context = Context#context{stack=N_Stack,s_count=S_Count+1,types=N_Types,
+                              addr_buf=N_Buf,s_bounds=N_S_Bounds},
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
@@ -72,15 +81,20 @@ run_st([{deallocate,N}|Rest],Context,Ir) ->
   <<N_Stack:Size/bits,_/bits>> = Stack,
   Buf = Context#context.addr_buf,
   N_Buf = lists:nthtail(length(S_Bounds)-length(N_S_Bounds),Buf),
-  N_Context = Context#context{stack=N_Stack,addr_buf=N_Buf,s_bounds=N_S_Bounds},
+  N_Context = Context#context{stack=N_Stack,s_count=Context#context.s_count-1,
+                              addr_buf=N_Buf,s_bounds=N_S_Bounds},
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{address,Src,Dest}|Rest],Context,Ir) ->
-  {ok,Address} = get_address(Src,Context),
+  {ok,Address} = get_address(Src,Context),  
   {ok,N_Context} = set_data(Dest,Address,Context),
-  debug_print(Rest,Context),
-  run_st(Rest,N_Context,Ir);
+  Types = N_Context#context.types,
+  {P,N,T} = maps:get(Src,Types,undefined),
+  N_Types = maps:put(Dest,{P+1,N,T},Types),
+  Rtn_Context=N_Context#context{types=N_Types},
+  debug_print(Rest,Rtn_Context),
+  run_st(Rest,Rtn_Context,Ir);
 
 %% These 2 are fairly buggy (maybe due to inconsistencies in instr form?)
 run_st([{load,{y,N},Dest}|Rest],Context,Ir) ->
@@ -88,14 +102,23 @@ run_st([{load,{y,N},Dest}|Rest],Context,Ir) ->
   {ok,Ptr} = get_data(Address,Context),
   {ok,Value} = get_data(Ptr,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
-  debug_print(Rest,Context),
-  run_st(Rest,N_Context,Ir);
+  Types = N_Context#context.types,
+  {P,N,T} = maps:get({y,N},Types,undefined),
+  N_Types = maps:put(Dest,{P-1,N,T},Types),
+  Rtn_Context=N_Context#context{types=N_Types},
+  debug_print(Rest,Rtn_Context),
+  run_st(Rest,Rtn_Context,Ir);
+
 run_st([{load,{x,N},Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address({y,N},Context),
   {ok,Value} = get_data(Address,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
-  debug_print(Rest,Context),
-  run_st(Rest,N_Context,Ir);
+  Types = N_Context#context.types,
+  {P,N,T} = maps:get({x,N},Types,undefined),
+  N_Types = maps:put(Dest,{P-1,N,T},Types),
+  Rtn_Context=N_Context#context{types=N_Types},
+  debug_print(Rest,Rtn_Context),
+  run_st(Rest,Rtn_Context,Ir);
 
 run_st([{store,Src,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Src,Context),
@@ -107,8 +130,16 @@ run_st([{store,Src,Dest}|Rest],Context,Ir) ->
 run_st([{move,Data,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Data,Context),
   {ok,N_Context} = set_data(Dest,Value,Context),
-  debug_print(Rest,Context),
-  run_st(Rest,N_Context,Ir);
+  Types = N_Context#context.types,
+  {P,N,T} = case Data of
+    {float,_} -> {0,f,32};
+    {integer,_} -> {0,i,32};
+    _ -> maps:get(Data,Types,undefined)
+  end,
+  N_Types = maps:put(Dest,{P,N,T},Types),
+  Rtn_Context=N_Context#context{types=N_Types},
+  debug_print(Rest,Rtn_Context),
+  run_st(Rest,Rtn_Context,Ir);
 
 run_st([{label,_}|Rest],Context,Ir) ->
   debug_print(Rest,Context),
@@ -117,6 +148,8 @@ run_st([{label,_}|Rest],Context,Ir) ->
 run_st([{jump,{f,Lb}}|_],Context,Ir) ->
   jump(Lb,Context,Ir);
 
+%% TODO: N/A
+%        Add call function support to new type system
 run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
   Buf = Context#context.addr_buf,
   {Args,Other} = lists:split(length(Buf)-First-1,Buf),
@@ -277,6 +310,6 @@ get_literal_type(_Val) when is_integer(_Val) -> i32;
 get_literal_type(Val) -> error({{expected,'i32|f32'},{got,Val}}).
 
 debug_print([Hd|_],Context) when Context#context.debug ->
-  io:fwrite("Reg: ~p~nType Buffer:~p~nStack: ~p~nNext St: ~p~n~n",
-            [Context#context.reg,Context#context.addr_buf,Context#context.stack,Hd]);
+  io:fwrite("Reg: ~p~nType Buffer: ~p~nTypes: ~p~nStack: ~p~nNext St: ~p~n~n",
+            [Context#context.reg,Context#context.addr_buf,Context#context.types,Context#context.stack,Hd]);
 debug_print(_,_) -> ok.
