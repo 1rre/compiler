@@ -1,0 +1,3 @@
+-std=c++17
+-I/usr/lib/erlang/erts-11.1.8/include
+-Iinclude

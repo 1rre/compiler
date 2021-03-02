@@ -3,6 +3,8 @@
 
 -record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},var=#{},typedef=#{},struct=#{},enum=#{},typecheck=#{}}).
 
+-include("arch_type_consts.hrl").
+
 %% @doc Takes a slightly convoluted & complex AST and compiles them into a more human-readable form.
 %       This form is also a lot closer to the target language (MIPS ASM) than an AST.
 
@@ -360,7 +362,7 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
   case Ptr_St of
     [] ->
-      End_St = if 
+      End_St = if
         St_Type =/= Ptr_Type -> [{cast,{x,Lv_Cnt},Ptr_Type},{move,{x,Lv_Cnt},Ptr}];
         true -> [{move,{x,Lv_Cnt},Ptr}]
       end,
@@ -368,7 +370,7 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
       {ok,copy_lbcnt(Assign_State,State),Next_St};
     Ptr_St ->
       {_,Src,_} = lists:last(Assign_St),
-      End_St = if 
+      End_St = if
         St_Type =/= Ptr_Type -> [{cast,{x,Lv_Cnt},Ptr_Type},{store,Src,{x,Lv_Cnt+1}}];
         true -> [{store,Src,{x,Lv_Cnt+1}}]
       end,
@@ -458,8 +460,6 @@ process_bif(Type,A,B,State) ->
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{Type,{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
   {ok,B_State,Statement}.
-
--include("arch_type_consts.hrl").
 
 %% Get a shortened name of a type
 %% TODO: #18

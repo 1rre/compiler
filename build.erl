@@ -1,7 +1,7 @@
 #!/usr/bin/env escript
 -module(build).
 -export([main/1]).
--define(ERLC_FLAGS,[{i,"./include"},{d,'TARGET_ARCH',mips32}]).
+-define(ERLC_FLAGS,[{i,"./include"}]).
 %% Main function
 
 % Remove all generated files
@@ -20,7 +20,8 @@ main(["compile"]) ->
 main(["bin/c_compiler"]) ->
   file:make_dir("bin"),
   Erl_Files = build_common(),
-  Pids = [compile_erl(Erl) || Erl <- Erl_Files],
+  io:fwrite("Building erlang files for ~s~n",[mips32]),
+  Pids = [compile_erl(Erl,[{d,'TARGET_ARCH',mips32}]) || Erl <- Erl_Files],
   Bin = [receive
            {Pid,{File,{ok,_Mod,Bin}}} -> {File,Bin};
            {Pid,Error} -> error(Error)
@@ -28,12 +29,25 @@ main(["bin/c_compiler"]) ->
   escriptise(Bin),
   halt(0);
 
+main(["-debug"]) ->
+  file:make_dir("bin"),
+  Erl_Files = build_common(),
+  io:fwrite("Building erlang files for ~s~n",[amd64]),
+  Pids = [compile_erl(Erl,[{d,'TARGET_ARCH',amd64}]) || Erl <- Erl_Files],
+  Bin = [receive
+           {Pid,{File,{ok,_Mod,Bin}}} -> {File,Bin};
+           {Pid,Error} -> error(Error)
+         end || Pid <- Pids],
+  escriptise(Bin),
+  halt(0);
+
+
 % For ease, no arguments compiles everything
 main([File]) ->
   Files = filelib:wildcard([$*,$*,$/|File]),
   lists:search(fun (F) ->
     case filelib:is_file(F) and (filename:extension(F) =:= ".erl") of
-      true -> compile:file(F,[report,binary|?ERLC_FLAGS]);
+      true -> compile:file(F,[report,binary,{d,'TARGET_ARCH',mips32}|?ERLC_FLAGS]);
       _ -> false
     end =:= ok
   end, Files);
@@ -59,10 +73,10 @@ build_common() ->
   [c:y(Yrl,{report_warnings,false}) || Yrl <- Yecc_Files],
   filelib:wildcard("src/**/*.erl").
 
-compile_erl(Erl) ->
+compile_erl(Erl,Flags) ->
   S = self(),
   spawn_link(fun() ->
-    S ! {self(), {change_ext(Erl, beam),compile:file(Erl,[binary|?ERLC_FLAGS])}}
+    S ! {self(), {change_ext(Erl, beam),compile:file(Erl,[binary|?ERLC_FLAGS]++Flags)}}
   end).
 
 %% Collate the dependencies for compilation

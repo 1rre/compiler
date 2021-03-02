@@ -4,10 +4,11 @@
 [%header,cols="3,5"]
 |===
 |Syntax | Usage
+|`{function,${type},${name},${arity},${st}}` | Define a function `name` (identifier) with return type `type`, arity `arity` (integer), defining it as `st` (statement list).
 |`{move,${data},${rd}}` | Copy the value of `data` (register, stack or immediate) to `rd` (register or stack)
 |`{${op},${rd},[${ra},${rb}]}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
 |`{test,${ra},${lb}}` | Branch to `lb` (label) if the value in `ra` is 0
-|`{call,${fn},${ar},${ra}}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (register)
+|`{call,${fn},${ar},${ra}}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (stack)
 |`{label,${lb}}` | Create `lb` (label) which can be jumped to using `test`
 |`{jump,${lb}}` | Unconditionally jump to `lb` (label)
 |`return` | Return the value in register 0 to the calling function (this is fine for all functions as return value of void functions is undefined)
@@ -15,6 +16,6 @@
 |`{deallocate,${n}}` | Delete/deallocate `n` (integer) bits on the stack
 |`{address,${rs},${rd}}` | Finds the memory location of the object in `rs` (register or stack) & stores a pointer to it in `rd` (register)
 |`{load,${rs},${rd}}` | Finds the memory location pointed to by `rs` (register or stack) & stores the value in `rd` (register)
-|`{store,${rs},${rd}}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register or stack)
+|`{store,${rs},${rd}}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register)
 |`{cast,${ra},${type}}` | Advises the compliler of a variable's `type` (in the form `reference level`, `type`, `width`) of a variable which would otherwise be incorrectly inferred, such as `char c = 5l;` -> `[{move,{long,5},${rd}}, {cast,${rd},{0,i,8}}]`
 |===
