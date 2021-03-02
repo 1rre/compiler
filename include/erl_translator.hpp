@@ -18,11 +18,5 @@ enum erl_error {
 
 std::vector<statement::statement*> get_ir(ErlNifEnv* Env, ERL_NIF_TERM IR);
 
-
-
-
-
-
-
 }
 #endif

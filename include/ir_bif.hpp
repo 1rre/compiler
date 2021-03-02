@@ -25,6 +25,7 @@ enum op_code {
 
 class op {
   static enum op_code Code;
+  op(char*);
 };
 
 }

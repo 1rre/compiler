@@ -2,6 +2,7 @@
 #define IR_DATA_HPP
 
 #include <string>
+#include <erl_nif.h>
 
 namespace ir::arg {
 
@@ -65,6 +66,8 @@ public:
   label(int);
   int Number;
 };
+
+arg* factory(ErlNifEnv*, ERL_NIF_TERM);
 
 }
 

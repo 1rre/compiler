@@ -64,8 +64,8 @@ build_common() ->
   process_flag(trap_exit, true),
   Cxx = get_dep(cxx),
   Include = get_dep(erts),
-  Cxx_Files = filelib:wildcard("src/cpp/*.cpp"),
-  [compile(Cxx, Nif, Include) || Nif <- Cxx_Files],
+  Cxx_Files = lists:reverse(filelib:wildcard("src/cpp/*.cpp")),
+  compile(Cxx, Cxx_Files, Include),
   wait_exe(length(Cxx_Files), false),
   Leex_Files = filelib:wildcard("src/parsing/*.xrl"),
   [leex:file(Xrl) || Xrl <- Leex_Files],
@@ -132,16 +132,16 @@ find(cxx, [Cxx | Rest]) ->
   end.
 
 %% Asynchronously compile a C++ file
-compile(Cxx, Nif, Include) ->
+compile(Cxx, Cxx_Files, Include) ->
   open_port(
     {spawn_executable, Cxx},
      [stderr_to_stdout,
       {args,
        ["-I", Include,
-        "-o", filename:join(".build", change_ext(Nif, so)),
+        "-I", "include",
+        "-o", "./.build/erl_nif.so",
         "-fpic",
-        "-shared",
-        Nif]}]).
+        "-shared"|Cxx_Files]}]).
 
 %% Ensure that all C++ files have compiled correctly
 wait_exe(0, true) ->

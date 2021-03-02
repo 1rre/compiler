@@ -12,7 +12,7 @@ static ERL_NIF_TERM translate(ErlNifEnv* Env, int Argc, const ERL_NIF_TERM Argv[
 }
 
 static ErlNifFunc nif_funcs[] = {
-    {"tranlate", 1, translate}
+    {"translate", 1, translate}
 };
 
 ERL_NIF_INIT(translate, nif_funcs, NULL, NULL, NULL, NULL);
