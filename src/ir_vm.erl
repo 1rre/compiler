@@ -7,7 +7,7 @@
 -include("arch_type_consts.hrl").
 
 -record(context,{fn=main,global=#{},types=#{},reg=[],debug=false,s_count=0,
-                 addr_buf=[],stack= <<>>,s_bounds=[?STACK_PTR]}).
+                 stack= <<>>,s_bounds=[?STACK_PTR]}).
 
 run(Ir,Args,Flags) ->
   case lists:search(fun ({function,_,_,_,_}) -> true; (_) -> false end, Ir) of
@@ -18,16 +18,14 @@ run(Ir,Args,Flags) ->
 run(Ir,Fn,Args,Flags) ->
   {Init_Stack,Init_S_Bounds} = lists:foldl(fun
     (Arg,{Stack,[C1|Ch]}) ->
-      {<<Arg:32,Stack/bits>>,[C1-4,C1|Ch]}
+      {<<Arg:?SIZEOF_INT,Stack/bits>>,[C1-4,C1|Ch]}
     end, {<<>>,[?STACK_PTR]}, Args),
   Init_Global = maps:from_list([{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir]),
-  Init_Types = maps:from_list([{{y,N},{0,i,32}}||N<-lists:seq(0,length(Args)-1)]),
-  Init_Buf = [get_literal_type(Arg)||Arg<-Args]++[{0,nil,0}],
+  Init_Types = maps:from_list([{{y,N},{0,i,?SIZEOF_INT}}||N<-lists:seq(0,length(Args)-1)]),
   Context = #context{fn=Fn,
                      debug=lists:member(debug,Flags),
                      global=Init_Global,
                      types=Init_Types,
-                     addr_buf=Init_Buf,
                      stack=Init_Stack,
                      s_bounds=Init_S_Bounds},
   if Context#context.debug ->
@@ -63,7 +61,6 @@ run_st([{cast,Reg,Type}|Rest],Context,Ir) ->
   Types = Context#context.types,
   N_Types = maps:put(Reg,Type,Types),
   {ok,Data} = get_data(Reg,Context),
-  io:fwrite("~p~n",[cast(Data,Type)]),
   {ok,Cast_Context} = set_data(Type,Reg,cast(Data,Type),Context),
   Rtn_Context=Cast_Context#context{types=N_Types},
   debug_print(Rest,Cast_Context),
@@ -73,13 +70,11 @@ run_st([{allocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   S_Bounds = Context#context.s_bounds,
   N_Stack = <<Stack/bits,0:N>>,
+  Types = Context#context.types,
   N_S_Bounds = [hd(S_Bounds) - N div 8 | S_Bounds],
-  S_Count = Context#context.s_count,
-  N_Types = maps:put({y,S_Count},{0,nil,N},Context#context.types),
-  Buf = Context#context.addr_buf,
-  N_Buf = [{0,nil,N} | Buf],
-  N_Context = Context#context{stack=N_Stack,s_count=S_Count+1,types=N_Types,
-                              addr_buf=N_Buf,s_bounds=N_S_Bounds},
+  S_Count = length([X||{y,X} <- maps:keys(Types)]),
+  N_Types = maps:put({y,S_Count},{0,nil,N},Types),
+  N_Context = Context#context{stack=N_Stack,types=N_Types,s_bounds=N_S_Bounds},
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
@@ -89,10 +84,7 @@ run_st([{deallocate,N}|Rest],Context,Ir) ->
   S_Bounds = Context#context.s_bounds,
   N_S_Bounds = rm_chunks(?STACK_PTR - Size div 8, S_Bounds),
   <<N_Stack:Size/bits,_/bits>> = Stack,
-  Buf = Context#context.addr_buf,
-  N_Buf = lists:nthtail(length(S_Bounds)-length(N_S_Bounds),Buf),
-  N_Context = Context#context{stack=N_Stack,s_count=Context#context.s_count-1,
-                              addr_buf=N_Buf,s_bounds=N_S_Bounds},
+  N_Context = Context#context{stack=N_Stack,s_bounds=N_S_Bounds},
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
@@ -141,8 +133,8 @@ run_st([{move,Data,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Data,Context),
   Types = Context#context.types,
   {P,T,S} = case Data of
-    {float,_} -> {0,f,64};
-    {integer,_} -> {0,i,32};
+    {float,_} -> {0,f,?SIZEOF_FLOAT};
+    {integer,_} -> {0,i,?SIZEOF_INT};
     _ -> maps:get(Data,Types,{0,nil,0})
   end,
   N_Types = maps:put(Dest,{P,T,S},Types),
@@ -157,14 +149,13 @@ run_st([{label,_}|Rest],Context,Ir) ->
 run_st([{jump,{f,Lb}}|_],Context,Ir) ->
   jump(Lb,Context,Ir);
 
-%% TODO: N/A
-%        Add call function support to new type system
 run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
-  Buf = Context#context.addr_buf,
-  {Args,Other} = lists:split(length(Buf)-First-1,Buf),
-  Fn_Context = Context#context{addr_buf=Args++[{0,nil,0}],fn=Fn},
+  Types = Context#context.types,
+  Args = maps:from_list([{{y,N-First},T} || {{y,N},T} <- maps:to_list(Types), N >= First,First+Arity >= N]),
+  Fn_Context = Context#context{types=Args,fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
-  N_Context = Fn_End#context{addr_buf=Other,fn=Context#context.fn},
+  N_Types = maps:filter(fun ({y,N},_) -> N<First;(_,_) -> true end,Types),
+  N_Context = Fn_End#context{types=N_Types,fn=Context#context.fn},
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
@@ -185,7 +176,7 @@ run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = if
-    (TA =:= f) or (TB =:= f) -> set_data({0,f,64},Dest,A_Val / B_Val,Context);
+    (TA =:= f) or (TB =:= f) -> set_data({0,f,?SIZEOF_FLOAT},Dest,A_Val / B_Val,Context);
     true -> set_data({0,i,max(SA,SB)},Dest,A_Val div B_Val,Context)
   end,
   debug_print(Rest,Context),
@@ -200,7 +191,7 @@ run_st([{Op,Dest,[A,B]}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = if
-    (TA =:= f) or (TB =:= f) -> set_data({0,f,64},Dest,do_op(Op,A_Val,B_Val),Context);
+    (TA =:= f) or (TB =:= f) -> set_data({0,f,?SIZEOF_FLOAT},Dest,do_op(Op,A_Val,B_Val),Context);
     true -> set_data({max(PA,PB),i,max(SA,SB)},Dest,do_op(Op,A_Val,B_Val),Context)
   end,
   debug_print(Rest,Context),
@@ -219,10 +210,10 @@ get_data({x,N},Context) ->
   Reg = Context#context.reg,
   {ok,lists:nth(length(Reg) - N, Reg)};
 get_data({y,N},Context) ->
-  Buf = Context#context.addr_buf,
+  Types = Context#context.types,
   S_Bounds = Context#context.s_bounds,
-  Nth = length(Buf)-N,
-  get_data(lists:nth(Nth,Buf),lists:nth(Nth,S_Bounds),Context);
+  Nth = length([X||{y,X} <- maps:keys(Types)])-N+1,
+  get_data(maps:get({y,N},Types,{0,nil,0}),lists:nth(Nth,S_Bounds),Context);
 get_data(nil,_Context) ->
   {ok,nil};
 get_data(Data,_Context) ->
@@ -230,18 +221,15 @@ error({unknown,Data}).
 
 get_data({0,f,Size},Address,Context) when is_integer(Address) ->
   Offset = (?STACK_PTR - Address)*8,
-  io:fwrite("~p, ~p~n",[Offset,Size]),
   <<_:Offset,Data:Size/float,_/bits>> = Context#context.stack,
   {ok,Data};
 get_data({0,_,Size},Address,Context) when is_integer(Address) ->
   Offset = (?STACK_PTR - Address)*8,
-  io:fwrite("~p, ~p~n",[Offset,Size]),
   <<_:Offset,Data:Size,_/bits>> = Context#context.stack,
   {ok,Data};
 get_data(_,Address,Context) when is_integer(Address) ->
   Size = ?SIZEOF_POINTER,
   Offset = (?STACK_PTR - Address)*8,
-  io:fwrite("~p, ~p~n",[Offset,Size]),
   <<_:Offset,Data:Size,_/bits>> = Context#context.stack,
   {ok,Data};
 get_data(Type,Address,_Context) ->
@@ -252,10 +240,12 @@ set_data(Type,Dest,false,Context) -> set_data(Type,Dest,0,Context);
 set_data(_Type,{x,N},Data,Context) ->
   {ok,Context#context{reg=set_reg(Context#context.reg,N,Data)}};
 set_data(Type,{y,N},Data,Context) ->
-  Buf = Context#context.addr_buf,
+  Types = Context#context.types,
   S_Bounds = Context#context.s_bounds,
-  Nth = length(Buf)-N,
-  N_Context = replace_buf_type(Nth,get_literal_type(Data),Context),
+  Nth = length([X||{y,X} <- maps:keys(Types)])-N+1,
+  % TODO: Update
+  N_Types=Types,
+  N_Context = Context#context{types=N_Types},
   set_data(Type,lists:nth(Nth, S_Bounds),Data,N_Context);
 
 set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
@@ -279,9 +269,10 @@ set_reg([],0,Data) -> [Data];
 set_reg([Hd|Reg],N,Data) -> [Hd|set_reg(Reg,N,Data)].
 
 get_address({y,N},Context) ->
-  Buf = Context#context.addr_buf,
+  Types = Context#context.types,
   S_Bounds = Context#context.s_bounds,
-  Addr = lists:nth(length(Buf)-N, S_Bounds),
+  Nth = length([X||{y,X} <- maps:keys(Types)])-N+1,
+  Addr = lists:nth(Nth, S_Bounds),
   {ok, Addr};
 get_address({x,N},Context) ->
   get_data({x,N},Context);
@@ -318,20 +309,12 @@ rm_chunks(C1,[C2,C3|Bounds]) when (C2 > C1) /= (C3 > C1) ->
 rm_chunks(C1,[_|Bounds]) ->
   rm_chunks(C1,Bounds).
 
-replace_buf_type(2,Type,[_|Buf]) -> [Type|Buf];
-replace_buf_type(N,Type,[Hd|Buf]) -> [Hd|replace_buf_type(N-1,Type,Buf)];
-replace_buf_type(N,Type,Context) ->
-  N_Buf = replace_buf_type(N,Type,Context#context.addr_buf),
-  Context#context{addr_buf=N_Buf}.
-
 cast(Data,{0,i,Size}) ->
-  io:fwrite("Old: ~p~n",[Data]),
   <<N_Data:Size>> = <<(trunc(Data)):Size>>,
-  io:fwrite("New: ~p~n",[N_Data]),
   N_Data;
 %% 32 bit floats are tricky so for now I'm going to just use 64 bit for everything
 cast(Data,{0,f,Size}) ->
-  <<N_Data:64/float>> = <<(float(Data)):64/float>>,
+  <<N_Data:?SIZEOF_FLOAT/float>> = <<(float(Data)):?SIZEOF_FLOAT/float>>,
   N_Data;
 cast(Data,{0,_,Size}) ->
     <<N_Data:Size>> = <<Data:Size>>,
@@ -351,11 +334,11 @@ do_op('>',A,B) -> A>B;
 do_op('<',A,B) -> B>A;
 do_op(Op,_,_) -> error({bif_not_recognised,Op}).
 
-get_literal_type(_Val) when is_float(_Val) -> {0,f,64};
-get_literal_type(_Val) when is_integer(_Val) -> {0,i,32};
+get_literal_type(_Val) when is_float(_Val) -> {0,f,?SIZEOF_FLOAT};
+get_literal_type(_Val) when is_integer(_Val) -> {0,i,?SIZEOF_FLOAT};
 get_literal_type(Val) -> error({{expected,{'float|int'}},{got,Val}}).
 
 debug_print([Hd|_],Context) when Context#context.debug ->
-  io:fwrite("Reg: ~p~nType Buffer: ~p~nTypes: ~p~nStack: ~p~nNext St: ~p~n~n",
-            [Context#context.reg,Context#context.addr_buf,Context#context.types,Context#context.stack,Hd]);
+  io:fwrite("Reg: ~p~nTypes: ~p~nStack: ~p~nNext St: ~p~n~n",
+            [Context#context.reg,Context#context.types,Context#context.stack,Hd]);
 debug_print(_,_) -> ok.

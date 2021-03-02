@@ -51,14 +51,14 @@ process({declaration,Raw_Type,Raw_St}, State) ->
 %  As longs are out of spec we currently don't differentiate however it may be useful to later
 process({int_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
-  N_Types = maps:put({x,Lv_Cnt},{0,i,32},State#state.typecheck),
+  N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_INT},State#state.typecheck),
   {ok,State#state{typecheck=N_Types},[{move,{integer,Val},{x,Lv_Cnt}}]};
 
 %% Process a float node by moving the literal value to the active register
 %  As doubles are out of spec we currently don't support these however it may be useful to later
 process({float_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
-  N_Types = maps:put({x,Lv_Cnt},{0,f,32},State#state.typecheck),
+  N_Types = maps:put({x,Lv_Cnt},{0,f,?SIZEOF_FLOAT},State#state.typecheck),
   {ok,State#state{typecheck=N_Types},[{move,{float,Val},{x,Lv_Cnt}}]};
 
 %% Process an identifier by finding the integer's location on the stack
@@ -91,14 +91,14 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
     {Type, Arity} when Arity =:= length(Args) ->
       Lv_Cnt = State#state.lvcnt,
       Rv_Cnt = State#state.rvcnt,
-      Alloc_St = [{allocate,32} || _ <- lists:seq(0,Lv_Cnt+Arity-1)],
+      Alloc_St = [{allocate,?SIZEOF_INT} || _ <- lists:seq(0,Lv_Cnt+Arity-1)],
       Mv_To_St = [{move,{x,N},{y,Rv_Cnt+N}} || N <- lists:seq(0,Lv_Cnt+Arity-1)],
       Call_St = {call,Ident,Arity,{y,Rv_Cnt+Lv_Cnt}},
       Mv_Bk_St = [{move,{y,Rv_Cnt+N},{x,N}} || N <- lists:seq(0,Lv_Cnt-1)],
       New_St = if
         Lv_Cnt =:= 0 -> Arg_St++Alloc_St++Mv_To_St++[Call_St|Mv_Bk_St];
         true ->
-          Dealloc_St = {deallocate,32*(Lv_Cnt)},
+          Dealloc_St = {deallocate,?SIZEOF_INT*(Lv_Cnt)},
           Mv_0_St = {move,{x,0},{x,Lv_Cnt}},
           Arg_St++Alloc_St++Mv_To_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
       end,
@@ -369,10 +369,10 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
       Next_St = Assign_St ++ End_St,
       {ok,copy_lbcnt(Assign_State,State),Next_St};
     Ptr_St ->
-      {_,Src,_} = lists:last(Assign_St),
+      {_,_,Dest} = lists:last(Assign_St),
       End_St = if
-        St_Type =/= Ptr_Type -> [{cast,{x,Lv_Cnt},Ptr_Type},{store,Src,{x,Lv_Cnt+1}}];
-        true -> [{store,Src,{x,Lv_Cnt+1}}]
+        St_Type =/= Ptr_Type -> [{cast,{x,Lv_Cnt},Ptr_Type},{store,Dest,{x,Lv_Cnt+1}}];
+        true -> [{store,Dest,{x,Lv_Cnt+1}}]
       end,
       Next_St = Assign_St ++ Ptr_St ++ End_St,
       {ok,copy_lbcnt(Assign_State,State),Next_St}

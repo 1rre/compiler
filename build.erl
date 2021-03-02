@@ -57,8 +57,8 @@ main([]) -> main(["bin/c_compiler"]).
 %% Common tasks for compiling to beam files (shared object files) and an escript (a binary file)
 build_common() ->
   case string:to_integer(erlang:system_info(otp_release)) of
-    {X, _} when X >= 22 -> ok;
-    _ -> error("Erts v22.0 or later required")
+    {X, _} when X >= 23 -> ok;
+    _ -> error("Erts v23.0 or later required")
   end,
   file:make_dir(".build"),
   process_flag(trap_exit, true),
