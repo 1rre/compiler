@@ -39,7 +39,8 @@ enum statement_code {
   SUB, // Subtract            -> '-'
   MUL, // Multiply            -> '*'
   DIV, // Division            -> '/'
-  REM  // Modulo Division     -> '%'
+  REM, // Modulo Division     -> '%'
+  ERR=-1
 };
 
 class statement {
@@ -56,7 +57,7 @@ public:
 class function: virtual public statement {
 public:
   enum statement_code Code = FUNCTION;
-  ir::arg::type Type;
+  ir::arg::type* Type;
   std::string Name;
   int Arity;
   statement* First;
@@ -151,7 +152,7 @@ class cast: virtual public statement {
 public:
   enum statement_code Code = CAST;
   ir::arg::reg* Reg;
-  ir::arg::type Type;
+  ir::arg::type* Type;
   cast(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
@@ -160,115 +161,9 @@ public:
   ir::arg::reg* A;
   ir::arg::reg* B;
   ir::arg::reg* Dest;
+  bif(ErlNifEnv*,const ERL_NIF_TERM*,char*);
 };
 
-class lor: virtual public bif {
-public:
-  enum statement_code Code = LOR;
-  lor(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class lnd: virtual public bif {
-public:
-  enum statement_code Code = LND;
-  lnd(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class bor: virtual public bif {
-public:
-  enum statement_code Code = BOR;
-  bor(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class bnd: virtual public bif {
-public:
-  enum statement_code Code = BND;
-  bnd(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class bxr: virtual public bif {
-public:
-  enum statement_code Code = BXR;
-  bxr(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class eeq: virtual public bif {
-public:
-  enum statement_code Code = EEQ;
-  eeq(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class ieq: virtual public bif {
-public:
-  enum statement_code Code = IEQ;
-  ieq(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class les: virtual public bif {
-public:
-  enum statement_code Code = LES;
-  les(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class grt: virtual public bif {
-public:
-  enum statement_code Code = GRT;
-  grt(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class leq: virtual public bif {
-public:
-  enum statement_code Code = LEQ;
-  leq(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class geq: virtual public bif {
-public:
-  enum statement_code Code = GEQ;
-  geq(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class shl: virtual public bif {
-public:
-  enum statement_code Code = SHL;
-  shl(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class shr: virtual public bif {
-public:
-  enum statement_code Code = SHR;
-  shr(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class add: virtual public bif {
-public:
-  enum statement_code Code = ADD;
-  add(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class sub: virtual public bif {
-public:
-  enum statement_code Code = SUB;
-  sub(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class mul: virtual public bif {
-public:
-  enum statement_code Code = MUL;
-  mul(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class div: virtual public bif {
-public:
-  enum statement_code Code = DIV;
-  div(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class rem: virtual public bif {
-public:
-  enum statement_code Code = REM;
-  rem(ErlNifEnv*,const ERL_NIF_TERM*);
-};
 statement* factory(ErlNifEnv*, ERL_NIF_TERM);
 
 }

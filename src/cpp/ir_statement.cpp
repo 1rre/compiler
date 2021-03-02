@@ -39,59 +39,82 @@ store::store(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
 test::test(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
 
 }
-lor::lor(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-lnd::lnd(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-bor::bor(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-bnd::bnd(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-bxr::bxr(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-eeq::eeq(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-ieq::ieq(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-les::les(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-grt::grt(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-leq::leq(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-geq::geq(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-shl::shl(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-shr::shr(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-add::add(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-sub::sub(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-mul::mul(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-div::div(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
-}
-rem::rem(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char* Operator) {
+  switch (Operator[0]) {
+    case '|': switch (Operator[1]) {
+      case '\0':
+        Code=BOR;
+      break;
+      case '|':
+        Code=LOR;
+      break;
+      default:
+        Code=ERR;
+    } break;
+    case '&': switch (Operator[1]) {
+      case '\0':
+        Code=BND;
+        break;
+      case '&':
+        Code=LND;
+        break;
+      default:
+        Code=ERR;
+    } break;
+    case '^':
+      Code=BXR;
+      break;
+    case '=':
+      Code=EEQ;
+      break;
+    case '!':
+      Code=IEQ;
+      break;
+    case '<': switch (Operator[1]) {
+      case '\0':
+        Code=LES;
+        break;
+      case '<':
+        Code=SHL;
+        break;
+      case '=':
+        Code=LEQ;
+        break;
+      default:
+        Code=ERR;
+    } break;
+    case '>': switch (Operator[1]) {
+      case '\0':
+        Code=GRT;
+        break;
+      case '>':
+        Code=SHR;
+        break;
+      case '=':
+        Code=GEQ;
+        break;
+      default:
+        Code=ERR;
+    } break;
+    case '+':
+      Code=ADD;
+      break;
+    case '-':
+      Code=SUB;
+      break;
+    case '*':
+      Code=MUL;
+      break;
+    case '/':
+      Code=DIV;
+      break;
+    case '%':
+      Code=REM;
+      break;
+    default:
+      Code=ERR;
+      break;
+  }
 }
 
 
@@ -128,36 +151,7 @@ statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St) {
     case 'm': return new move(Env,Elems+1);
     case 's': return new store(Env,Elems+1);
     case 't': return new test(Env,Elems+1);
-    case '|': switch (Elems[1]) {
-      case '\0': return new bor(Env,Elems+1);
-      case '|':  return new lor(Env,Elems+1);
-      default: return nullptr;
-    }
-    case '&': switch (Elems[1]) {
-      case '\0': return new bnd(Env,Elems+1);
-      case '&':  return new lnd(Env,Elems+1);
-      default: return nullptr;
-    }
-    case '^': return new bxr(Env,Elems+1);
-    case '=': return new eeq(Env,Elems+1);
-    case '!': return new ieq(Env,Elems+1);
-    case '<': switch (Elems[1]) {
-      case '\0': return new les(Env,Elems+1);
-      case '<':  return new shl(Env,Elems+1);
-      case '=':  return new leq(Env,Elems+1);
-    }
-    case '>': switch (Elems[1]) {
-      case '\0': return new grt(Env,Elems+1);
-      case '>':  return new shr(Env,Elems+1);
-      case '=':  return new geq(Env,Elems+1);
-      default: return nullptr;
-    }
-    case '+': return new add(Env,Elems+1);
-    case '-': return new sub(Env,Elems+1);
-    case '*': return new mul(Env,Elems+1);
-    case '/': return new div(Env,Elems+1);
-    case '%': return new rem(Env,Elems+1);
-    default: return nullptr;
+    default: return new bif(Env,Elems+1,Atom);
   }
 }
 }
