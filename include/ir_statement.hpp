@@ -64,12 +64,19 @@ public:
   function(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
-class move: virtual public statement {
+class address: virtual public statement {
 public:
-  enum statement_code Code = MOVE;
-  ir::arg::data* Src;
-  ir::arg::memory* Dest;
-  move(ErlNifEnv*,const ERL_NIF_TERM*);
+  enum statement_code Code = ADDRESS;
+  ir::arg::memory* Src;
+  ir::arg::reg* Dest;
+  address(ErlNifEnv*,const ERL_NIF_TERM*);
+};
+
+class allocate: virtual public statement {
+public:
+  enum statement_code Code = ALLOCATE;
+  int Bits;
+  allocate(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class call: virtual public statement {
@@ -82,39 +89,12 @@ public:
   ir::arg::stack* First_Arg;
 };
 
-class label: virtual public statement {
+class cast: virtual public statement {
 public:
-  enum statement_code Code = LABEL;
-  label(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class test: virtual public statement {
-public:
-  enum statement_code Code = TEST;
+  enum statement_code Code = CAST;
   ir::arg::reg* Reg;
-  label* Branch;
-  test(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class jump: virtual public statement {
-public:
-  enum statement_code Code = JUMP;
-  ir::arg::reg* Reg;
-  jump(ErlNifEnv*,const ERL_NIF_TERM*);
-
-};
-
-class rtn: virtual public statement {
-public:
-  enum statement_code Code = RETURN;
-  rtn();
-};
-
-class allocate: virtual public statement {
-public:
-  enum statement_code Code = ALLOCATE;
-  int Bits;
-  allocate(ErlNifEnv*,const ERL_NIF_TERM*);
+  ir::arg::type* Type;
+  cast(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class deallocate: virtual public statement {
@@ -124,12 +104,19 @@ public:
   deallocate(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
-class address: virtual public statement {
+class jump: virtual public statement {
 public:
-  enum statement_code Code = ADDRESS;
-  ir::arg::memory* Src;
-  ir::arg::reg* Dest;
-  address(ErlNifEnv*,const ERL_NIF_TERM*);
+  enum statement_code Code = JUMP;
+  ir::arg::label* Label;
+  jump(ErlNifEnv*,const ERL_NIF_TERM*);
+
+};
+
+class label: virtual public statement {
+public:
+  enum statement_code Code = LABEL;
+  label(ErlNifEnv*,const ERL_NIF_TERM*);
+  int Number;
 };
 
 class load: virtual public statement {
@@ -140,6 +127,20 @@ public:
   load(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
+class move: virtual public statement {
+public:
+  enum statement_code Code = MOVE;
+  ir::arg::data* Src;
+  ir::arg::memory* Dest;
+  move(ErlNifEnv*,const ERL_NIF_TERM*);
+};
+
+class rtn: virtual public statement {
+public:
+  enum statement_code Code = RETURN;
+  rtn();
+};
+
 class store: virtual public statement {
 public:
   enum statement_code Code = STORE;
@@ -148,12 +149,12 @@ public:
   store(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
-class cast: virtual public statement {
+class test: virtual public statement {
 public:
-  enum statement_code Code = CAST;
+  enum statement_code Code = TEST;
   ir::arg::reg* Reg;
-  ir::arg::type* Type;
-  cast(ErlNifEnv*,const ERL_NIF_TERM*);
+  label* Branch;
+  test(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class bif: virtual public statement {

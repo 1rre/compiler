@@ -4,41 +4,84 @@
 
 namespace ir::statement {
 address::address(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  const ERL_NIF_TERM* R_Src;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[0],NULL,&R_Src)) exit(1);
+  const ERL_NIF_TERM* R_Dest;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[1],NULL,&R_Dest)) exit(1);
+  // TODO: Decode registers
 }
 allocate::allocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  // TODO: Better error code
+  if(!enif_get_int(Env,Elems[0],&Bits)) exit(1);
 }
 call::call(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  // TODO: Get function call details
 }
 cast::cast(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  const ERL_NIF_TERM* Reg;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[0],NULL,&Reg)) exit(1);
+  const ERL_NIF_TERM* Type;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[1],NULL,&Type)) exit(1);
+  // TODO: Decode register & type
 }
 deallocate::deallocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  // TODO: Better error code
+  if(!enif_get_int(Env,Elems[0],&Bits)) exit(1);
 }
 function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  // TODO: Get function details
 }
 jump::jump(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  const ERL_NIF_TERM* Lbl;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[0],NULL,&Lbl)) exit(1);
+  // TODO: Decode label
 }
 label::label(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  // TODO: Better error code
+  if(!enif_get_int(Env,Elems[0],&Number)) exit(1);
 }
 load::load(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  const ERL_NIF_TERM* R_Src;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[0],NULL,&R_Src)) exit(1);
+  const ERL_NIF_TERM* R_Dest;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[1],NULL,&R_Dest)) exit(1);
+  // TODO: Decode registers
 }
 move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  const ERL_NIF_TERM* R_Src;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[0],NULL,&R_Src)) exit(1);
+  const ERL_NIF_TERM* R_Dest;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[1],NULL,&R_Dest)) exit(1);
+  // TODO: Decode registers
 }
+// Empty constructor as return acts as end of statement only.
 rtn::rtn() {}
 store::store(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  const ERL_NIF_TERM* R_Src;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[0],NULL,&R_Src)) exit(1);
+  const ERL_NIF_TERM* R_Dest;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[1],NULL,&R_Dest)) exit(1);
+  // TODO: Decode registers
 }
 test::test(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-
+  const ERL_NIF_TERM* R_Test;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[0],NULL,&R_Test)) exit(1);
+  const ERL_NIF_TERM* Lbl;
+  // TODO: Better error code
+  if (!enif_get_tuple(Env,Elems[1],NULL,&Lbl)) exit(1);
+  // TODO: Decode register & label
 }
 bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char* Operator) {
   switch (Operator[0]) {
