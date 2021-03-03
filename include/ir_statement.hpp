@@ -83,10 +83,11 @@ class call: virtual public statement {
 public:
   enum statement_code code = CALL;
   function* fn;
+  std::string name;
   int arity;
-  call(ErlNifEnv*,const ERL_NIF_TERM*);
   // Currently we need this but I plan to change the way that args are done
   ir::arg::stack* first_arg;
+  call(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class cast: virtual public statement {

@@ -5,21 +5,31 @@
 namespace ir::arg {
 
   floating::floating(double Val):
-    value(Val) {}
+    value(Val),
+    literal(FLOAT),
+    data(FLOAT),
+    arg(FLOAT) {}
   integer::integer(int Val):
-    value(Val) {}
-  memory::memory(int Num):
-    number(Num) {}
+    value(Val),
+    literal(INT),
+    data(INT),
+    arg(INT) {}
   reg::reg(int Num):
-    memory(Num) {}
+    memory(Num,REG),
+    data(REG),
+    arg(REG) {}
   stack::stack(int Num):
-    memory(Num) {}
+    memory(Num,STACK),
+    data(STACK),
+    arg(STACK) {}
   label::label(int Num):
-    number(Num) {}
+    number(Num),
+    arg(LABEL) {}
   type::type(int P, char T, int S):
     ref_level(P),
     data_type(T),
-    width(S) {}
+    width(S),
+    arg(TYPE) {}
 
   arg* factory(ErlNifEnv* Env, ERL_NIF_TERM Arg) {
     int Arity;

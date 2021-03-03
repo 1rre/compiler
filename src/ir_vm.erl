@@ -133,8 +133,8 @@ run_st([{move,Data,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Data,Context),
   Types = Context#context.types,
   {P,T,S} = case Data of
-    {float,_} -> {0,f,?SIZEOF_FLOAT};
-    {integer,_} -> {0,i,?SIZEOF_INT};
+    {f,_} -> {0,f,?SIZEOF_FLOAT};
+    {i,_} -> {0,i,?SIZEOF_INT};
     _ -> maps:get(Data,Types,{0,n,0})
   end,
   N_Types = maps:put(Dest,{P,T,S},Types),
@@ -204,8 +204,8 @@ run_st(St,Context,_Ir) ->
 %% TODO: N/A
 %        Floats need to be differentiated here
 %        as they are currently stored as integers once being removed from the stack
-get_data({integer,N},_Context) -> {ok,N};
-get_data({float,N},_Context) -> {ok,N};
+get_data({i,N},_Context) -> {ok,N};
+get_data({f,N},_Context) -> {ok,N};
 get_data({x,N},Context) ->
   Reg = Context#context.reg,
   {ok,lists:nth(length(Reg) - N, Reg)};

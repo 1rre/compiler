@@ -52,14 +52,14 @@ process({declaration,Raw_Type,Raw_St}, State) ->
 process({int_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_INT},State#state.typecheck),
-  {ok,State#state{typecheck=N_Types},[{move,{integer,Val},{x,Lv_Cnt}}]};
+  {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}}]};
 
 %% Process a float node by moving the literal value to the active register
 %  As doubles are out of spec we currently don't support these however it may be useful to later
 process({float_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{0,f,?SIZEOF_FLOAT},State#state.typecheck),
-  {ok,State#state{typecheck=N_Types},[{move,{float,Val},{x,Lv_Cnt}}]};
+  {ok,State#state{typecheck=N_Types},[{move,{f,Val},{x,Lv_Cnt}}]};
 
 %% Process an identifier by finding the integer's location on the stack
 %  and moving it to the active register
