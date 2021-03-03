@@ -43,6 +43,7 @@ compile([File|_],[nif]) ->
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
   {ok, _Context, Statement} = build_ir:process(Result),
+  io:fwrite("Sending:~n~p~n",[Statement]),
   ir2mips:translate(Statement);
 
 compile([File|_],[]) ->

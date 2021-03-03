@@ -1,7 +1,7 @@
 #ifndef IR_STATEMENT_HPP
 #define IR_STATEMENT_HPP
 
-#include "ir_data.hpp"
+#include "ir_arg.hpp"
 #include <vector>
 
 namespace ir::statement {
@@ -43,73 +43,11 @@ enum statement_code {
   ERR=-1
 };
 
-
 class statement {
 public:
-  struct fn_params {
-    ir::arg::type type;
-    std::string name;
-    int arity;
-    statement* first = nullptr;
-
-    fn_params(int P,char T,int S,char* Name,int Arity):
-      type(P,T,S),
-      name(Name),
-      arity(Arity) {}
-  };
-  struct mem_reg_params {
-    ir::arg::memory src;
-    ir::arg::reg dest;
-  };
-  struct data_mem_params {
-    ir::arg::data src;
-    ir::arg::memory dest;
-  };
-  struct reg_reg_params {
-    ir::arg::reg src;
-    ir::arg::reg dest;
-  };
-  struct call_params {
-    statement* function = nullptr;
-    int arity;
-    ir::arg::stack first;
-  };
-  struct cast_params {
-    ir::arg::reg reg;
-    ir::arg::type type;
-  };
-  struct test_params {
-    ir::arg::reg reg;
-    ir::arg::label label;
-    statement* branch = nullptr;
-  };
-  struct bif_params {
-    ir::arg::reg a;
-    ir::arg::reg b;
-    ir::arg::reg dest;
-  };
-  union statement_value {
-    fn_params fn;
-    mem_reg_params mem_reg;
-    data_mem_params data_mem;
-    reg_reg_params reg_reg;
-    call_params call;
-    cast_params cast;
-    test_params test;
-    bif_params bif;
-    ir::arg::label label;
-    int number;
-    int bits;
-
-    statement_value() {
-      number = 0;
-    }
-  };
   static enum statement_code code;
-  statement* next = nullptr;
-  statement_value value;
+  statement* Next = nullptr;
 };
-
 
 class error: virtual public statement {
 public:
@@ -119,42 +57,57 @@ public:
 class function: virtual public statement {
 public:
   enum statement_code code = FUNCTION;
+  ir::arg::type* type;
+  std::string name;
+  int arity;
+  statement* first;
   function(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class address: virtual public statement {
 public:
   enum statement_code code = ADDRESS;
+  ir::arg::memory* src;
+  ir::arg::reg* dest;
   address(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class allocate: virtual public statement {
 public:
   enum statement_code code = ALLOCATE;
+  int bits;
   allocate(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class call: virtual public statement {
 public:
   enum statement_code code = CALL;
+  function* fn;
+  int arity;
   call(ErlNifEnv*,const ERL_NIF_TERM*);
+  // Currently we need this but I plan to change the way that args are done
+  ir::arg::stack* first_arg;
 };
 
 class cast: virtual public statement {
 public:
   enum statement_code code = CAST;
+  ir::arg::reg* reg;
+  ir::arg::type* type;
   cast(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class deallocate: virtual public statement {
 public:
   enum statement_code code = DEALLOCATE;
+  int bits;
   deallocate(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class jump: virtual public statement {
 public:
   enum statement_code code = JUMP;
+  ir::arg::label* lbl;
   jump(ErlNifEnv*,const ERL_NIF_TERM*);
 
 };
@@ -163,17 +116,22 @@ class label: virtual public statement {
 public:
   enum statement_code code = LABEL;
   label(ErlNifEnv*,const ERL_NIF_TERM*);
+  int number;
 };
 
 class load: virtual public statement {
 public:
   enum statement_code code = LOAD;
+  ir::arg::memory* src;
+  ir::arg::reg* dest;
   load(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class move: virtual public statement {
 public:
   enum statement_code code = MOVE;
+  ir::arg::data* src;
+  ir::arg::memory* dest;
   move(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
@@ -186,18 +144,26 @@ public:
 class store: virtual public statement {
 public:
   enum statement_code code = STORE;
+  ir::arg::reg* src;
+  ir::arg::reg* dest;
   store(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class test: virtual public statement {
 public:
   enum statement_code code = TEST;
+  ir::arg::reg* reg;
+  ir::arg::label* lbl;
+  label* branch;
   test(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class bif: virtual public statement {
 public:
   enum statement_code code;
+  ir::arg::reg* a;
+  ir::arg::reg* b;
+  ir::arg::reg* dest;
   bif(ErlNifEnv*,const ERL_NIF_TERM*,char*);
 };
 

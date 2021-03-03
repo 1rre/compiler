@@ -1,28 +1,25 @@
 #include <erl_nif.h>
 #include <vector>
-#include "ir_data.hpp"
+#include "ir_arg.hpp"
 
 namespace ir::arg {
 
-  floating::floating(double Val) {
-    value.floating = Val;
-  }
-  integer::integer(int Val) {
-    value.integer = Val;
-  }
-  reg::reg(int Num) {
-    value.number = Num;
-  }
-  stack::stack(int Num) {
-    value.number = Num;
-  }
-  label::label(int Num) {
-    value.number = Num;
-  }
-  type::type(int P, char T, int S) {
-    ir::arg::arg_type arg_type(P,T,S);
-    value.type = arg_type;
-  }
+  floating::floating(double Val):
+    value(Val) {}
+  integer::integer(int Val):
+    value(Val) {}
+  memory::memory(int Num):
+    number(Num) {}
+  reg::reg(int Num):
+    memory(Num) {}
+  stack::stack(int Num):
+    memory(Num) {}
+  label::label(int Num):
+    number(Num) {}
+  type::type(int P, char T, int S):
+    ref_level(P),
+    data_type(T),
+    width(S) {}
 
   arg* factory(ErlNifEnv* Env, ERL_NIF_TERM Arg) {
     int Arity;
@@ -57,11 +54,11 @@ namespace ir::arg {
         }
       case 3:
         int Ref_Level,Width;
-        char Type_Code;
+        char Type_code;
         if (!enif_get_int(Env,Elems[0],&Ref_Level) ||
-            !enif_get_atom(Env,Elems[1],&Type_Code,1u,ERL_NIF_LATIN1) ||
+            !enif_get_atom(Env,Elems[1],&Type_code,1u,ERL_NIF_LATIN1) ||
             !enif_get_int(Env,Elems[2],&Width)) return nullptr;
-        return new type(Ref_Level,Type_Code,Width);
+        return new type(Ref_Level,Type_code,Width);
       default:
         return nullptr;
     }

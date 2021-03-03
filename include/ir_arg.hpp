@@ -15,53 +15,45 @@ enum arg_code {
   LABEL
 };
 
-struct arg_type {
-  int ref_level;
-  char type;
-  int width;
-
-  arg_type(int P, char T, int S):
-    ref_level(P),
-    type(T),
-    width(S) {}
-};
-
-union arg_value {
-  arg_type type;
-  double floating;
-  int integer;
-  int number;
-  
-  arg_value(): number(0) {}
-};
-
 class arg {
 public:
-  static enum arg_code code;
-  arg_value value;
+  enum arg_code code;
 };
 
 class type: public virtual arg {
 public:
-  enum arg_code code = TYPE;
+  const enum arg_code code = TYPE;
   type(int,char,int);
+  int ref_level;
+  char data_type;
+  int width;
 };
 
-class data: public virtual arg {};
+class data: public virtual arg {
+public:
+  virtual ~data() = default;
+};
 
 class literal: public virtual data {};
 class floating: public virtual literal {
 public:
   enum arg_code code = FLOAT;
   floating(double);
+  double value;
 };
 class integer: public virtual literal {
 public:
   enum arg_code code = INT;
   integer(int);
+  int value;
 };
 
-class memory: public virtual data {};
+class memory: public virtual data {
+public:
+  int number;
+  memory(int);
+  virtual ~memory() = default;
+};
 class reg: public virtual memory {
 public:
   enum arg_code code = REG;
@@ -77,7 +69,10 @@ class label: public virtual arg {
 public:
   enum arg_code code = LABEL;
   label(int);
+  int number;
 };
+
+arg* factory(ErlNifEnv*, ERL_NIF_TERM);
 
 }
 
