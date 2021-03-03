@@ -21,7 +21,7 @@ public:
   arg(enum arg_code Code): code(Code) {}
 };
 
-class type: public virtual arg {
+class type: public arg {
 public:
   type(int,char,int);
   int ref_level;
@@ -29,47 +29,46 @@ public:
   int width;
 };
 
-class data: public virtual arg {
+class data: public arg {
 public:
   data(enum arg_code Code): arg(Code) {}
-  virtual ~data() = default;
+  ~data() = default;
 };
 
-class literal: public virtual data {
+class literal: public data {
 public:
-  literal(enum arg_code Code): data(Code), arg(Code) {}
+  literal(enum arg_code Code): data(Code) {}
 };
-class floating: public virtual literal {
+class floating: public literal {
 public:
   enum arg_code code;
   floating(double);
   double value;
 };
-class integer: public virtual literal {
+class integer: public literal {
 public:
   enum arg_code code;
   integer(int);
   int value;
 };
 
-class memory: public virtual data {
+class memory: public data {
 public:
   int number;
-  memory(int,enum arg_code Code): data(Code), arg(Code) {}
-  virtual ~memory() = default;
+  memory(int Num,enum arg_code Code): data(Code), number(Num) {}
 };
-class reg: public virtual memory {
+class reg: public memory {
 public:
   enum arg_code code;
   reg(int);
 };
-class stack: public virtual memory {
+class stack: public memory {
 public:
   enum arg_code code;
   stack(int);
 };
 
-class label: public virtual arg {
+class label: public arg {
 public:
   enum arg_code code;
   label(int);

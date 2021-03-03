@@ -6,22 +6,14 @@ namespace ir::arg {
 
   floating::floating(double Val):
     value(Val),
-    literal(FLOAT),
-    data(FLOAT),
-    arg(FLOAT) {}
+    literal(FLOAT) {}
   integer::integer(int Val):
     value(Val),
-    literal(INT),
-    data(INT),
-    arg(INT) {}
+    literal(INT) {}
   reg::reg(int Num):
-    memory(Num,REG),
-    data(REG),
-    arg(REG) {}
+    memory(Num,REG) {}
   stack::stack(int Num):
-    memory(Num,STACK),
-    data(STACK),
-    arg(STACK) {}
+    memory(Num,STACK) {}
   label::label(int Num):
     number(Num),
     arg(LABEL) {}

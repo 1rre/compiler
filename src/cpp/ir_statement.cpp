@@ -188,13 +188,13 @@ move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   data_factory(Env,Elems[0],&src);
   mem_factory(Env,Elems[1],&dest);
   if (src->code == arg::REG)
-    fprintf(stderr,"Move: {x,%d}",dynamic_cast<ir::arg::reg*>(src)->number);
+    fprintf(stderr,"Move: {x,%d}",static_cast<ir::arg::reg*>(src)->number);
   else if (src->code == arg::STACK)
-    fprintf(stderr,"Move: {y,%d}",dynamic_cast<ir::arg::stack*>(src)->number);
+    fprintf(stderr,"Move: {y,%d}",static_cast<ir::arg::stack*>(src)->number);
   else if (src->code == arg::FLOAT)
-    fprintf(stderr,"Move: {float,%f}",dynamic_cast<ir::arg::floating*>(src)->value);
+    fprintf(stderr,"Move: {float,%f}",static_cast<ir::arg::floating*>(src)->value);
   else if (src->code == arg::INT)
-    fprintf(stderr,"Move: {integer,%d}",dynamic_cast<ir::arg::integer*>(src)->value);
+    fprintf(stderr,"Move: {integer,%d}",static_cast<ir::arg::integer*>(src)->value);
 
   if (dest->code == arg::REG)
     fprintf(stderr," -> {x,%d}\n\r",dest->number);
