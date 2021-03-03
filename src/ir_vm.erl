@@ -146,7 +146,7 @@ run_st([{label,_}|Rest],Context,Ir) ->
   debug_print(Rest,Context),
   run_st(Rest,Context,Ir);
 
-run_st([{jump,{f,Lb}}|_],Context,Ir) ->
+run_st([{jump,{l,Lb}}|_],Context,Ir) ->
   jump(Lb,Context,Ir);
 
 run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
@@ -159,7 +159,7 @@ run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
 
-run_st([{test,Data,{f,Lb}}|Rest],Context,Ir) ->
+run_st([{test,Data,{l,Lb}}|Rest],Context,Ir) ->
   {ok,Data_Val} = get_data(Data,Context),
   if
     Data_Val == 0 -> jump(Lb,Context,Ir);

@@ -5,24 +5,23 @@
 namespace ir::arg {
 
   floating::floating(double Val) {
-    Value = Val;
+    value.floating = Val;
   }
   integer::integer(int Val) {
-    Value = Val;
+    value.integer = Val;
   }
   reg::reg(int Num) {
-    Number = Num;
+    value.number = Num;
   }
   stack::stack(int Num) {
-    Number = Num;
+    value.number = Num;
   }
   label::label(int Num) {
-    Number = Num;
+    value.number = Num;
   }
   type::type(int P, char T, int S) {
-    Ref_Level = P;
-    Type = T;
-    Width = S;
+    ir::arg::arg_type arg_type(P,T,S);
+    value.type = arg_type;
   }
 
   arg* factory(ErlNifEnv* Env, ERL_NIF_TERM Arg) {
