@@ -165,7 +165,7 @@ public:
   ir::arg::reg* a;
   ir::arg::reg* b;
   ir::arg::reg* dest;
-  bif(ErlNifEnv*,const ERL_NIF_TERM*,char*);
+  bif(ErlNifEnv*,const ERL_NIF_TERM*,char,char);
 };
 
 statement* factory(ErlNifEnv*, ERL_NIF_TERM);

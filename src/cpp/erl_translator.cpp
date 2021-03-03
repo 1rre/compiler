@@ -12,7 +12,6 @@ std::vector<statement::statement*> get_ir(ErlNifEnv* Env, ERL_NIF_TERM Ir) {
   for (unsigned I = 0; I < Length; I++)
     if (!enif_get_list_cell(Env,Ir,&Head,&Ir)) return {};
     else Rtn.push_back(statement::factory(Env,Head));
-
   return Rtn;
 }
 

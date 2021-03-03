@@ -125,16 +125,14 @@ call::call(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
 }
 cast::cast(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   reg_factory(Env,Elems[0],&reg);
-  const ERL_NIF_TERM* Type;
-  // TODO: Better error code
-  if (!enif_get_tuple(Env,Elems[1],NULL,&Type)) exit(1);
-  // TODO: Decode & type
-  fprintf(stderr,"Cast: {x,%d} -> <unknown>\n\r", reg->number);
+  type_factory(Env,Elems[1],&type);
+  fprintf(stderr,"Cast: {x,%d} -> {%d,%c,%d}\n\r",reg->number,type->ref_level,
+                                                  type->data_type,type->width);
 }
 deallocate::deallocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
   if(!enif_get_int(Env,Elems[0],&bits)) exit(1);
-  fprintf(stderr,"Allocate: %d\n\r",bits);
+  fprintf(stderr,"Deallocate: %d\n\r",bits);
 }
 function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   type_factory(Env,Elems[0],&type);
@@ -157,14 +155,14 @@ function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   if (!enif_get_list_length(Env,Elems[3],&Length)) exit(1);
   ERL_NIF_TERM Head;
   ERL_NIF_TERM Tail = Elems[3];
-  for (unsigned I = 0; I < Length; I++) {
-    if (!enif_get_list_cell(Env,Tail,&Head,&Tail)) exit(1);
-    else Terms.push_back(factory(Env,Head));
-  }
   fprintf(stderr,"Function: %s/%d -> {%d,%c,%d}\n\r",Buf,arity,
                                                      type->ref_level,
                                                      type->data_type,
                                                      type->width);
+  for (unsigned I = 0; I < Length; I++) {
+    if (!enif_get_list_cell(Env,Tail,&Head,&Tail)) exit(1);
+    else Terms.push_back(factory(Env,Head));
+  }
 }
 jump::jump(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   lbl_factory(Env,Elems[0],&lbl);
@@ -213,11 +211,10 @@ test::test(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   lbl_factory(Env,Elems[1],&lbl);
   fprintf(stderr,"Test: {x,%d}? {l,%d}\n\r",reg->number,lbl->number);
 }
-bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char* Operator) {
-  fprintf(stderr,"Bif...\n\r");
+bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char Op_0,char Op_1) {
   // This is nasty but what can you do :)
-  switch (Operator[0]) {
-    case '|': switch (Operator[1]) {
+  switch (Op_0) {
+    case '|': switch (Op_1) {
       case '\0':
         code=BOR;
       break;
@@ -227,7 +224,7 @@ bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char* Operator) {
       default:
         code=ERR;
     } break;
-    case '&': switch (Operator[1]) {
+    case '&': switch (Op_1) {
       case '\0':
         code=BND;
         break;
@@ -246,7 +243,7 @@ bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char* Operator) {
     case '!':
       code=IEQ;
       break;
-    case '<': switch (Operator[1]) {
+    case '<': switch (Op_1) {
       case '\0':
         code=LES;
         break;
@@ -259,7 +256,7 @@ bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char* Operator) {
       default:
         code=ERR;
     } break;
-    case '>': switch (Operator[1]) {
+    case '>': switch (Op_1) {
       case '\0':
         code=GRT;
         break;
@@ -291,14 +288,14 @@ bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char* Operator) {
       code=ERR;
       break;
   }
-
   reg_factory(Env,Elems[0],&dest);
   ERL_NIF_TERM Head;
-  ERL_NIF_TERM* Tail;
-  enif_get_list_cell(Env, Elems[1], &Head, Tail);
+  ERL_NIF_TERM Tail = Elems[1];
+  enif_get_list_cell(Env, Tail, &Head, &Tail);
   reg_factory(Env,Head,&a);
-  enif_get_list_cell(Env, *Tail, &Head, Tail);
+  enif_get_list_cell(Env, Tail, &Head, &Tail);
   reg_factory(Env,Head,&b);
+  fprintf(stderr,"%c%c: [{x,%d}, {x,%d}] -> {x,%d}\n\r",Op_0,Op_1,a->number,b->number,dest->number);
 }
 
 
@@ -312,6 +309,7 @@ statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St) {
   char* Atom = (char*)malloc(Length+1);
   if (!enif_get_atom(Env,Elems[0],Atom,Length+1,ERL_NIF_LATIN1)) return nullptr;
   char Hd = Atom[0];
+  char Secnd = Atom[1];
   char Third = Atom[2];
   free(Atom);
   // Ignore this I know it's nasty sorry
@@ -337,7 +335,7 @@ statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St) {
     case 'm': return new move(Env,Elems+1);
     case 's': return new store(Env,Elems+1);
     case 't': return new test(Env,Elems+1);
-    default: return new bif(Env,Elems+1,Atom);
+    default: return new bif(Env,Elems+1,Hd,Secnd);
   }
 }
 }
