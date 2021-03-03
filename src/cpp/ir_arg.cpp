@@ -26,12 +26,15 @@ namespace ir::arg {
     const ERL_NIF_TERM* Elems;
 
     if (!enif_get_tuple(Env,Arg,&Arity,&Elems)) return nullptr;
-
+    char* Buf;
+    int Int;
+    char Arg_Type;
     switch (Arity) {
       case 2:
-        char Arg_Type;
-        if(!enif_get_atom(Env,Elems[0],&Arg_Type,1u,ERL_NIF_LATIN1)) return nullptr;
-        int Int;
+        Buf = (char*)malloc(2);
+        if(!enif_get_atom(Env,Elems[0],Buf,2,ERL_NIF_LATIN1)) return nullptr;
+        Arg_Type = *Buf;
+        free(Buf);
         switch (Arg_Type) {
           case 'x':
             if(!enif_get_int(Env,Elems[1],&Int)) return nullptr;

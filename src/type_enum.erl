@@ -75,4 +75,4 @@ find_ident([{identifier, Line, Name} | Tokens], Types, Enums) ->
 find_ident([Other | Tokens], Types, Enums) ->
   {Adj, Name, Rest} = find_ident(Tokens, Types, Enums),
   {[Other | Adj], Name, Rest};
-find_ident([], _, _) -> {[], nil, []}.
+find_ident([], _, _) -> {[], n, []}.

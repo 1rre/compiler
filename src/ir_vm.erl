@@ -73,7 +73,7 @@ run_st([{allocate,N}|Rest],Context,Ir) ->
   Types = Context#context.types,
   N_S_Bounds = [hd(S_Bounds) - N div 8 | S_Bounds],
   S_Count = length([X||{y,X} <- maps:keys(Types)]),
-  N_Types = maps:put({y,S_Count},{0,nil,N},Types),
+  N_Types = maps:put({y,S_Count},{0,n,N},Types),
   N_Context = Context#context{stack=N_Stack,types=N_Types,s_bounds=N_S_Bounds},
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
@@ -90,7 +90,7 @@ run_st([{deallocate,N}|Rest],Context,Ir) ->
 
 run_st([{address,Src,Dest}|Rest],Context,Ir) ->
   Types = Context#context.types,
-  {P,T,S} = maps:get(Src,Types,{0,nil,0}),
+  {P,T,S} = maps:get(Src,Types,{0,n,0}),
   {ok,Address} = get_address(Src,Context),
   Types = Context#context.types,
   N_Types = maps:put(Dest,{P+1,T,S},Types),
@@ -104,7 +104,7 @@ run_st([{load,{y,N},Dest}|Rest],Context,Ir) ->
   {ok,Ptr} = get_data(Address,Context),
   {ok,Value} = get_data(Ptr,Context),
   Types = Context#context.types,
-  {P,T,S} = maps:get({y,N},Types,{0,nil,0}),
+  {P,T,S} = maps:get({y,N},Types,{0,n,0}),
   N_Types = maps:put(Dest,{P,T,S},Types),
   {ok,N_Context} = set_data({P,T,S},Dest,Value,Context#context{types=N_Types}),
   debug_print(Rest,N_Context),
@@ -114,7 +114,7 @@ run_st([{load,{x,N},Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address({y,N},Context),
   {ok,Value} = get_data(Address,Context),
   Types = Context#context.types,
-  {P,T,S} = maps:get({x,N},Types,{0,nil,0}),
+  {P,T,S} = maps:get({x,N},Types,{0,n,0}),
   N_Types = maps:put(Dest,{P,T,S},Types),
   {ok,N_Context} = set_data({P,T,S},Dest,Value,Context#context{types=N_Types}),
   debug_print(Rest,N_Context),
@@ -124,7 +124,7 @@ run_st([{store,Src,Dest}|Rest],Context,Ir) ->
   {ok,Value} = get_data(Src,Context),
   {ok,Address} = get_address(Dest,Context),
   Types = Context#context.types,
-  Type = maps:get(Src,Types,{0,nil,0}),
+  Type = maps:get(Src,Types,{0,n,0}),
   {ok,N_Context} = set_data(Type,Address,Value,Context),
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
@@ -135,7 +135,7 @@ run_st([{move,Data,Dest}|Rest],Context,Ir) ->
   {P,T,S} = case Data of
     {float,_} -> {0,f,?SIZEOF_FLOAT};
     {integer,_} -> {0,i,?SIZEOF_INT};
-    _ -> maps:get(Data,Types,{0,nil,0})
+    _ -> maps:get(Data,Types,{0,n,0})
   end,
   N_Types = maps:put(Dest,{P,T,S},Types),
   {ok,N_Context} = set_data({P,T,S},Dest,Value,Context#context{types=N_Types}),
@@ -171,8 +171,8 @@ run_st([{test,Data,{l,Lb}}|Rest],Context,Ir) ->
 %% / is a special case as erlang treats float & integer division differently
 run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
   Types = Context#context.types,
-  {0,TA,SA} = maps:get(A,Types,{0,nil,0}),
-  {0,TB,SB} = maps:get(B,Types,{0,nil,0}),
+  {0,TA,SA} = maps:get(A,Types,{0,n,0}),
+  {0,TB,SB} = maps:get(B,Types,{0,n,0}),
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = if
@@ -186,8 +186,8 @@ run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
 %        Add pointer arithmetic here (Probably?)
 run_st([{Op,Dest,[A,B]}|Rest],Context,Ir) ->
   Types = Context#context.types,
-  {PA,TA,SA} = maps:get(A,Types,{0,nil,0}),
-  {PB,TB,SB} = maps:get(B,Types,{0,nil,0}),
+  {PA,TA,SA} = maps:get(A,Types,{0,n,0}),
+  {PB,TB,SB} = maps:get(B,Types,{0,n,0}),
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = if
@@ -213,9 +213,9 @@ get_data({y,N},Context) ->
   Types = Context#context.types,
   S_Bounds = Context#context.s_bounds,
   Nth = length([X||{y,X} <- maps:keys(Types)])-N+1,
-  get_data(maps:get({y,N},Types,{0,nil,0}),lists:nth(Nth,S_Bounds),Context);
-get_data(nil,_Context) ->
-  {ok,nil};
+  get_data(maps:get({y,N},Types,{0,n,0}),lists:nth(Nth,S_Bounds),Context);
+get_data(n,_Context) ->
+  {ok,n};
 get_data(Data,_Context) ->
 error({unknown,Data}).
 

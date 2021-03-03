@@ -485,7 +485,7 @@ get_type([{int,_}],_)             -> {ok,{0,i,?SIZEOF_INT}};
 get_type([{short,_},{int,_}],_)   -> {ok,{0,i,?SIZEOF_SHORT}};
 get_type([{short,_}],_)           -> {ok,{0,i,?SIZEOF_SHORT}};
 get_type([{char,_}],_)            -> {ok,{0,i,?SIZEOF_CHAR}};
-get_type([{void,_}],_)            -> {ok,{0,nil,0}};
+get_type([{void,_}],_)            -> {ok,{0,n,0}};
 get_type(Type,_)                  -> {error,{unknown_type, Type}}.
 
 %% Function to return the size of different types.

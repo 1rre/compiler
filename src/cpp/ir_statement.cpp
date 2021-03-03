@@ -8,11 +8,13 @@ namespace ir::statement {
 
 void data_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::data** Data) {
   const ERL_NIF_TERM* R_Tuple;
-  char R_Name;
+  char* Buf = (char*)malloc(2);
   int R_Num;
   double R_Dbl;
   if (!enif_get_tuple(Env,Elem,NULL,&R_Tuple) ||
-      !enif_get_atom(Env,R_Tuple[0],&R_Name,1,ERL_NIF_LATIN1)) exit(1);
+      !enif_get_atom(Env,R_Tuple[0],Buf,1,ERL_NIF_LATIN1)) exit(1);
+  char R_Name = *Buf;
+  free(Buf);
   switch (R_Name) {
     case 'x':
       if (!enif_get_int(Env,R_Tuple[1],&R_Num)) exit(1);
@@ -37,12 +39,14 @@ void data_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::data** Data) {
 
 void mem_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::memory** Mem) {
   const ERL_NIF_TERM* R_Tuple;
-  char R_Name;
+  char* Buf = (char*)malloc(2);
   int R_Num;
   // TODO: Better error code
   if (!enif_get_tuple(Env,Elem,NULL,&R_Tuple) ||
-      !enif_get_atom(Env,R_Tuple[0],&R_Name,1,ERL_NIF_LATIN1) ||
+      !enif_get_atom(Env,R_Tuple[0],Buf,1,ERL_NIF_LATIN1) ||
       !enif_get_int(Env,R_Tuple[1],&R_Num)) exit(1);
+  char R_Name = *Buf;
+  free(Buf);
   switch (R_Name) {
     case 'x':
       *Mem = new arg::reg(R_Num);
@@ -56,24 +60,28 @@ void mem_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::memory** Mem) {
 }
 void reg_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::reg** reg) {
   const ERL_NIF_TERM* R_Tuple;
-  char R_Name;
+  char* Buf = (char*)malloc(2);
   int R_Num;
   // TODO: Better error code
   if (!enif_get_tuple(Env,Elem,NULL,&R_Tuple) ||
-      !enif_get_atom(Env,R_Tuple[0],&R_Name,1,ERL_NIF_LATIN1) ||
+      !enif_get_atom(Env,R_Tuple[0],Buf,1,ERL_NIF_LATIN1) ||
       !enif_get_int(Env,R_Tuple[1],&R_Num)) exit(1);
+  char R_Name = *Buf;
+  free(Buf);
   if (R_Name != 'x') exit(1);
   *reg = new arg::reg(R_Num);
 }
 
 void lbl_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::label** Lbl) {
   const ERL_NIF_TERM* R_Tuple;
-  char R_Name;
+  char* Buf = (char*)malloc(2);
   int R_Num;
   // TODO: Better error code
   if (!enif_get_tuple(Env,Elem,NULL,&R_Tuple) ||
-      !enif_get_atom(Env,R_Tuple[0],&R_Name,1,ERL_NIF_LATIN1) ||
+      !enif_get_atom(Env,R_Tuple[0],Buf,2,ERL_NIF_LATIN1) ||
       !enif_get_int(Env,R_Tuple[1],&R_Num)) exit(1);
+  char R_Name = *Buf;
+  free(Buf);
   if (R_Name != 'l') exit(1);
   *Lbl = new arg::label(R_Num);
 }
@@ -82,15 +90,15 @@ address::address(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   mem_factory(Env,Elems[0],&src);
   reg_factory(Env,Elems[1],&dest);
 
-  printf("Address: {<unknown>,%d} -> {y,%d}\n",src->number,dest->number);
+  printf("Address: {<unknown>,%d} -> {y,%d}\n\r",src->number,dest->number);
 }
 allocate::allocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
   if(!enif_get_int(Env,Elems[0],&bits)) exit(1);
-  printf("Allocate: %d\n",bits);
+  printf("Allocate: %d\n\r",bits);
 }
 call::call(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-  printf("Call: <unknown>\n");
+  printf("Call: <unknown>\n\r");
   // TODO: Get function call details
 }
 cast::cast(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
@@ -99,34 +107,34 @@ cast::cast(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
   if (!enif_get_tuple(Env,Elems[1],NULL,&Type)) exit(1);
   // TODO: Decode & type
-  printf("Cast: {x,%d} -> <unknown>\n", reg->number);
+  printf("Cast: {x,%d} -> <unknown>\n\r", reg->number);
 }
 deallocate::deallocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
   if(!enif_get_int(Env,Elems[0],&bits)) exit(1);
-  printf("Allocate: %d\n",bits);
+  printf("Allocate: %d\n\r",bits);
 }
 function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-  printf("Function: <unknown>\n");
+  printf("Function: <unknown>\n\r");
   // TODO: Get function details
 }
 jump::jump(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   lbl_factory(Env,Elems[0],&lbl);
-  printf("Jump: {l,%d}\n",lbl->number);
+  printf("Jump: {l,%d}\n\r",lbl->number);
 }
 label::label(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
   if(!enif_get_int(Env,Elems[0],&number)) exit(1);
-  printf("Label: %d\n",number);
+  printf("Label: %d\n\r",number);
 }
 load::load(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   mem_factory(Env,Elems[0],&src);
   reg_factory(Env,Elems[1],&dest);
 
   if (src->code == arg::REG)
-    printf("Load: {x,%d} -> {y,%d}\n",src->number,dest->number);
+    printf("Load: {x,%d} -> {y,%d}\n\r",src->number,dest->number);
   else if (src->code == arg::STACK)
-    printf("Load: {y,%d} -> {y,%d}\n",src->number,dest->number);
+    printf("Load: {y,%d} -> {y,%d}\n\r",src->number,dest->number);
 }
 move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   data_factory(Env,Elems[0],&src);
@@ -141,24 +149,24 @@ move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
     printf("Move: {integer,%d}",dynamic_cast<ir::arg::integer*>(src)->value);
 
   if (dest->code == arg::REG)
-    printf(" -> {x,%d}\n",dest->number);
+    printf(" -> {x,%d}\n\r",dest->number);
   else
-    printf(" -> {y,%d}\n",dest->number);
+    printf(" -> {y,%d}\n\r",dest->number);
 }
 // Empty constructor as return acts as end of statement only.
 rtn::rtn() {}
 store::store(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   reg_factory(Env,Elems[0],&src);
   reg_factory(Env,Elems[1],&dest);
-  printf("Store: {x,%d} -> {x,%d}\n",src->number,dest->number);
+  printf("Store: {x,%d} -> {x,%d}\n\r",src->number,dest->number);
 }
 test::test(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   reg_factory(Env,Elems[0],&reg);
   lbl_factory(Env,Elems[1],&lbl);
-  printf("Test: {x,%d}? {l,%d}\n",reg->number,lbl->number);
+  printf("Test: {x,%d}? {l,%d}\n\r",reg->number,lbl->number);
 }
 bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char* Operator) {
-  printf("Bif...\n");
+  printf("Bif...\n\r");
   // This is nasty but what can you do :)
   switch (Operator[0]) {
     case '|': switch (Operator[1]) {
@@ -251,23 +259,21 @@ statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St) {
   int Arity;
   const ERL_NIF_TERM* Elems;
   if (!enif_get_tuple(Env,St,&Arity,&Elems)) return nullptr;
-  printf("Arity: %d\n",Arity);
-  if (enif_is_atom(Env,Elems[0])) printf("Not Atom!\n");
   unsigned Length;
-  char* Atom;
-  printf("A!\n");
   if (!enif_get_atom_length(Env,Elems[0],&Length,ERL_NIF_LATIN1)) return nullptr;
-  printf("B!\n");
-  if (!enif_get_atom(Env,Elems[0],Atom,Length,ERL_NIF_LATIN1)) return nullptr;
-  printf("C!\n");
+  char* Atom = (char*)malloc(Length+1);
+  if (!enif_get_atom(Env,Elems[0],Atom,Length+1,ERL_NIF_LATIN1)) return nullptr;
+  char Hd = Atom[0];
+  char Third = Atom[2];
+  free(Atom);
   // Ignore this I know it's nasty sorry
-  switch (Atom[0]) {
-    case 'a': switch (Atom[1]) {
+  switch (Hd) {
+    case 'a': switch (Third) {
       case 'd': return new address(Env,Elems+1);
       case 'l': return new allocate(Env,Elems+1);
       default: return nullptr;
     }
-    case 'c': switch (Atom[2]) {
+    case 'c': switch (Third) {
       case 'l': return new call(Env,Elems+1);
       case 's': return new cast(Env,Elems+1);
       default: return nullptr;
@@ -275,9 +281,9 @@ statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St) {
     case 'd': return new deallocate(Env,Elems+1);
     case 'f': return new function(Env,Elems+1);
     case 'j': return new jump(Env,Elems+1);
-    case 'l': switch (Atom[1]) {
-      case 'a': return new label(Env,Elems+1);
-      case 'o': return new load(Env,Elems+1);
+    case 'l': switch (Third) {
+      case 'b': return new label(Env,Elems+1);
+      case 'a': return new load(Env,Elems+1);
       default: return nullptr;
     }
     case 'm': return new move(Env,Elems+1);
