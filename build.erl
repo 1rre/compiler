@@ -13,7 +13,7 @@ main(["clean"]) ->
 % Compile everything
 main(["compile"]) ->
   Erl_Files = build_common(),
-  [compile:file(Erl, [{outdir,".build"},report|?ERLC_FLAGS]) || Erl <- Erl_Files],
+  [compile:file(Erl, [{outdir,".build"},{d,'TARGET_ARCH',mips32},report|?ERLC_FLAGS]) || Erl <- Erl_Files],
   halt(0);
 
 % Compile everything
@@ -32,6 +32,7 @@ main(["bin/c_compiler"]) ->
 main(["-debug"]) ->
   file:make_dir("bin"),
   Erl_Files = build_common(),
+  io:fwrite("~p~n",[Erl_Files]),
   io:fwrite("Building erlang files for ~s~n",[amd64]),
   Pids = [compile_erl(Erl,[{d,'TARGET_ARCH',amd64}]) || Erl <- Erl_Files],
   Bin = [receive

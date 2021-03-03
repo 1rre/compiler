@@ -33,6 +33,7 @@ load::load(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
 move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
 
 }
+rtn::rtn() {}
 store::store(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
 
 }

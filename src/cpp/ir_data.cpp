@@ -4,6 +4,27 @@
 
 namespace ir::arg {
 
+  floating::floating(double Val) {
+    Value = Val;
+  }
+  integer::integer(int Val) {
+    Value = Val;
+  }
+  reg::reg(int Num) {
+    Number = Num;
+  }
+  stack::stack(int Num) {
+    Number = Num;
+  }
+  label::label(int Num) {
+    Number = Num;
+  }
+  type::type(int P, char T, int S) {
+    Ref_Level = P;
+    Type = T;
+    Width = S;
+  }
+
   arg* factory(ErlNifEnv* Env, ERL_NIF_TERM Arg) {
     int Arity;
     const ERL_NIF_TERM* Elems;

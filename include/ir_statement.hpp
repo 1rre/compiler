@@ -46,7 +46,7 @@ enum statement_code {
 class statement {
 public:
   static enum statement_code Code;
-  statement* Next;
+  statement* Next = nullptr;
 };
 
 class error: virtual public statement {
@@ -158,6 +158,7 @@ public:
 
 class bif: virtual public statement {
 public:
+  enum statement_code Code;
   ir::arg::reg* A;
   ir::arg::reg* B;
   ir::arg::reg* Dest;
