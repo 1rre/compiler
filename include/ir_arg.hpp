@@ -12,7 +12,8 @@ enum arg_code {
   INT,
   REG,
   STACK,
-  LABEL
+  LABEL,
+  PARAM
 };
 
 class arg {
@@ -66,6 +67,11 @@ class stack: public memory {
 public:
   enum arg_code code;
   stack(int);
+};
+class param: public memory {
+public:
+  enum arg_code code;
+  param(int);
 };
 
 class label: public arg {

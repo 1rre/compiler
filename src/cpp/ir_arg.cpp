@@ -14,6 +14,8 @@ namespace ir::arg {
     memory(Num,REG) {}
   stack::stack(int Num):
     memory(Num,STACK) {}
+  param::param(int Num):
+    memory(Num,PARAM) {}
   label::label(int Num):
     number(Num),
     arg(LABEL) {}

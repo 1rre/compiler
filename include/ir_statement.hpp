@@ -88,8 +88,6 @@ public:
   function* fn;
   std::string name;
   int arity;
-  // Currently we need this but I plan to change the way that args are done
-  ir::arg::stack* first_arg;
   call(ErlNifEnv*,const ERL_NIF_TERM*,hashmap&);
 };
 

@@ -20,7 +20,7 @@ main(["compile"]) ->
 main(["bin/c_compiler"]) ->
   file:make_dir("bin"),
   Erl_Files = build_common(),
-  io:fwrite("Building erlang files for ~s~n",[mips32]),
+  io:fwrite("Compiling erlang files for ~s: ~p~n",[mips32,Erl_Files]),
   Pids = [compile_erl(Erl,[{d,'TARGET_ARCH',mips32}]) || Erl <- Erl_Files],
   Bin = [receive
            {Pid,{File,{ok,_Mod,Bin}}} -> {File,Bin};
@@ -32,8 +32,7 @@ main(["bin/c_compiler"]) ->
 main(["-debug"]) ->
   file:make_dir("bin"),
   Erl_Files = build_common(),
-  io:fwrite("~p~n",[Erl_Files]),
-  io:fwrite("Building erlang files for ~s~n",[amd64]),
+  io:fwrite("Compiling erlang files for ~s: ~p~n",[amd64,Erl_Files]),
   Pids = [compile_erl(Erl,[{d,'TARGET_ARCH',amd64}]) || Erl <- Erl_Files],
   Bin = [receive
            {Pid,{File,{ok,_Mod,Bin}}} -> {File,Bin};
@@ -66,7 +65,7 @@ build_common() ->
   Cxx = get_dep(cxx),
   Include = get_dep(erts),
   Cxx_Files = lists:reverse(filelib:wildcard("src/cpp/*.cpp")),
-  io:fwrite("~p~n",[Cxx_Files]),
+  io:fwrite("Compiling C++ files: ~p~n",[Cxx_Files]),
   compile(Cxx, Cxx_Files, Include),
   wait_exe(1, false),
   Leex_Files = filelib:wildcard("src/parsing/*.xrl"),

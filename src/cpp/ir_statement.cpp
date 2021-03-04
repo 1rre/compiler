@@ -22,26 +22,49 @@ void data_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::data** Data) {
   int R_Num;
   double R_Dbl;
   int Arity;
-  if (!enif_get_tuple(Env,Elem,&Arity,&R_Tuple)) exit(1);
+  if (!enif_get_tuple(Env,Elem,&Arity,&R_Tuple)) {
+    fprintf(stderr,"Data type tuple not valid!\r\n");
+    exit(1);
+  }
   char R_Name = get_atom_char(Env,R_Tuple[0]);
   switch (R_Name) {
     case 'x':
-      if (!enif_get_int(Env,R_Tuple[1],&R_Num)) exit(1);
+      if (!enif_get_int(Env,R_Tuple[1],&R_Num)) {
+        fprintf(stderr,"Could not get register number\r\n");
+        exit(1);
+      }
       *Data = new arg::reg(R_Num);
     break;
     case 'y':
-      if (!enif_get_int(Env,R_Tuple[1],&R_Num)) exit(1);
+      if (!enif_get_int(Env,R_Tuple[1],&R_Num)) {
+        fprintf(stderr,"Could not get register number\r\n");
+        exit(1);
+      }
       *Data = new arg::stack(R_Num);
     break;
+    case 'z':
+      if (!enif_get_int(Env,R_Tuple[1],&R_Num)) {
+        fprintf(stderr,"Could not get register number\r\n");
+        exit(1);
+      }
+      *Data = new arg::param(R_Num);
+    break;
     case 'f':
-      if (!enif_get_double(Env,R_Tuple[1],&R_Dbl)) exit(1);
+      if (!enif_get_double(Env,R_Tuple[1],&R_Dbl)) {
+        fprintf(stderr,"Could not get data float\r\n");
+        exit(1);
+      }
       *Data = new arg::floating(R_Dbl);
     break;
     case 'i':
-      if (!enif_get_int(Env,R_Tuple[1],&R_Num)) exit(1);
+      if (!enif_get_int(Env,R_Tuple[1],&R_Num)) {
+        fprintf(stderr,"Could not get data int\r\n");
+        exit(1);
+      }
       *Data = new arg::integer(R_Num);
     break;
     default:
+      fprintf(stderr,"Data name %c not valid\r\n", R_Name);
       exit(1);
     }
 }
@@ -60,6 +83,9 @@ void mem_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::memory** Mem) {
     break;
     case 'y':
       *Mem = new arg::stack(R_Num);
+    break;
+    case 'z':
+      *Mem = new arg::param(R_Num);
     break;
     default:
       exit(1);
@@ -146,7 +172,6 @@ call::call(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,hashmap& Functions) {
     fprintf(stderr,"Error getting function call arity\r\n");
     exit(1);
   }
-  stack_factory(Env,Elems[2],&first_arg);
   name = std::string(Buf);
   fn = static_cast<function*>(Functions[name]);
 
@@ -185,7 +210,7 @@ function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,hashmap& Functions) 
   if (!enif_get_list_length(Env,Elems[3],&Length)) exit(1);
   ERL_NIF_TERM Head;
   ERL_NIF_TERM Tail = Elems[3];
-  fprintf(stderr,"Function: %s/%d -> {%d,%c,%d}\r\n",Buf,arity,
+  fprintf(stderr,"\r\nFunction: %s/%d -> {%d,%c,%d}\r\n",Buf,arity,
                                                      type->ref_level,
                                                      type->data_type,
                                                      type->width);
@@ -232,6 +257,8 @@ move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
     fprintf(stderr,"Move: {x,%d}",static_cast<ir::arg::reg*>(src)->number);
   else if (src->code == arg::STACK)
     fprintf(stderr,"Move: {y,%d}",static_cast<ir::arg::stack*>(src)->number);
+  else if (src->code == arg::PARAM)
+    fprintf(stderr,"Move: {z,%d}",static_cast<ir::arg::stack*>(src)->number);
   else if (src->code == arg::FLOAT)
     fprintf(stderr,"Move: {float,%f}",static_cast<ir::arg::floating*>(src)->value);
   else if (src->code == arg::INT)
@@ -239,8 +266,10 @@ move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
 
   if (dest->code == arg::REG)
     fprintf(stderr," -> {x,%d}\r\n",dest->number);
-  else
+  else if (dest->code == arg::STACK)
     fprintf(stderr," -> {y,%d}\r\n",dest->number);
+  else
+    fprintf(stderr," -> {z,%d}\r\n",dest->number);
 }
 // Empty constructor as return acts as end of statement only.
 rtn::rtn() {}
