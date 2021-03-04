@@ -7,7 +7,7 @@
 -include("arch_type_consts.hrl").
 
 -record(context,{fn=main,global=#{},types=#{},reg=[],debug=false,s_count=0,
-                 stack= <<>>,s_bounds=[?STACK_PTR]}).
+                 args=[],stack= <<>>,s_bounds=[?STACK_PTR]}).
 
 run(Ir,Args,Flags) ->
   case lists:search(fun ({function,_,_,_,_}) -> true; (_) -> false end, Ir) of
@@ -16,23 +16,19 @@ run(Ir,Args,Flags) ->
   end.
 
 run(Ir,Fn,Args,Flags) ->
-  {Init_Stack,Init_S_Bounds} = lists:foldl(fun
-    (Arg,{Stack,[C1|Ch]}) ->
-      {<<Arg:?SIZEOF_INT,Stack/bits>>,[C1-4,C1|Ch]}
-    end, {<<>>,[?STACK_PTR]}, Args),
+  Init_Args = Args,
   Init_Global = maps:from_list([{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir]),
-  Init_Types = maps:from_list([{{y,N},{0,i,?SIZEOF_INT}}||N<-lists:seq(0,length(Args)-1)]),
+  Init_Types = maps:from_list([{{z,N},{0,i,?SIZEOF_INT}}||N<-lists:seq(0,length(Args)-1)]),
   Context = #context{fn=Fn,
                      debug=lists:member(debug,Flags),
                      global=Init_Global,
                      types=Init_Types,
-                     stack=Init_Stack,
-                     s_bounds=Init_S_Bounds},
+                     args=Args},
   if Context#context.debug ->
     io:fwrite("~p~n~n~n",[Ir]);
     true -> ok
   end,
-  debug_print([{call,Fn,length(Args),{y,0}}],Context),
+  debug_print([{call,Fn,length(Args)}],Context),
   {ok, End_Context} = call_fn(Fn,Context,Ir),
   if Context#context.debug ->
     io:fwrite("End Reg:~n~p~n",[End_Context#context.reg]);
@@ -149,12 +145,12 @@ run_st([{label,_}|Rest],Context,Ir) ->
 run_st([{jump,{l,Lb}}|_],Context,Ir) ->
   jump(Lb,Context,Ir);
 
-run_st([{call,Fn,Arity,{y,First}}|Rest],Context,Ir) ->
+run_st([{call,Fn,Arity}|Rest],Context,Ir) ->
   Types = Context#context.types,
-  Args = maps:from_list([{{y,N-First},T} || {{y,N},T} <- maps:to_list(Types), N >= First,First+Arity >= N]),
+  Args = maps:filter(fun ({R,_},_) -> R =:= z end, Types),
   Fn_Context = Context#context{types=Args,fn=Fn},
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
-  N_Types = maps:filter(fun ({y,N},_) -> N<First;(_,_) -> true end,Types),
+  N_Types = maps:filter(fun ({R,_},_) -> R =/= z end,Types),
   N_Context = Fn_End#context{types=N_Types,fn=Context#context.fn},
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
@@ -209,6 +205,9 @@ get_data({f,N},_Context) -> {ok,N};
 get_data({x,N},Context) ->
   Reg = Context#context.reg,
   {ok,lists:nth(length(Reg) - N, Reg)};
+get_data({z,N},Context) ->
+    Args = Context#context.args,
+    {ok,lists:nth(length(Args) - N, Args)};
 get_data({y,N},Context) ->
   Types = Context#context.types,
   S_Bounds = Context#context.s_bounds,
@@ -239,6 +238,8 @@ set_data(Type,Dest,true,Context) -> set_data(Type,Dest,1,Context);
 set_data(Type,Dest,false,Context) -> set_data(Type,Dest,0,Context);
 set_data(_Type,{x,N},Data,Context) ->
   {ok,Context#context{reg=set_reg(Context#context.reg,N,Data)}};
+  set_data(_Type,{z,N},Data,Context) ->
+    {ok,Context#context{args=set_reg(Context#context.args,N,Data)}};
 set_data(Type,{y,N},Data,Context) ->
   Types = Context#context.types,
   S_Bounds = Context#context.s_bounds,

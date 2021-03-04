@@ -18,6 +18,7 @@
 |`{store,<rs>,<rd>}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register)
 |`{test,<ra>,<lb>}` | Branch to `lb` (label) if the value in `ra` is 0
 |`{<op>,<rd>,[<ra>,<rb>]}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
+|`{global,<type>,<ident>}` | Declare a global variable of `type` with identifier `ident`.
 |===
 
 [%header,cols="3,5"]
