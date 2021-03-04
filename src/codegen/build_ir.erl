@@ -21,12 +21,8 @@ process([Hd|Tl], State) ->
   {ok, Tl_State, Tl_St} = process(Tl,Hd_State),
   {ok,Tl_State,Hd_St++Tl_St};
 
-%% Process a declaration of a function by adding specification about it to the state,
-%  processing the branches of the function node (arguments & statement list) and then
-%  deallocating the memory used for the arguments.
-%% TODO: #17
-%        Modify the argument handling so that it is more platform-independent,
-%        especially for MIPS ASM given the current IR is sub-optimal for it.
+%% Process a declaration of a function by adding specification about it to the state &
+%  processing the branches of the function node (arguments & statement list)
 process({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
   {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident,State),
@@ -77,9 +73,6 @@ process({identifier,Ln,Ident}, State) ->
 %% Process a function call by storing the current register state on the stack,
 % storing the arguments to the function on the stack,
 % calling the function, then restoring the register state.
-%% TODO: #17
-%        Modify the argument handling so that it is more platform-independent,
-%        especially for MIPS ASM given the current IR is sub-optimal for it.
 %% TODO: N/A
 %        Debug arg processing order; Potentially it is in the wrong order.
 process({{identifier,Ln,Ident},{apply,Args}}, State) ->
@@ -209,10 +202,6 @@ process({{for,_},{Init,Predicate,Update},Loop}, State) ->
 %  intensive, then returning the way which is less register intensive.
 %% TODO: #N/A
 %        Find a more efficient way to do this, as this is exponential complexity.
-%% TODO: #10
-%        Most built-in functions are different for floats and integers,
-%        so we will have to indicate that the operation should be done on a float
-%        either here or at compile time.
 process({bif,T,[A,B]}, State) ->
   Way_1 = process_bif(T,A,B,State),
   Way_2 = process_bif(T,B,A,State),
@@ -224,8 +213,6 @@ process({bif,T,[A,B]}, State) ->
 %% Process an address operator by adding an expression to take the address of
 %  the value which was loaded to a register or put on the stack in the last instruction
 %  and store it in the destination of the last instruction.
-%% TODO: N/A
-%  Update for new type-checking system
 process({{'&',Ln},Raw_St}, State) ->
   {ok, Ref_State, Ref_St} = process(Raw_St, State),
   case lists:last(Ref_St) of
@@ -244,9 +231,6 @@ process({{'&',Ln},Raw_St}, State) ->
 %% Process a dereference operator by finding the location of the variable we are
 %  dereferencing and either replacing the `move` statement with a `load` statement
 %  or adding a `load` statement to the end, depending on what we are dereferncing.
-%% TODO: N/A
-%        Figure out if this can be replaced with `get_ptr/3`.
-%        They appear to perform the same function so it'd probably make sense to use it here?
 process({{'*',Ln},Raw_St},State) ->
   {ok, Ptr_State, Ptr_St} = process(Raw_St, State),
   Active_Reg = {x,State#state.lvcnt},
@@ -273,8 +257,8 @@ process({{'*',Ln},Raw_St},State) ->
 %        but it'd be very helpful to be able to differentiate them here.
 %% TODO: #2
 %        We need to add unary and postfix operators like `++` and `-`.
-%% TODO: #10
-%        We need to support float literals from here (as well as chars etc.)
+%% TODO: N/A
+%        We need to support chars, strings, etc. here
 %% TODO: #5
 %        We need to support array declarations and accesses,
 %        which will be done using the `[]` operators and the `offset` token.
@@ -352,8 +336,6 @@ deallocate_mem(State_1,State_2) ->
 %% For a normal assignment, the value to be assigned is processed and stored in the
 %  active register. The destination is evaluated as to whether it is a variable or
 %  a memory location and then the appropriate move/store instructions are returned.
-%% TODO: N/A
-%        Store pointers properly in memory (I think?)
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   {ok,Ident,Ptr_Depth} = get_ident_specs(Raw_Ident, State),
   {ok,Raw_Type,Ptr} = case maps:get(Ident,State#state.var,undefined) of
@@ -393,10 +375,6 @@ get_assign_specs(Op, Other, State) ->
   error({Op,Other,State}).
 
 %% When there is no dereference operator, an empty statement is returned.
-%% TODO: #4
-%        I believe that once we add address operators to the LHS of assignments,
-%        this condition will be triggered, therefore we should probably add an extra
-%        case to catch these.
 get_ptr(Type,0,Ptr,State) ->
   {ok,Type,[]};
 get_ptr({N,T,S},Ptr_Depth,Ptr,State) ->
@@ -422,7 +400,7 @@ process_bif('+',A,B,State) ->
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   R_Type = case {A_Type,B_Type} of
     {{0,T,S_A},{0,T,S_B}} -> {0,i,max(S_A,S_B)};
-    {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
+    {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of A
     {{0,i,S_A},{N,T,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
     Types -> error({{undefined_op_cast,'+'},Types})
   end,
@@ -493,8 +471,6 @@ get_type([{void,_}],_)            -> {ok,{0,n,0}};
 get_type(Type,_)                  -> {error,{unknown_type, Type}}.
 
 %% Function to return the size of different types.
-%% TODO: #10
-%        Add support for size of floats, etc.
 %% TODO: #5
 %        Arrays will likely behave a bit weirdly under sizeof,
 %        so we have to establish their behaviour and implement them accordingly.

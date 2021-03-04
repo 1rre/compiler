@@ -272,7 +272,9 @@ move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
     fprintf(stderr," -> {z,%d}\r\n",dest->number);
 }
 // Empty constructor as return acts as end of statement only.
-rtn::rtn() {}
+rtn::rtn() {
+  fprintf(stderr,"Return\r\n");
+}
 store::store(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   reg_factory(Env,Elems[0],&src);
   reg_factory(Env,Elems[1],&dest);
