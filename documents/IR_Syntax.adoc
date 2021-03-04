@@ -4,18 +4,30 @@
 [%header,cols="3,5"]
 |===
 |Syntax | Usage
-|`{address,${rs},${rd}}` | Finds the memory location of the object in `rs` (register or stack) & stores a pointer to it in `rd` (register)
-|`{allocate,${n}}` | Allocate `n` (integer) bits on the stack
-|`{call,${fn},${ar},${ra}}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (stack)
-|`{cast,${ra},${type}}` | Advises the compliler of a variable's `type` (in the form `reference level`, `type`, `width`) of a variable which would otherwise be incorrectly inferred, such as `char c = 5l;` -> `[{move,{long,5},${rd}}, {cast,${rd},{0,i,8}}]`
-|`{deallocate,${n}}` | Delete/deallocate `n` (integer) bits on the stack
-|`{function,${type},${name},${arity},${st}}` | Define a function `name` (identifier) with return type `type`, arity `arity` (integer), defining it as `st` (statement list).
-|`{jump,${lb}}` | Unconditionally jump to `lb` (label)
-|`{label,${lb}}` | Create `lb` (label) which can be jumped to using `test`
-|`{load,${rs},${rd}}` | Finds the memory location pointed to by `rs` (register or stack) & stores the value in `rd` (register)
-|`{move,${data},${rd}}` | Copy the value of `data` (register, stack or immediate) to `rd` (register or stack)
+|`{address,<rs>,<rd>}` | Finds the memory location of the object in `rs` (register or stack) & stores a pointer to it in `rd` (register)
+|`{allocate,<n>}` | Allocate `n` (integer) bits on the stack
+|`{call,<fn>,<ar>,<ra>}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (stack)
+|`{cast,<ra>,<type>}` | Advises the compliler of a variable's `type` (in the form `reference level`, `type`, `width`) of a variable which would otherwise be incorrectly inferred, such as `char c = 5l;` -> `[{move,{long,5>,<rd>>, {cast,<rd>,{0,i,8>}]`
+|`{deallocate,<n>}` | Delete/deallocate `n` (integer) bits on the stack
+|`{function,<type>,<name>,<arity>,<st>}` | Define a function `name` (identifier) with return type `type`, arity `arity` (integer), defining it as `st` (statement list).
+|`{jump,<lb>}` | Unconditionally jump to `lb` (label)
+|`{label,<lb>}` | Create `lb` (label) which can be jumped to using `test`
+|`{load,<rs>,<rd>}` | Finds the memory location pointed to by `rs` (register or stack) & stores the value in `rd` (register)
+|`{move,<data>,<rd>}` | Copy the value of `data` (register, stack or immediate) to `rd` (register or stack)
 |`return` | Return the value in register 0 to the calling function (this is fine for all functions as return value of void functions is undefined)
-|`{store,${rs},${rd}}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register)
-|`{test,${ra},${lb}}` | Branch to `lb` (label) if the value in `ra` is 0
-|`{${op},${rd},[${ra},${rb}]}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
+|`{store,<rs>,<rd>}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register)
+|`{test,<ra>,<lb>}` | Branch to `lb` (label) if the value in `ra` is 0
+|`{<op>,<rd>,[<ra>,<rb>]}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
+|===
+
+[%header,cols="3,5"]
+|===
+|Arguments | Meaning
+|`{x,<n>}` | Register `n` (integer), given an infinite register system
+|`{y,<n>}` | The `n`th (integer) item on the current function's part of the stack, which is mapped to an address
+|`{i,<n>}` | A literal with value `n` (integer). Assumed to be the default integer size for the platform.
+|`{g,<str>}` | A global variable with name `str` (string). (subject to change as it hasn't yet been implemented)
+|`{f,<N>}` | A literal with value `n` (float). Assumed to be the default float size for the platform.
+|`{l,<N>}` | The label `n` (integer), numbering is global, however only labels within the same function are valid.
+|`{<p>,<t>,<s>}` | A type with "reference level" `p` (integer), ie how many levels of dereferencing would be required to get the actual object, type `t` (char) (`f` for float, `i` for int and `n` for void), and width `s` (integer), which refers to the width of type `t` rather than any memory address.
 |===
