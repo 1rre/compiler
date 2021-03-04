@@ -31,14 +31,16 @@ process({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
   {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident,State),
   {ok, Arg_State, Arg_St} = process(Raw_Args, State),
+  Arity = length(Raw_Args),
+  Alloc_St = lists:flatten([[{allocate,?SIZEOF_INT},{move,{z,N},{y,N}}] || N <- lists:seq(0,Arity-1)]),
   New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
   {ok, N_State, N_St} = process(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = case lists:last(N_St) of
     return ->
-      [{function,Type,Ident,length(Raw_Args),N_St}];
+      [{function,Type,Ident,length(Raw_Args),Alloc_St++N_St}];
     _ ->
       {ok, Dealloc} = deallocate_mem(#{},N_State#state.var),
-      [{function,Type,Ident,length(Raw_Args),N_St++[Dealloc,return]}]
+      [{function,Type,Ident,length(Raw_Args),Alloc_St++N_St++[Dealloc,return]}]
   end,
   {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St};
 
@@ -91,16 +93,18 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
     {Type, Arity} when Arity =:= length(Args) ->
       Lv_Cnt = State#state.lvcnt,
       Rv_Cnt = State#state.rvcnt,
-      Alloc_St = [{allocate,?SIZEOF_INT} || _ <- lists:seq(0,Lv_Cnt+Arity-1)],
-      Mv_To_St = [{move,{x,N},{y,Rv_Cnt+N}} || N <- lists:seq(0,Lv_Cnt+Arity-1)],
-      Call_St = {call,Ident,Arity,{y,Rv_Cnt+Lv_Cnt}},
+      Alloc_St = [{allocate,?SIZEOF_INT} || _ <- lists:seq(0,Lv_Cnt-1)],
+      io:fwrite("calling ~s -> ~p, ~p~n",[Ident,Arity,Lv_Cnt]),
+      Mv_To_St = [{move,{x,N},{y,Rv_Cnt+N}} || N <- lists:seq(0,Lv_Cnt-1)],
+      To_A_St = [{move,{x,Lv_Cnt+N},{z,N}} || N <- lists:seq(0,Arity-1)],
+      Call_St = {call,Ident,Arity},
       Mv_Bk_St = [{move,{y,Rv_Cnt+N},{x,N}} || N <- lists:seq(0,Lv_Cnt-1)],
       New_St = if
-        Lv_Cnt =:= 0 -> Arg_St++Alloc_St++Mv_To_St++[Call_St|Mv_Bk_St];
+        Lv_Cnt =:= 0 -> Arg_St++Alloc_St++Mv_To_St++To_A_St++[Call_St|Mv_Bk_St];
         true ->
           Dealloc_St = {deallocate,?SIZEOF_INT*(Lv_Cnt)},
           Mv_0_St = {move,{x,0},{x,Lv_Cnt}},
-          Arg_St++Alloc_St++Mv_To_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
+          Arg_St++Alloc_St++Mv_To_St++To_A_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
       end,
       N_Types = maps:put({x,Lv_Cnt},Type,State#state.typecheck),
       {ok,copy_lbcnt(Arg_State,State#state{typecheck=N_Types}),New_St};
