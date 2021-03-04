@@ -16,7 +16,7 @@ enum erl_error {
   ERR_BAD_TUPLE
 };
 
-std::vector<statement::statement*> get_ir(ErlNifEnv* Env, ERL_NIF_TERM IR);
+std::vector<statement::statement*> get_ir(ErlNifEnv*, ERL_NIF_TERM);
 
 }
 #endif

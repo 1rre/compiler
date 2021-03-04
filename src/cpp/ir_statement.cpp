@@ -3,13 +3,13 @@
 #include "ir_arg.hpp"
 #include <erl_nif.h>
 #include <stdio.h>
+#include <vector>
 
 namespace ir::statement {
-
 char get_atom_char(ErlNifEnv* Env,const ERL_NIF_TERM Term) {
   char* Buf = (char*)malloc(2);
   if (!enif_get_atom(Env,Term,Buf,2,ERL_NIF_LATIN1)) {
-    fprintf(stderr,"Couldn't get atom char\n\r");
+    fprintf(stderr,"Couldn't get atom char\r\n");
     exit(1);
   }
   char Rtn = *Buf;
@@ -65,6 +65,7 @@ void mem_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::memory** Mem) {
       exit(1);
   }
 }
+
 void reg_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::reg** Reg) {
   const ERL_NIF_TERM* R_Tuple;
   int R_Num;
@@ -76,6 +77,17 @@ void reg_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::reg** Reg) {
   *Reg = new arg::reg(R_Num);
 }
 
+void stack_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::stack** Stack) {
+  const ERL_NIF_TERM* R_Tuple;
+  int R_Num;
+  int Arity;
+  if (!enif_get_tuple(Env,Elem,&Arity,&R_Tuple) ||
+      !enif_get_int(Env,R_Tuple[1],&R_Num)) exit(1);
+  char R_Name = get_atom_char(Env,R_Tuple[0]);
+  if (R_Name != 'x') exit(1);
+  *Stack = new arg::stack(R_Num);
+}
+
 void lbl_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::label** Lbl) {
   const ERL_NIF_TERM* R_Tuple;
   int R_Num;
@@ -84,7 +96,7 @@ void lbl_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::label** Lbl) {
       !enif_get_int(Env,R_Tuple[1],&R_Num)) exit(1);
   char R_Name = get_atom_char(Env,R_Tuple[0]);
   if (R_Name != 'l') {
-    fprintf(stderr,"Syntax error, expected label\n\r");
+    fprintf(stderr,"Syntax error, expected label\r\n");
     exit(1);
   }
   *Lbl = new arg::label(R_Num);
@@ -98,7 +110,7 @@ void type_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::type** Type) {
   if (!enif_get_tuple(Env,Elem,&Arity,&T_Tuple) ||
       !enif_get_int(Env,T_Tuple[0],&P) ||
       !enif_get_int(Env,T_Tuple[2],&S)) {
-    fprintf(stderr,"Error getting type tuple\n\r");
+    fprintf(stderr,"Error getting type tuple\r\n");
     exit(1);
   }
   T = get_atom_char(Env,T_Tuple[1]);
@@ -109,78 +121,109 @@ address::address(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   mem_factory(Env,Elems[0],&src);
   reg_factory(Env,Elems[1],&dest);
 
-  fprintf(stderr,"Address: {<unknown>,%d} -> {y,%d}\n\r",src->number,dest->number);
+  fprintf(stderr,"Address: {<unknown>,%d} -> {y,%d}\r\n",src->number,dest->number);
 }
 allocate::allocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
   if(!enif_get_int(Env,Elems[0],&bits)) {
-    fprintf(stderr,"Error getting bits to allocate\n\r");
+    fprintf(stderr,"Error getting bits to allocate\r\n");
     exit(1);
   }
-  fprintf(stderr,"Allocate: %d\n\r",bits);
+  fprintf(stderr,"Allocate: %d\r\n",bits);
 }
-call::call(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-  fprintf(stderr,"Call: <unknown>\n\r");
-  // TODO: Get function call details
+call::call(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,hashmap& Functions) {
+  unsigned Length;
+  if (!enif_get_atom_length(Env,Elems[0],&Length,ERL_NIF_LATIN1)) {
+    fprintf(stderr,"Error getting call atom length\r\n");
+    exit(1);
+  }
+  char* Buf = (char*)malloc(Length+1);
+  if (!enif_get_atom(Env,Elems[0],Buf,Length+1,ERL_NIF_LATIN1)) {
+    fprintf(stderr,"Error getting function name in call\r\n");
+    exit(1);
+  }
+  if (!enif_get_int(Env,Elems[1],&arity)) {
+    fprintf(stderr,"Error getting function call arity\r\n");
+    exit(1);
+  }
+  stack_factory(Env,Elems[2],&first_arg);
+  name = std::string(Buf);
+  fn = static_cast<function*>(Functions[name]);
+
 }
 cast::cast(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   reg_factory(Env,Elems[0],&reg);
   type_factory(Env,Elems[1],&type);
-  fprintf(stderr,"Cast: {x,%d} -> {%d,%c,%d}\n\r",reg->number,type->ref_level,
+  fprintf(stderr,"Cast: {x,%d} -> {%d,%c,%d}\r\n",reg->number,type->ref_level,
                                                   type->data_type,type->width);
 }
 deallocate::deallocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
   if(!enif_get_int(Env,Elems[0],&bits)) exit(1);
-  fprintf(stderr,"Deallocate: %d\n\r",bits);
+  fprintf(stderr,"Deallocate: %d\r\n",bits);
 }
-function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
+function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,hashmap& Functions) {
   type_factory(Env,Elems[0],&type);
   unsigned Length;
   if (!enif_get_atom_length(Env,Elems[1],&Length,ERL_NIF_LATIN1)) {
-    fprintf(stderr,"Error getting function atom length\n\r");
+    fprintf(stderr,"Error getting function atom length\r\n");
     exit(1);
   }
   char* Buf = (char*)malloc(Length+1);
   if (!enif_get_atom(Env,Elems[1],Buf,Length+1,ERL_NIF_LATIN1)) {
-    fprintf(stderr,"Error getting function name\n\r");
+    fprintf(stderr,"Error getting function name\r\n");
     exit(1);
   }
   name = std::string(Buf);
+  Functions[name] = this;
   if (!enif_get_int(Env,Elems[2],&arity)) {
-    fprintf(stderr,"Error getting function arity\n\r");
+    fprintf(stderr,"Error getting function arity\r\n");
     exit(1);
   }
+  std::unordered_map<int,statement*> Labels;
   std::vector<statement*> Terms;
   if (!enif_get_list_length(Env,Elems[3],&Length)) exit(1);
   ERL_NIF_TERM Head;
   ERL_NIF_TERM Tail = Elems[3];
-  fprintf(stderr,"Function: %s/%d -> {%d,%c,%d}\n\r",Buf,arity,
+  fprintf(stderr,"Function: %s/%d -> {%d,%c,%d}\r\n",Buf,arity,
                                                      type->ref_level,
                                                      type->data_type,
                                                      type->width);
   for (unsigned I = 0; I < Length; I++) {
     if (!enif_get_list_cell(Env,Tail,&Head,&Tail)) exit(1);
-    else Terms.push_back(factory(Env,Head));
+    else Terms.push_back(factory(Env,Head,Functions));
+    if (Terms[I]->code == LABEL)
+      Labels[static_cast<label*>(Terms[I])->number] = Terms[I];
+  }
+  Terms.push_back(nullptr);
+  for (unsigned I = 0; I < Length; I++) {
+    if (Terms[I]->code == JUMP)
+      static_cast<jump*>(Terms[I])->next = Labels[static_cast<jump*>(Terms[I])->lbl->number];
+    else if (Terms[I]->code == TEST)
+      static_cast<test*>(Terms[I])->branch = Labels[static_cast<jump*>(Terms[I])->lbl->number];
+    else Terms[I]->next = Terms[I+1];
+  }
+  if (Length >= 0) {
+    first=Terms[0];
   }
 }
 jump::jump(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   lbl_factory(Env,Elems[0],&lbl);
-  fprintf(stderr,"Jump: {l,%d}\n\r",lbl->number);
+  fprintf(stderr,"Jump: {l,%d}\r\n",lbl->number);
 }
 label::label(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
   if(!enif_get_int(Env,Elems[0],&number)) exit(1);
-  fprintf(stderr,"Label: %d\n\r",number);
+  fprintf(stderr,"Label: %d\r\n",number);
 }
 load::load(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   mem_factory(Env,Elems[0],&src);
   reg_factory(Env,Elems[1],&dest);
 
   if (src->code == arg::REG)
-    fprintf(stderr,"Load: {x,%d} -> {y,%d}\n\r",src->number,dest->number);
+    fprintf(stderr,"Load: {x,%d} -> {y,%d}\r\n",src->number,dest->number);
   else if (src->code == arg::STACK)
-    fprintf(stderr,"Load: {y,%d} -> {y,%d}\n\r",src->number,dest->number);
+    fprintf(stderr,"Load: {y,%d} -> {y,%d}\r\n",src->number,dest->number);
 }
 move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   data_factory(Env,Elems[0],&src);
@@ -195,21 +238,21 @@ move::move(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
     fprintf(stderr,"Move: {integer,%d}",static_cast<ir::arg::integer*>(src)->value);
 
   if (dest->code == arg::REG)
-    fprintf(stderr," -> {x,%d}\n\r",dest->number);
+    fprintf(stderr," -> {x,%d}\r\n",dest->number);
   else
-    fprintf(stderr," -> {y,%d}\n\r",dest->number);
+    fprintf(stderr," -> {y,%d}\r\n",dest->number);
 }
 // Empty constructor as return acts as end of statement only.
 rtn::rtn() {}
 store::store(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   reg_factory(Env,Elems[0],&src);
   reg_factory(Env,Elems[1],&dest);
-  fprintf(stderr,"Store: {x,%d} -> {x,%d}\n\r",src->number,dest->number);
+  fprintf(stderr,"Store: {x,%d} -> {x,%d}\r\n",src->number,dest->number);
 }
 test::test(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   reg_factory(Env,Elems[0],&reg);
   lbl_factory(Env,Elems[1],&lbl);
-  fprintf(stderr,"Test: {x,%d}? {l,%d}\n\r",reg->number,lbl->number);
+  fprintf(stderr,"Test: {x,%d}? {l,%d}\r\n",reg->number,lbl->number);
 }
 bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char Op_0,char Op_1) {
   // This is nasty but what can you do :)
@@ -295,11 +338,11 @@ bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char Op_0,char Op_1) {
   reg_factory(Env,Head,&a);
   enif_get_list_cell(Env, Tail, &Head, &Tail);
   reg_factory(Env,Head,&b);
-  fprintf(stderr,"%c%c: [{x,%d}, {x,%d}] -> {x,%d}\n\r",Op_0,Op_1,a->number,b->number,dest->number);
+  fprintf(stderr,"%c%c: [{x,%d}, {x,%d}] -> {x,%d}\r\n",Op_0,Op_1,a->number,b->number,dest->number);
 }
 
 
-statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St) {
+statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St, hashmap& Functions) {
   if (enif_is_atom(Env,St)) return new rtn();
   int Arity;
   const ERL_NIF_TERM* Elems;
@@ -320,12 +363,12 @@ statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St) {
       default: return nullptr;
     }
     case 'c': switch (Third) {
-      case 'l': return new call(Env,Elems+1);
+      case 'l': return new call(Env,Elems+1,Functions);
       case 's': return new cast(Env,Elems+1);
       default: return nullptr;
     }
     case 'd': return new deallocate(Env,Elems+1);
-    case 'f': return new function(Env,Elems+1);
+    case 'f': return new function(Env,Elems+1,Functions);
     case 'j': return new jump(Env,Elems+1);
     case 'l': switch (Third) {
       case 'b': return new label(Env,Elems+1);

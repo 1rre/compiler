@@ -3,6 +3,7 @@
 
 #include "ir_arg.hpp"
 #include <vector>
+#include <unordered_map>
 
 namespace ir::statement {
 
@@ -45,9 +46,11 @@ enum statement_code {
 
 class statement {
 public:
-  static enum statement_code code;
-  statement* Next = nullptr;
+  enum statement_code code;
+  statement* next = nullptr;
 };
+
+typedef std::unordered_map<std::string,statement*> hashmap;
 
 class error: public statement {
 public:
@@ -61,7 +64,7 @@ public:
   std::string name;
   int arity;
   statement* first;
-  function(ErlNifEnv*,const ERL_NIF_TERM*);
+  function(ErlNifEnv*,const ERL_NIF_TERM*,hashmap&);
 };
 
 class address: public statement {
@@ -87,7 +90,7 @@ public:
   int arity;
   // Currently we need this but I plan to change the way that args are done
   ir::arg::stack* first_arg;
-  call(ErlNifEnv*,const ERL_NIF_TERM*);
+  call(ErlNifEnv*,const ERL_NIF_TERM*,hashmap&);
 };
 
 class cast: public statement {
@@ -155,7 +158,7 @@ public:
   enum statement_code code = TEST;
   ir::arg::reg* reg;
   ir::arg::label* lbl;
-  label* branch;
+  statement* branch;
   test(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
@@ -168,7 +171,7 @@ public:
   bif(ErlNifEnv*,const ERL_NIF_TERM*,char,char);
 };
 
-statement* factory(ErlNifEnv*, ERL_NIF_TERM);
+statement* factory(ErlNifEnv*, ERL_NIF_TERM, hashmap&);
 
 }
 
