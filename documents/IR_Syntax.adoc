@@ -24,7 +24,8 @@
 |===
 |Arguments | Meaning
 |`{x,<n>}` | Register `n` (integer), given an infinite register system
-|`{y,<n>}` | The `n`th (integer) item on the current function's part of the stack, which is mapped to an address
+|`{y,<n>}` | The ``n``th (integer) item on the current function's part of the stack, which is mapped to an address
+|`{z,<n>}` | The ``n``th argument to a function
 |`{i,<n>}` | A literal with value `n` (integer). Assumed to be the default integer size for the platform.
 |`{g,<str>}` | A global variable with name `str` (string). (subject to change as it hasn't yet been implemented)
 |`{f,<N>}` | A literal with value `n` (float). Assumed to be the default float size for the platform.
