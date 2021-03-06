@@ -408,7 +408,7 @@ get_ptr({N,T,S},Ptr_Depth,Ptr,State) ->
   Type = {N-Ptr_Depth,T,S},
   Active_Reg = {x,State#state.lvcnt},
   %% Should this be -1?
-  Load_St = [{move,Ptr,Active_Reg}|get_ptr_load_st(Ptr_Depth,Active_Reg,Ptr)],
+  Load_St = [{move,Ptr,Active_Reg}|get_ptr_load_st(Ptr_Depth,Active_Reg,Active_Reg)],
   {ok,Type,Load_St}.
 
 get_ptr_load_st(1,Reg,Ptr) -> [];

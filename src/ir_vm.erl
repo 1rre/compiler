@@ -270,7 +270,7 @@ set_data(Type,{y,N},Data,Context) ->
 
 set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Offset = (?STACK_PTR - Address)*8,
+  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size/float,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
@@ -278,7 +278,7 @@ set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
 set_data({P,_,Raw_Size},Address,Data,Context) when is_integer(Address) ->
   Size = if P =:= 0 -> Raw_Size; true -> ?SIZEOF_POINTER end,
   Stack = Context#context.stack,
-  Offset = (?STACK_PTR - Address)*8 ,
+  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size ,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
