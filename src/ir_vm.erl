@@ -6,8 +6,8 @@
 
 -include("arch_type_consts.hrl").
 
--record(context,{fn=main,global=#{},types=#{},reg=[],debug=false,s_count=0,
-                 args=[],stack= <<>>,s_bounds=[?STACK_PTR]}).
+-record(context,{fn=main,global=#{},types=#{},reg=[],debug=false,
+                 args=[],stack= <<>>,s_reg=[]}).
 
 run(Ir,Args,Flags) ->
   case lists:search(fun ({function,_,_,_,_}) -> true; (_) -> false end, Ir) of
@@ -65,25 +65,34 @@ run_st([{cast,Reg,Type}|Rest],Context,Ir) ->
 
 run_st([{allocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
-  S_Bounds = Context#context.s_bounds,
+  S_Reg = Context#context.s_reg,
   N_Stack = <<0:N,Stack/bits>>,
   Types = Context#context.types,
-  N_S_Bounds = [hd(S_Bounds) - N div 8 | S_Bounds],
-  S_Count = length([X||{y,X} <- maps:keys(Types)]),
+  N_S_Reg = [?STACK_PTR - byte_size(Stack) | S_Reg],
+  S_Count = length(S_Reg),
   N_Types = maps:put({y,S_Count},{0,n,N},Types),
-  N_Context = Context#context{stack=N_Stack,types=N_Types,s_bounds=N_S_Bounds},
+  N_Context = Context#context{stack=N_Stack,types=N_Types,s_reg=N_S_Reg},
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
+%% TODO: Allow for variable shadowing here
 run_st([{deallocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
-  Size = bit_size(Stack) - N,
-  S_Bounds = Context#context.s_bounds,
-  N_S_Bounds = rm_chunks(?STACK_PTR - Size div 8, S_Bounds),
   <<_:N,N_Stack/bits>> = Stack,
-  N_Context = Context#context{stack=N_Stack,s_bounds=N_S_Bounds},
+  N_S_Reg = Context#context.s_reg,
+  N_Context = Context#context{stack=N_Stack,s_reg=N_S_Reg},
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
+
+run_st([{test_heap,N,{x,Rn}}|Rest],Context,Ir) ->
+  Stack = Context#context.stack,
+  N_Stack = <<0:N,Stack/bits>>,
+  Old_Reg = Context#context.reg,
+  Reg = set_reg(Old_Reg,Rn,?STACK_PTR-byte_size(Stack)),
+  N_Context = Context#context{stack=N_Stack,reg=Reg},
+  debug_print(Rest,N_Context),
+  run_st(Rest,N_Context,Ir);
+
 
 run_st([{address,Src,Dest}|Rest],Context,Ir) ->
   Types = Context#context.types,
@@ -98,20 +107,22 @@ run_st([{address,Src,Dest}|Rest],Context,Ir) ->
 %% These 2 are fairly buggy (maybe due to inconsistencies in instr form?)
 run_st([{load,{y,N},Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address({y,N},Context),
-  {ok,Ptr} = get_data(Address,Context),
-  {ok,Value} = get_data(Ptr,Context),
+  io:fwrite("Adr: ~p~n",[Address]),
   Types = Context#context.types,
   {P,T,S} = maps:get({y,N},Types,{0,n,0}),
+  {ok,Ptr} = get_data({P,T,S},Address,Context),
+  io:fwrite("Ptr: ~p~n",[Ptr]),
+  {ok,Value} = get_data({P-1,T,S},Ptr,Context),
   N_Types = maps:put(Dest,{P,T,S},Types),
   {ok,N_Context} = set_data({P,T,S},Dest,Value,Context#context{types=N_Types}),
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{load,{x,N},Dest}|Rest],Context,Ir) ->
-  {ok,Address} = get_address({y,N},Context),
-  {ok,Value} = get_data(Address,Context),
+  {ok,Address} = get_address({x,N},Context),
   Types = Context#context.types,
   {P,T,S} = maps:get({x,N},Types,{0,n,0}),
+  {ok,Value} = get_data({P,T,S},Address,Context),
   N_Types = maps:put(Dest,{P,T,S},Types),
   {ok,N_Context} = set_data({P,T,S},Dest,Value,Context#context{types=N_Types}),
   debug_print(Rest,N_Context),
@@ -122,6 +133,7 @@ run_st([{store,Src,Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address(Dest,Context),
   Types = Context#context.types,
   Type = maps:get(Src,Types,{0,n,0}),
+  io:fwrite("Value: ~p~nAddress: ~p~n",[Value,Address]),
   {ok,N_Context} = set_data(Type,Address,Value,Context),
   debug_print(Rest,Context),
   run_st(Rest,N_Context,Ir);
@@ -181,17 +193,19 @@ run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
 
 %% TODO: N/A
 %        Add pointer arithmetic here (Probably?)
-run_st([{Op,Dest,[A,B]}|Rest],Context,Ir) ->
+run_st([{Op,[A,B],Dest}|Rest],Context,Ir) ->
   Types = Context#context.types,
   {PA,TA,SA} = maps:get(A,Types,{0,n,0}),
   {PB,TB,SB} = maps:get(B,Types,{0,n,0}),
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = if
-    (TA =:= f) or (TB =:= f) -> set_data({0,f,?SIZEOF_FLOAT},Dest,do_op(Op,A_Val,B_Val),Context);
-    true -> set_data({max(PA,PB),i,max(SA,SB)},Dest,do_op(Op,A_Val,B_Val),Context)
+    (TA =:= f) or (TB =:= f) ->
+      set_data({0,f,?SIZEOF_FLOAT},Dest,do_op(Op,A_Val,B_Val,PA,PB),Context);
+    true ->
+      set_data({max(PA,PB),i,max(SA,SB)},Dest,do_op(Op,A_Val,B_Val,PA,PB),Context)
   end,
-  debug_print(Rest,Context),
+  debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
 run_st(St,Context,_Ir) ->
@@ -211,9 +225,8 @@ get_data({z,N},Context) ->
     {ok,lists:nth(length(Args) - N, Args)};
 get_data({y,N},Context) ->
   Types = Context#context.types,
-  S_Bounds = Context#context.s_bounds,
-  Nth = length([X||{y,X} <- maps:keys(Types)])-N+1,
-  get_data(maps:get({y,N},Types,{0,n,0}),lists:nth(Nth,S_Bounds),Context);
+  S_Reg = Context#context.s_reg,
+  get_data(maps:get({y,N},Types,{0,n,0}),lists:nth(length(S_Reg)-N,S_Reg),Context);
 get_data(n,_Context) ->
   {ok,n};
 get_data(Data,_Context) ->
@@ -239,22 +252,25 @@ get_data(Type,Address,_Context) ->
 
 set_data(Type,Dest,true,Context) -> set_data(Type,Dest,1,Context);
 set_data(Type,Dest,false,Context) -> set_data(Type,Dest,0,Context);
-set_data(_Type,{x,N},Data,Context) ->
-  {ok,Context#context{reg=set_reg(Context#context.reg,N,Data)}};
+set_data(Type,{x,N},Data,Context) ->
+  Types = Context#context.types,
+  Reg = Context#context.reg,
+  N_Types = maps:put({x,N},Type,Types),
+  N_Reg = set_reg(Context#context.reg,N,Data),
+  {ok,Context#context{reg=N_Reg,types=N_Types}};
   set_data(_Type,{z,N},Data,Context) ->
     {ok,Context#context{args=set_reg(Context#context.args,N,Data)}};
 set_data(Type,{y,N},Data,Context) ->
   Types = Context#context.types,
-  S_Bounds = Context#context.s_bounds,
-  Nth = length([X||{y,X} <- maps:keys(Types)])-N+1,
+  S_Reg = Context#context.s_reg,
   % TODO: Update
   N_Types=Types,
   N_Context = Context#context{types=N_Types},
-  set_data(Type,lists:nth(Nth, S_Bounds),Data,N_Context);
+  set_data(Type,lists:nth(length(S_Reg)-N,S_Reg),Data,N_Context);
 
 set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
+  Offset = (?STACK_PTR - Address)*8,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size/float,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
@@ -262,7 +278,7 @@ set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
 set_data({P,_,Raw_Size},Address,Data,Context) when is_integer(Address) ->
   Size = if P =:= 0 -> Raw_Size; true -> ?SIZEOF_POINTER end,
   Stack = Context#context.stack,
-  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
+  Offset = (?STACK_PTR - Address)*8 ,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
@@ -275,10 +291,8 @@ set_reg([],0,Data) -> [Data];
 set_reg([Hd|Reg],N,Data) -> [Hd|set_reg(Reg,N,Data)].
 
 get_address({y,N},Context) ->
-  Types = Context#context.types,
-  S_Bounds = Context#context.s_bounds,
-  Nth = length([X||{y,X} <- maps:keys(Types)])-N+1,
-  Addr = lists:nth(Nth, S_Bounds),
+  S_Reg = Context#context.s_reg,
+  Addr = lists:nth(length(S_Reg)-N, S_Reg),
   {ok, Addr};
 get_address({x,N},Context) ->
   get_data({x,N},Context);
@@ -328,23 +342,27 @@ cast(Data,{0,_,Size}) ->
 cast(Data,{_,_,_}) -> Data.
 
 
-do_op('+',A,B) -> A+B;
-do_op('-',A,B) -> A-B;
-do_op('*',A,B) -> A*B;
-do_op('%',A,B) -> A rem B;
-do_op('==',A,B) -> A==B;
-do_op('!=',A,B) -> A/=B;
-do_op('>=',A,B) -> A>=B;
-do_op('<=',A,B) -> B>=A;
-do_op('>',A,B) -> A>B;
-do_op('<',A,B) -> B>A;
-do_op(Op,_,_) -> error({bif_not_recognised,Op}).
+do_op('+',A,B,0,0) -> A+B;
+do_op('+',A,B,_,0) -> A-(?SIZEOF_POINTER div 8)*B;
+do_op('+',A,B,0,_) -> B-(?SIZEOF_POINTER div 8)*A;
+do_op('-',A,B,0,0) -> A+B;
+do_op('-',A,B,_,0) -> A+(?SIZEOF_POINTER div 8)*B;
+do_op('-',A,B,0,_) -> (?SIZEOF_POINTER div 8)*A+B;
+do_op('*',A,B,0,0) -> A*B;
+do_op('%',A,B,0,0) -> A rem B;
+do_op('==',A,B,0,0) -> A==B;
+do_op('!=',A,B,0,0) -> A/=B;
+do_op('>=',A,B,0,0) -> A>=B;
+do_op('<=',A,B,0,0) -> B>=A;
+do_op('>',A,B,0,0) -> A>B;
+do_op('<',A,B,0,0) -> B>A;
+do_op(Op,_,_,0,0) -> error({bif_not_recognised,Op}).
 
 get_literal_type(_Val) when is_float(_Val) -> {0,f,?SIZEOF_FLOAT};
 get_literal_type(_Val) when is_integer(_Val) -> {0,i,?SIZEOF_FLOAT};
 get_literal_type(Val) -> error({{expected,{'float|int'}},{got,Val}}).
 
 debug_print([Hd|_],Context) when Context#context.debug ->
-  io:fwrite("Reg: ~p~nTypes: ~p~nStack: ~p~n~nNext St: ~p~n",
-            [Context#context.reg,Context#context.types,Context#context.stack,Hd]);
+  io:fwrite("Reg: ~p~nSReg:~p~nTypes: ~p~nStack: ~p~n~nNext St: ~p~n",
+            [Context#context.reg,Context#context.s_reg,Context#context.types,Context#context.stack,Hd]);
 debug_print(_,_) -> ok.

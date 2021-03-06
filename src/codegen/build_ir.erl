@@ -25,7 +25,9 @@ process([Hd|Tl], State) ->
 %  processing the branches of the function node (arguments & statement list)
 process({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
-  {ok, Ident, _Ptr_Ident} = get_ident_specs(Raw_Ident,State),
+  {ok, Ident, _Ptr_Ident, Arr} = get_ident_specs(Raw_Ident,State),
+  if Arr =/= [] -> error({return_type,array});
+  true -> ok end,
   {ok, Arg_State, Arg_St} = process(Raw_Args, State),
   Arity = length(Raw_Args),
   Alloc_St = lists:flatten([[{allocate,?SIZEOF_INT},{move,{z,N},{y,N}}] || N <- lists:seq(0,Arity-1)]),
@@ -241,10 +243,7 @@ process({{'*',Ln},Raw_St},State) ->
     {move,Src,Dest} ->
       Next_St = lists:droplast(Ptr_St) ++ [{load,Src,Dest}],
       {ok,copy_lvcnt(State,N_State),Next_St};
-    {load,_Src,Dest} ->
-      Next_St = Ptr_St ++ [{load,Dest,Dest}],
-      {ok,copy_lvcnt(State,N_State),Next_St};
-    {address,_Src,Dest} ->
+    {_,_,Dest} ->
       Next_St = Ptr_St ++ [{load,Dest,Dest}],
       {ok,copy_lvcnt(State,N_State),Next_St};
     Other -> error({Other,{line,Ln}})
@@ -269,9 +268,9 @@ process(Other, State) -> error({Other,State}).
 %  for them on the stack, processing the initialisation value and storing
 %  the initialisation value in the newly allocated stack slot.
 get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
-  {ok, Ident, Ptr_Depth} = get_ident_specs(Raw_Ident, State),
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
   Type = {N+Ptr_Depth,Raw_T,Raw_S},
-  {ok, Mem_State, Mem_St} = allocate_mem(Type, State),
+  {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State),
   {ok, Decl_State, Decl_St} = process(Raw_St, Mem_State),
   Active_Reg = {x,State#state.lvcnt},
   Rv_Cnt = Decl_State#state.rvcnt,
@@ -287,9 +286,9 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
 %% Declarations without an initialisation are processed by allocating memory
 %  for them on the stack and then updating the state to indicate the new stack size.
 get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) ->
-  {ok, Ident, Ptr_Depth} = get_ident_specs(Raw_Ident, State),
-  Type = {N+Ptr_Depth,Raw_T,Raw_S},
-  {ok, Mem_State, Mem_St} = allocate_mem(Type, State),
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
+  Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
+  {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State),
   Rv_Cnt = Mem_State#state.rvcnt,
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
@@ -310,17 +309,43 @@ get_decl_specs(Type, Other, State) -> error({Type,Other,State}).
 %        dereference & address operators (eg `*&x = 10;`) passes the parser but
 %        cannot be processed. The fix here is easy but I believe other fixes are needed.
 get_ident_specs({{'*',_},Rest}, State) ->
-  {ok, Ident, Ptr_Depth} = get_ident_specs(Rest, State),
-  {ok, Ident, Ptr_Depth+1};
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Rest, State),
+  {ok, Ident, Ptr_Depth+1, Arr};
 get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
-  {ok, Ident, Ptr_Depth} = get_ident_specs({Ptr,Rest}, State),
-  {ok, Ident, Ptr_Depth+1};
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs({Ptr,Rest}, State),
+  {ok, Ident, Ptr_Depth+1, Arr};
+get_ident_specs({Rest,{array,{int_l,_,N,_}}}, State) ->
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Rest, State),
+  {ok, Ident, Ptr_Depth,[N|Arr]};
 get_ident_specs({identifier,_,Ident}, _State) ->
-  {ok, Ident, 0}.
+  {ok, Ident, 0, []};
+get_ident_specs(Ident, _State) ->
+  error({ident_specs,Ident}).
+
 
 %% To allocate stack memory for a variable, allocate the size of the variable type.
-allocate_mem(Type,State) ->
-  {ok,State,[{allocate,sizeof(Type,State)}]}.
+allocate_mem(Type,[],State) ->
+  {ok,State,[{allocate,sizeof(Type,State)}]};
+allocate_mem(Type,Arr,State)->
+  Heap_St = lists:flatten(gen_heap(Type,Arr,State)),
+  {ok,State,Heap_St++[{allocate,?SIZEOF_POINTER},
+                      {move,{x,State#state.lvcnt},
+                      {y,State#state.rvcnt}}]}.
+
+% This is absolutely hideous
+% but I don't think multi-dimensional arrays will come up too much
+gen_heap({P,T,S},[],State) ->
+  [{move,{i,0},{x,State#state.lvcnt}}];
+gen_heap({P,T,S},[N|Arr],State) ->
+  Lv_Cnt = State#state.lvcnt,
+  Size = sizeof({P,T,S},State),
+  [{test_heap,Size*N,{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{P,T,S}} |
+   [[{move,{i,Ptr},{x,Lv_Cnt+1}},
+     {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt+1}} |
+     gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2})] ++
+    [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || Ptr <- lists:seq(0,N-1)]].
+
+
 
 %% To deallocate memory due to variables going out of scope,
 %  such as at the end of a compound statement or for a return statement,
@@ -337,13 +362,15 @@ deallocate_mem(State_1,State_2) ->
 %  active register. The destination is evaluated as to whether it is a variable or
 %  a memory location and then the appropriate move/store instructions are returned.
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
-  {ok,Ident,Ptr_Depth} = get_ident_specs(Raw_Ident, State),
+  {ok,Ident,Ptr_Depth,Arr} = get_ident_specs(Raw_Ident, State),
   {ok,Raw_Type,Ptr} = case maps:get(Ident,State#state.var,undefined) of
     {T,Ptr_Loc} -> {ok,T,Ptr_Loc};
     Other -> {error, {Other,{undeclared,Ident}}}
   end,
+  % TODO: Arrays
   {ok,Ptr_Type,Ptr_St} = get_ptr(Raw_Type,Ptr_Depth,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
   Lv_Cnt = State#state.lvcnt,
+  io:fwrite("~p~n",[Raw_St]),
   {ok,Assign_State,Assign_St} = process(Raw_St,State),
   St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
   case Ptr_St of
@@ -405,7 +432,7 @@ process_bif('+',A,B,State) ->
     Types -> error({{undefined_op_cast,'+'},Types})
   end,
   Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{'+',{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
+  Statement = A_St ++ B_St ++ [{'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
   {ok,B_State,Statement};
 
 process_bif('-',A,B,State) ->
@@ -421,7 +448,7 @@ process_bif('-',A,B,State) ->
     Types -> error({{undefined_op_cast,'-'},Types})
   end,
   Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{'-',{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
+  Statement = A_St ++ B_St ++ [{'-',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
   {ok,B_State,Statement};
 
 %% Arity 2 BIFs are processed by processing each of their operands and
@@ -440,7 +467,7 @@ process_bif(Type,A,B,State) ->
     Types -> error({{undefined_op_cast,Type},Types})
   end,
   Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{Type,{x,Lv_Cnt},[{x,Lv_Cnt},{x,Lv_Cnt+1}]}],
+  Statement = A_St ++ B_St ++ [{Type,[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
   {ok,B_State,Statement}.
 
 %% Get a shortened name of a type

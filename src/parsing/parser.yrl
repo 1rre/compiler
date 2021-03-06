@@ -78,7 +78,7 @@ expression -> constant : '$1'.
 expression -> string_l : '$1'.
 expression -> '(' expression ')' : '$2'.
 
-postfix_list -> '[' expression ']' : {offset, '$2'}.
+postfix_list -> '[' expression ']' : {array, '$2'}.
 postfix_list -> '(' expression_list ')' : {apply,'$2'}.
 postfix_list -> '(' ')' : {apply,[]}.
 

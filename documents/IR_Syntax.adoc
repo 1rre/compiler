@@ -17,8 +17,9 @@
 |`return` | Return the value in register 0 to the calling function (this is fine for all functions as return value of void functions is undefined)
 |`{store,<rs>,<rd>}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register)
 |`{test,<ra>,<lb>}` | Branch to `lb` (label) if the value in `ra` is 0
-|`{<op>,<rd>,[<ra>,<rb>]}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
+|`{<op>,[<ra>,<rb>],<rd>}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
 |`{global,<type>,<ident>}` | Declare a global variable of `type` with identifier `ident`.
+|`{test_heap,<size>,<rd>}` | Allocate `size` (integer) bits on the heap & stores the address in rd.
 |===
 
 [%header,cols="3,5"]
