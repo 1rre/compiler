@@ -9,6 +9,7 @@
 |`{call,<fn>,<ar>,<ra>}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (stack)
 |`{cast,<ra>,<type>}` | Advises the compliler of a variable's `type` (in the form `reference level`, `type`, `width`) of a variable which would otherwise be incorrectly inferred, such as `char c = 5l;` -> `[{move,{long,5>,<rd>>, {cast,<rd>,{0,i,8>}]`
 |`{deallocate,<n>}` | Delete/deallocate `n` (integer) bits on the stack
+|`{gc,<n>}` | Replacement for `deallocate`, delete `n` variables from the stack and remove any associated stack data.
 |`{function,<type>,<name>,<arity>,<st>}` | Define a function `name` (identifier) with return type `type`, arity `arity` (integer), defining it as `st` (statement list).
 |`{jump,<lb>}` | Unconditionally jump to `lb` (label)
 |`{label,<lb>}` | Create `lb` (label) which can be jumped to using `test`
