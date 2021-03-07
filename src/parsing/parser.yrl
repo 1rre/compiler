@@ -2,7 +2,7 @@ Nonterminals
 expression assignment_operator equality_operator relational_operator
 shift_operator addition_operator multiplication_operator cast unary_operator
 postfix_operator expression_list constant type_name postfix_list initialiser
-initialiser_list pointer struct_declarator if_statement
+initialiser_list pointer struct_declarator if_statement sizeof_expression
 type_qualifier_list direct_declarator identifier_list declarator struct_union
 direct_abstract_declarator abstract_declarator specifier_qualifier_list
 enum_specifier parameter_type_list parameter_list type_qualifier type_specifier
@@ -44,7 +44,6 @@ Left  300 addition_operator.
 Left  325 multiplication_operator.
 Right 350 cast.
 Unary 375 unary_operator.
-Unary 375 sizeof.
 Left  400 postfix_operator.
 Right 400 postfix_list.
 Right 450 declaration_list.
@@ -68,15 +67,20 @@ expression -> expression relational_operator expression : {bif,element(1,'$2'),[
 expression -> expression shift_operator expression : {bif,element(1,'$2'),['$1','$3']}.
 expression -> expression addition_operator expression : {bif,element(1,'$2'),['$1','$3']}.
 expression -> expression multiplication_operator expression : {bif, element(1,'$2'),['$1','$3']}.
-expression -> cast expression : {cast,'$1','$2'}.
+expression -> sizeof_expression : '$1'.
 expression -> unary_operator expression : {'$1','$2'}.
+expression -> cast expression : {cast,'$1','$2'}.
 expression -> expression postfix_operator : {'$1','$2'}.
 expression -> expression postfix_list : {'$1','$2'}.
-expression -> sizeof '(' type_name ')' : {sizeof,'$3'}. % Is the 2nd part a cast?
 expression -> identifier : '$1'.
 expression -> constant : '$1'.
 expression -> string_l : '$1'.
 expression -> '(' expression ')' : '$2'.
+
+
+sizeof_expression -> sizeof type_name : {sizeof, '$2'}.
+sizeof_expression -> sizeof cast : {sizeof, '$2'}.
+sizeof_expression -> sizeof expression : {sizeof, '$2'}.
 
 postfix_list -> '[' expression ']' : {array, '$2'}.
 postfix_list -> '(' expression_list ')' : {apply,'$2'}.
@@ -114,7 +118,6 @@ multiplication_operator -> '%' : '$1'.
 
 cast -> '(' type_name ')' : '$2'.
 
-unary_operator -> sizeof : '$1'. % This is weird in the spec, maybe different precedence?
 unary_operator -> '++' : '$1'.   % This is weird in the spec, maybe different precedence?
 unary_operator -> '--' : '$1'.   % This is weird in the spec, maybe different precedence?
 unary_operator -> '&' : '$1'.

@@ -49,9 +49,15 @@ process({declaration,Raw_Type,Raw_St}, State) ->
 
 %% Process an integer node by moving the literal value to the active register
 %  As longs are out of spec we currently don't differentiate however it may be useful to later
-process({int_l,_Line,Val,_Suffix}, State) ->
+%% TODO: N/A
+%        Add unsigned
+process({int_l,_Line,Val,[]}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_INT},State#state.typecheck),
+  {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}}]};
+process({int_l,_Line,Val,[$l]}, State) ->
+  Lv_Cnt = State#state.lvcnt,
+  N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_LONG},State#state.typecheck),
   {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}}]};
 
 %% Process a float node by moving the literal value to the active register
@@ -105,6 +111,19 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
       {ok,copy_lbcnt(Arg_State,State#state{typecheck=N_Types}),New_St};
     Other ->
       error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})
+  end;
+
+process({sizeof,Expr},State) ->
+  case get_type(Expr,State) of
+    {ok,{0,_,S}} -> {ok,State,[{move,{i,S div 8},{x,State#state.lvcnt}}]};
+    {ok,_} -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,State#state.lvcnt}}]};
+    _ ->
+      {ok,Expr_State,_} = process(Expr, State),
+      Lv_Cnt = State#state.lvcnt,
+      case maps:get({x,Lv_Cnt},Expr_State#state.typecheck,{0,n,0}) of
+        {0,_,S} -> {ok,State,[{move,{i,S div 8},{x,Lv_Cnt}}]};
+        R -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,Lv_Cnt}}]}
+      end
   end;
 
 %% As there are multiple cases for assignment, it is delegated to a helper function.
@@ -433,7 +452,9 @@ process_bif('+',A,B,State) ->
   end,
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
-  {ok,B_State,Statement};
+  N_Types = maps:put({x,Lv_Cnt},R_Type,B_State#state.typecheck),
+  Rtn_State = B_State#state{typecheck=N_Types},
+  {ok,Rtn_State,Statement};
 
 process_bif('-',A,B,State) ->
   Lv_Cnt = State#state.lvcnt,
@@ -449,7 +470,9 @@ process_bif('-',A,B,State) ->
   end,
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{'-',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
-  {ok,B_State,Statement};
+  N_Types = maps:put({x,Lv_Cnt},R_Type,B_State#state.typecheck),
+  Rtn_State = B_State#state{typecheck=N_Types},
+  {ok,Rtn_State,Statement};
 
 %% Arity 2 BIFs are processed by processing each of their operands and
 %  adding a statement which will take the active register and the register above it,
@@ -468,7 +491,9 @@ process_bif(Type,A,B,State) ->
   end,
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{Type,[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
-  {ok,B_State,Statement}.
+  N_Types = maps:put({x,Lv_Cnt},R_Type,B_State#state.typecheck),
+  Rtn_State = B_State#state{typecheck=N_Types},
+  {ok,Rtn_State,Statement}.
 
 %% Get a shortened name of a type
 %% TODO: #18
@@ -488,8 +513,8 @@ get_type([{signed,_}|Type],C) ->
 get_type([{long,_},{double,_}],_) -> {ok,{0,f,?SIZEOF_L_DOUBLE}};
 get_type([{double,_}],_)          -> {ok,{0,f,?SIZEOF_DOUBLE}};
 get_type([{float,_}],_)           -> {ok,{0,f,?SIZEOF_FLOAT}};
-get_type([{long,_},{int,_}],_)    -> {ok,{0,i,?SIZEOF_L_INT}};
-get_type([{long,_}],_)            -> {ok,{0,i,?SIZEOF_L_INT}};
+get_type([{long,_},{int,_}],_)    -> {ok,{0,i,?SIZEOF_LONG}};
+get_type([{long,_}],_)            -> {ok,{0,i,?SIZEOF_LONG}};
 get_type([{int,_}],_)             -> {ok,{0,i,?SIZEOF_INT}};
 get_type([{short,_},{int,_}],_)   -> {ok,{0,i,?SIZEOF_SHORT}};
 get_type([{short,_}],_)           -> {ok,{0,i,?SIZEOF_SHORT}};
