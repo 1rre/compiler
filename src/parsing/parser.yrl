@@ -118,8 +118,8 @@ multiplication_operator -> '%' : '$1'.
 
 cast -> '(' type_name ')' : '$2'.
 
-unary_operator -> '++' : '$1'.   % This is weird in the spec, maybe different precedence?
-unary_operator -> '--' : '$1'.   % This is weird in the spec, maybe different precedence?
+unary_operator -> '++' : {increment,'+','$1'}.   % This is weird in the spec, maybe different precedence?
+unary_operator -> '--' : {increment,'-','$1'}.   % This is weird in the spec, maybe different precedence?
 unary_operator -> '&' : '$1'.
 unary_operator -> '*' : '$1'.
 unary_operator -> '+' : '$1'.
@@ -127,8 +127,8 @@ unary_operator -> '-' : '$1'.
 unary_operator -> '~' : '$1'.
 unary_operator -> '!' : '$1'.
 
-postfix_operator -> '++' : '$1'.
-postfix_operator -> '--' : '$1'.
+postfix_operator -> '++' : {increment,'+','$1'}.
+postfix_operator -> '--' : {increment,'-','$1'}.
 postfix_operator -> '.' identifier : {'$1','$2'}.
 postfix_operator -> '->' identifier : {'$1','$2'}.
 

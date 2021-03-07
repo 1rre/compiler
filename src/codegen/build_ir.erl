@@ -137,6 +137,12 @@ process({sizeof,Expr},State) ->
 process({assign,{Op,_Ln},Raw_Specs}, State) ->
   get_assign_specs(Op,Raw_Specs,State);
 
+%% ++ and -- for both prefix and postfix operators
+process({Rest,{increment,Op,{_,Ln}}}, State) ->
+  get_assign_specs('=',[Rest,{bif,Op,[Rest,{int_l,Ln,1,[]}]}], State);
+process({{increment,Op,{_,Ln}},Rest}, State) ->
+  get_assign_specs('=',[Rest,{bif,Op,[Rest,{int_l,Ln,1,[]}]}], State);
+
 %% Process a return value by deallocating any memory used (and args),
 %  processing the expression which calculates the value to return
 %  and storing it in the active register (which should always be 0)
