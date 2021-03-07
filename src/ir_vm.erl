@@ -71,10 +71,9 @@ run_st([{cast,{y,N},Type}|Rest],Context,Ir) ->
 run_st([{allocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   S_Reg = Context#context.s_reg,
-  Fp = Context#context.fp,
   N_Stack = <<0:N,Stack/bits>>,
   Types = Context#context.types,
-  N_S_Reg = [Fp - byte_size(Stack) | S_Reg],
+  N_S_Reg = [?STACK_PTR - byte_size(Stack) | S_Reg],
   S_Count = length(S_Reg),
   N_Types = maps:put({y,S_Count},{0,n,N},Types),
   N_Context = Context#context{stack=N_Stack,types=N_Types,s_reg=N_S_Reg},
@@ -100,8 +99,7 @@ run_st([{gc,N}|Rest],Context,Ir) ->
   Address = lists:nth(length(S_Reg)-N,S_Reg),
   Stack = Context#context.stack,
   Fp = Context#context.fp,
-  Offset = bit_size(Stack) - (Fp - Address) * 8,
-  io:fwrite("~p~n",[Offset]),
+  Offset = bit_size(Stack) - (?STACK_PTR - Address) * 8,
   <<_:Offset,N_Stack/bits>> = Stack,
   N_S_Reg = lists:nthtail(length(S_Reg)-N,S_Reg),
   N_Context = Context#context{stack=N_Stack,s_reg=N_S_Reg},
@@ -111,9 +109,8 @@ run_st([{gc,N}|Rest],Context,Ir) ->
 run_st([{test_heap,N,{x,Rn}}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   N_Stack = <<0:N,Stack/bits>>,
-  Fp = Context#context.fp,
   Old_Reg = Context#context.reg,
-  Reg = set_reg(Old_Reg,Rn,Fp-byte_size(Stack)),
+  Reg = set_reg(Old_Reg,Rn,?STACK_PTR-byte_size(Stack)),
   N_Context = Context#context{stack=N_Stack,reg=Reg},
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
@@ -179,13 +176,18 @@ run_st([{label,_}|Rest],Context,Ir) ->
 run_st([{jump,{l,Lb}}|_],Context,Ir) ->
   jump(Lb,Context,Ir);
 
-run_st([{call,Fn,Arity}|Rest],Context,Ir) ->
+run_st([{call,N_Fn,Arity}|Rest],Context,Ir) ->
   Types = Context#context.types,
   Args = maps:filter(fun ({R,_},_) -> R =:= z end, Types),
-  Fn_Context = Context#context{types=Args,fn=Fn},
-  {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
+  Stack = Context#context.stack,
+  N_Fp = ?STACK_PTR-byte_size(Stack),
+  Fn_Context = Context#context{types=Args,fn=N_Fn,fp=N_Fp,s_reg=[]},
+  {ok,Fn_End} = call_fn(N_Fn,Fn_Context,Ir),
   N_Types = maps:filter(fun ({R,_},_) -> R =/= z end,Types),
-  N_Context = Fn_End#context{types=N_Types,fn=Context#context.fn},
+  Fn = Context#context.fn,
+  Fp = Context#context.fp,
+  S_Reg = Context#context.s_reg,
+  N_Context = Fn_End#context{types=N_Types,fn=Fn,fp=Fp,s_reg=S_Reg},
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
@@ -256,19 +258,19 @@ error({unknown,Data}).
 get_data({0,f,Size},Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
   Fp = Context#context.fp,
-  Offset = bit_size(Stack) - (Fp - Address)*8 - Size,
+  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
   <<_:Offset,Data:Size/float,_/bits>> = Stack,
   {ok,Data};
 get_data({0,_,Size},Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
   Fp = Context#context.fp,
-  Offset = bit_size(Stack) - (Fp - Address)*8 - Size,
+  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
   <<_:Offset,Data:Size,_/bits>> = Stack,
   {ok,Data};
 get_data(_,Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
   Fp = Context#context.fp,
-  Offset = bit_size(Stack) - (Fp - Address)*8 - ?SIZEOF_POINTER,
+  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - ?SIZEOF_POINTER,
   <<_:Offset,Data:?SIZEOF_POINTER,_/bits>> = Stack,
   {ok,Data};
 get_data(Type,Address,_Context) ->
@@ -295,7 +297,7 @@ set_data(Type,{y,N},Data,Context) ->
 set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
   Fp = Context#context.fp,
-  Offset = bit_size(Stack) - (Fp - Address)*8 - Size,
+  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size/float,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
@@ -304,7 +306,7 @@ set_data({P,_,Raw_Size},Address,Data,Context) when is_integer(Address) ->
   Size = if P =:= 0 -> Raw_Size; true -> ?SIZEOF_POINTER end,
   Stack = Context#context.stack,
   Fp = Context#context.fp,
-  Offset = bit_size(Stack) - (Fp - Address)*8 - Size ,
+  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size ,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
@@ -389,6 +391,8 @@ get_literal_type(_Val) when is_integer(_Val) -> {0,i,?SIZEOF_FLOAT};
 get_literal_type(Val) -> error({{expected,{'float|int'}},{got,Val}}).
 
 debug_print([Hd|_],Context) when Context#context.debug ->
-  io:fwrite("Reg: ~p~nSReg:~p~nTypes: ~p~nStack: ~p~n~nNext St: ~p~n",
-            [Context#context.reg,Context#context.s_reg,Context#context.types,Context#context.stack,Hd]);
+  io:fwrite("Reg: ~p~nFp:~p~nSReg:~p~nTypes: ~p~nStack: ~p~n~nNext St: ~p~n",
+            [Context#context.reg,Context#context.fp,
+             Context#context.s_reg,Context#context.types,
+             Context#context.stack,Hd]);
 debug_print(_,_) -> ok.

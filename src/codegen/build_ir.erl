@@ -392,7 +392,6 @@ gen_heap({P,T,S},[N|Arr],State) ->
 %  {ok, {deallocate,lists:sum(Dealloc)}}.
 
 deallocate_mem(State_1,State_2) ->
-  io:fwrite("S1: ~p~nS2: ~p~n~n",[State_1,State_2]),
   Rv_Cnt = maps:size(State_1),
   {ok, {gc,Rv_Cnt}}.
 
@@ -470,7 +469,7 @@ process_bif('+',Fst,Sec,State,Swap) ->
   {ok,B_State,B_St} = process(B,N_A_State),
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   R_Type = case {A_Type,B_Type} of
-    {{0,T,S_A},{0,T,S_B}} -> {0,i,max(S_A,S_B)};
+    {{0,T,S_A},{0,T,S_B}} -> {0,T,max(S_A,S_B)};
     {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of A
     {{0,i,S_A},{N,T,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
     Types -> error({{undefined_op_cast,'+'},Types})
@@ -494,7 +493,7 @@ process_bif('-',Fst,Sec,State,Swap) ->
   A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   R_Type = case {A_Type,B_Type} of
-    {{0,T,S_A},{0,T,S_B}} -> {0,i,max(S_A,S_B)};
+    {{0,T,S_A},{0,T,S_B}} -> {0,T,max(S_A,S_B)};
     {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
     Types -> error({{undefined_op_cast,'-'},Types})
   end,
@@ -520,7 +519,8 @@ process_bif(Type,Fst,Sec,State,Swap) ->
   A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   R_Type = case {A_Type,B_Type} of
-    {{0,i,S_A},{0,i,S_B}} -> {0,i,max(S_A,S_B)};
+    {{0,T,S_A},{0,T,S_B}} -> {0,T,max(S_A,S_B)};
+    {{0,_,S_A},{0,_,S_B}} -> {0,f,max(S_A,S_B)};
     Types -> error({{undefined_op_cast,Type},Types})
   end,
   Lv_Cnt = State#state.lvcnt,
