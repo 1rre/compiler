@@ -382,12 +382,19 @@ gen_heap({P,T,S},[N|Arr],State) ->
 %% To deallocate memory due to variables going out of scope,
 %  such as at the end of a compound statement or for a return statement,
 %  the difference between the declared variables is found & a deallocate statement
-%  for an appropriatly sized chunck of memory is returned.
+%  for an appropriatly sized chunk of memory is returned.
+
+%% Deprecated version
+%deallocate_mem(State_1,State_2) ->
+%  Dealloc_Mem = [maps:get(Key,State_2,undef) || Key <- maps:keys(State_2),
+%                                                maps:get(Key,State_1,undef) /= maps:get(Key,State_2,undef)],
+%  Dealloc = [sizeof(Type,State_2) || {Type,_} <- Dealloc_Mem],
+%  {ok, {deallocate,lists:sum(Dealloc)}}.
+
 deallocate_mem(State_1,State_2) ->
-  Dealloc_Mem = [maps:get(Key,State_2,undef) || Key <- maps:keys(State_2),
-                                                maps:get(Key,State_1,undef) /= maps:get(Key,State_2,undef)],
-  Dealloc = [sizeof(Type,State_2) || {Type,_} <- Dealloc_Mem],
-  {ok, {deallocate,lists:sum(Dealloc)}}.
+  io:fwrite("S1: ~p~nS2: ~p~n~n",[State_1,State_2]),
+  Rv_Cnt = maps:size(State_1),
+  {ok, {gc,Rv_Cnt}}.
 
 %% Delegated function for assignment.
 %% For a normal assignment, the value to be assigned is processed and stored in the

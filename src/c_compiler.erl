@@ -49,10 +49,14 @@ compile([File|_],[nif]) ->
 compile([File|_],[]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
+  io:fwrite("Raw Input:~n~p~n~n~n",[Input]),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
+  io:fwrite("After Lexer:~n~p~n~n~n",[Tokens]),
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
+  io:fwrite("After Parser:~n~p~n~n~n",[Result]),
   {ok, _Context, Statement} = build_ir:process(Result),
+  io:fwrite("Intermediate Representation:~n~p~n~n~n",[Statement]),
   {ok, Statement}.
 
 % Reversing the IR for now as we want main to be at the start rather than at the end

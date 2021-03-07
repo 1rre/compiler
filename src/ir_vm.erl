@@ -7,7 +7,7 @@
 -include("arch_type_consts.hrl").
 
 -record(context,{fn=main,global=#{},types=#{},reg=[],debug=false,
-                 args=[],stack= <<>>,s_reg=[]}).
+                 args=[],stack= <<>>,s_reg=[],fp=?STACK_PTR}).
 
 run(Ir,Args,Flags) ->
   case lists:search(fun ({function,_,_,_,_}) -> true; (_) -> false end, Ir) of
@@ -25,15 +25,11 @@ run(Ir,Fn,Args,Flags) ->
                      types=Init_Types,
                      args=Args},
   if Context#context.debug ->
-    io:fwrite("~p~n~n~n",[Ir]);
+    io:fwrite("~100p~n~n~n",[Ir]);
     true -> ok
   end,
   debug_print([{call,Fn,length(Args)}],Context),
   {ok, End_Context} = call_fn(Fn,Context,Ir),
-  if Context#context.debug ->
-    io:fwrite("End Reg:~n~p~n",[End_Context#context.reg]);
-    true -> ok
-  end,
   lists:last(End_Context#context.reg).
 
 call_fn(Fn,Context,Ir) ->
@@ -49,7 +45,7 @@ run_st([],Context,_Ir) ->
   {ok,Context};
 
 run_st([return|_],Context,_Ir) ->
-  debug_print('end',Context),
+  debug_print(['end'],Context),
   {ok,Context};
 
 %% TODO: N/A
@@ -75,9 +71,10 @@ run_st([{cast,{y,N},Type}|Rest],Context,Ir) ->
 run_st([{allocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   S_Reg = Context#context.s_reg,
+  Fp = Context#context.fp,
   N_Stack = <<0:N,Stack/bits>>,
   Types = Context#context.types,
-  N_S_Reg = [?STACK_PTR - byte_size(Stack) | S_Reg],
+  N_S_Reg = [Fp - byte_size(Stack) | S_Reg],
   S_Count = length(S_Reg),
   N_Types = maps:put({y,S_Count},{0,n,N},Types),
   N_Context = Context#context{stack=N_Stack,types=N_Types,s_reg=N_S_Reg},
@@ -85,23 +82,41 @@ run_st([{allocate,N}|Rest],Context,Ir) ->
   run_st(Rest,N_Context,Ir);
 
 %% TODO: Allow for variable shadowing here
+%% DEPRECATED
 run_st([{deallocate,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   <<_:N,N_Stack/bits>> = Stack,
   N_S_Reg = Context#context.s_reg,
   N_Context = Context#context{stack=N_Stack,s_reg=N_S_Reg},
-  debug_print(Rest,Context),
+  debug_print(Rest,N_Context),
+  run_st(Rest,N_Context,Ir);
+
+%% TODO: Allow for variable shadowing here
+%% DEPRECATED
+run_st([{gc,N}|Rest],Context,Ir) when N >= length(Context#context.s_reg) ->
+  run_st(Rest,Context,Ir);
+run_st([{gc,N}|Rest],Context,Ir) ->
+  S_Reg = Context#context.s_reg,
+  Address = lists:nth(length(S_Reg)-N,S_Reg),
+  Stack = Context#context.stack,
+  Fp = Context#context.fp,
+  Offset = bit_size(Stack) - (Fp - Address) * 8,
+  io:fwrite("~p~n",[Offset]),
+  <<_:Offset,N_Stack/bits>> = Stack,
+  N_S_Reg = lists:nthtail(length(S_Reg)-N,S_Reg),
+  N_Context = Context#context{stack=N_Stack,s_reg=N_S_Reg},
+  debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{test_heap,N,{x,Rn}}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   N_Stack = <<0:N,Stack/bits>>,
+  Fp = Context#context.fp,
   Old_Reg = Context#context.reg,
-  Reg = set_reg(Old_Reg,Rn,?STACK_PTR-byte_size(Stack)),
+  Reg = set_reg(Old_Reg,Rn,Fp-byte_size(Stack)),
   N_Context = Context#context{stack=N_Stack,reg=Reg},
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
-
 
 run_st([{address,Src,Dest}|Rest],Context,Ir) ->
   Types = Context#context.types,
@@ -116,11 +131,9 @@ run_st([{address,Src,Dest}|Rest],Context,Ir) ->
 %% These 2 are fairly buggy (maybe due to inconsistencies in instr form?)
 run_st([{load,{y,N},Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address({y,N},Context),
-  io:fwrite("Adr: ~p~n",[Address]),
   Types = Context#context.types,
   {P,T,S} = maps:get({y,N},Types,{0,n,0}),
   {ok,Ptr} = get_data({P,T,S},Address,Context),
-  io:fwrite("Ptr: ~p~n",[Ptr]),
   {ok,Value} = get_data({P-1,T,S},Ptr,Context),
   N_Types = maps:put(Dest,{P-1,T,S},Types),
   {ok,N_Context} = set_data({P-1,T,S},Dest,Value,Context#context{types=N_Types}),
@@ -142,9 +155,8 @@ run_st([{store,Src,Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address(Dest,Context),
   Types = Context#context.types,
   Type = maps:get(Src,Types,{0,n,0}),
-  io:fwrite("Value: ~p~nAddress: ~p~n",[Value,Address]),
   {ok,N_Context} = set_data(Type,Address,Value,Context),
-  debug_print(Rest,Context),
+  debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{move,Data,Dest}|Rest],Context,Ir) ->
@@ -174,7 +186,7 @@ run_st([{call,Fn,Arity}|Rest],Context,Ir) ->
   {ok,Fn_End} = call_fn(Fn,Fn_Context,Ir),
   N_Types = maps:filter(fun ({R,_},_) -> R =/= z end,Types),
   N_Context = Fn_End#context{types=N_Types,fn=Context#context.fn},
-  debug_print(Rest,Context),
+  debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
 run_st([{test,Data,{l,Lb}}|Rest],Context,Ir) ->
@@ -243,18 +255,20 @@ error({unknown,Data}).
 
 get_data({0,f,Size},Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
+  Fp = Context#context.fp,
+  Offset = bit_size(Stack) - (Fp - Address)*8 - Size,
   <<_:Offset,Data:Size/float,_/bits>> = Stack,
   {ok,Data};
 get_data({0,_,Size},Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
+  Fp = Context#context.fp,
+  Offset = bit_size(Stack) - (Fp - Address)*8 - Size,
   <<_:Offset,Data:Size,_/bits>> = Stack,
   {ok,Data};
 get_data(_,Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - ?SIZEOF_POINTER,
-  io:fwrite("~p~n",[Offset]),
+  Fp = Context#context.fp,
+  Offset = bit_size(Stack) - (Fp - Address)*8 - ?SIZEOF_POINTER,
   <<_:Offset,Data:?SIZEOF_POINTER,_/bits>> = Stack,
   {ok,Data};
 get_data(Type,Address,_Context) ->
@@ -280,7 +294,8 @@ set_data(Type,{y,N},Data,Context) ->
 
 set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
+  Fp = Context#context.fp,
+  Offset = bit_size(Stack) - (Fp - Address)*8 - Size,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size/float,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
@@ -288,7 +303,8 @@ set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
 set_data({P,_,Raw_Size},Address,Data,Context) when is_integer(Address) ->
   Size = if P =:= 0 -> Raw_Size; true -> ?SIZEOF_POINTER end,
   Stack = Context#context.stack,
-  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size ,
+  Fp = Context#context.fp,
+  Offset = bit_size(Stack) - (Fp - Address)*8 - Size ,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
