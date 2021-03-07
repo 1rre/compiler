@@ -54,13 +54,22 @@ run_st([return|_],Context,_Ir) ->
 
 %% TODO: N/A
 %        Update local type register using cast
-run_st([{cast,Reg,Type}|Rest],Context,Ir) ->
+run_st([{cast,{x,N},Type}|Rest],Context,Ir) ->
+  Reg = {x,N},
   Types = Context#context.types,
   N_Types = maps:put(Reg,Type,Types),
   {ok,Data} = get_data(Reg,Context),
   {ok,Cast_Context} = set_data(Type,Reg,cast(Data,Type),Context),
   Rtn_Context=Cast_Context#context{types=N_Types},
   debug_print(Rest,Cast_Context),
+  run_st(Rest,Rtn_Context,Ir);
+
+run_st([{cast,{y,N},Type}|Rest],Context,Ir) ->
+  Reg = {y,N},
+  Types = Context#context.types,
+  N_Types = maps:put(Reg,Type,Types),
+  Rtn_Context=Context#context{types=N_Types},
+  debug_print(Rest,Rtn_Context),
   run_st(Rest,Rtn_Context,Ir);
 
 run_st([{allocate,N}|Rest],Context,Ir) ->
@@ -113,8 +122,8 @@ run_st([{load,{y,N},Dest}|Rest],Context,Ir) ->
   {ok,Ptr} = get_data({P,T,S},Address,Context),
   io:fwrite("Ptr: ~p~n",[Ptr]),
   {ok,Value} = get_data({P-1,T,S},Ptr,Context),
-  N_Types = maps:put(Dest,{P,T,S},Types),
-  {ok,N_Context} = set_data({P,T,S},Dest,Value,Context#context{types=N_Types}),
+  N_Types = maps:put(Dest,{P-1,T,S},Types),
+  {ok,N_Context} = set_data({P-1,T,S},Dest,Value,Context#context{types=N_Types}),
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
@@ -122,9 +131,9 @@ run_st([{load,{x,N},Dest}|Rest],Context,Ir) ->
   {ok,Address} = get_address({x,N},Context),
   Types = Context#context.types,
   {P,T,S} = maps:get({x,N},Types,{0,n,0}),
-  {ok,Value} = get_data({P,T,S},Address,Context),
-  N_Types = maps:put(Dest,{P,T,S},Types),
-  {ok,N_Context} = set_data({P,T,S},Dest,Value,Context#context{types=N_Types}),
+  {ok,Value} = get_data({P-1,T,S},Address,Context),
+  N_Types = maps:put(Dest,{P-1,T,S},Types),
+  {ok,N_Context} = set_data({P-1,T,S},Dest,Value,Context#context{types=N_Types}),
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
@@ -245,6 +254,7 @@ get_data({0,_,Size},Address,Context) when is_integer(Address) ->
 get_data(_,Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
   Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - ?SIZEOF_POINTER,
+  io:fwrite("~p~n",[Offset]),
   <<_:Offset,Data:?SIZEOF_POINTER,_/bits>> = Stack,
   {ok,Data};
 get_data(Type,Address,_Context) ->
@@ -345,7 +355,7 @@ cast(Data,{_,_,_}) -> Data.
 do_op('+',A,B,0,0) -> A+B;
 do_op('+',A,B,_,0) -> A-(?SIZEOF_POINTER div 8)*B;
 do_op('+',A,B,0,_) -> B-(?SIZEOF_POINTER div 8)*A;
-do_op('-',A,B,0,0) -> A+B;
+do_op('-',A,B,0,0) -> A-B;
 do_op('-',A,B,_,0) -> A+(?SIZEOF_POINTER div 8)*B;
 do_op('-',A,B,0,_) -> (?SIZEOF_POINTER div 8)*A+B;
 do_op('*',A,B,0,0) -> A*B;
