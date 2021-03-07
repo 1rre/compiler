@@ -80,18 +80,6 @@ run_st([{allocate,N}|Rest],Context,Ir) ->
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
-%% TODO: Allow for variable shadowing here
-%% DEPRECATED
-run_st([{deallocate,N}|Rest],Context,Ir) ->
-  Stack = Context#context.stack,
-  <<_:N,N_Stack/bits>> = Stack,
-  N_S_Reg = Context#context.s_reg,
-  N_Context = Context#context{stack=N_Stack,s_reg=N_S_Reg},
-  debug_print(Rest,N_Context),
-  run_st(Rest,N_Context,Ir);
-
-%% TODO: Allow for variable shadowing here
-%% DEPRECATED
 run_st([{gc,N}|Rest],Context,Ir) when N >= length(Context#context.s_reg) ->
   run_st(Rest,Context,Ir);
 run_st([{gc,N}|Rest],Context,Ir) ->

@@ -185,12 +185,6 @@ cast::cast(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   fprintf(stderr,"Cast: {x,%d} -> {%d,%c,%d}\r\n",reg->number,type->ref_level,
                                                   type->data_type,type->width);
 }
-// DEPRECATED
-deallocate::deallocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
-  // TODO: Better error code
-  if(!enif_get_int(Env,Elems[0],&bits)) exit(1);
-  fprintf(stderr,"Deallocate: %d\r\n",bits);
-}
 function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,hashmap& Functions) {
   type_factory(Env,Elems[0],&type);
   unsigned Length;
@@ -409,7 +403,6 @@ statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St, hashmap& Functions) {
       case 's': return new cast(Env,Elems+1);
       default: return nullptr;
     }
-    case 'd': return new deallocate(Env,Elems+1);
     case 'f': return new function(Env,Elems+1,Functions);
     case 'g': return new gc(Env,Elems+1);
     case 'j': return new jump(Env,Elems+1);

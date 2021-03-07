@@ -16,7 +16,6 @@ enum statement_code {
   JUMP,
   RETURN,
   ALLOCATE,
-  DEALLOCATE,
   GC,
   ADDRESS,
   LOAD,
@@ -98,13 +97,6 @@ public:
   ir::arg::reg* reg;
   ir::arg::type* type;
   cast(ErlNifEnv*,const ERL_NIF_TERM*);
-};
-
-class deallocate: public statement {
-public:
-  enum statement_code code = DEALLOCATE;
-  int bits;
-  deallocate(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class gc: public statement {
