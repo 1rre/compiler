@@ -17,6 +17,7 @@ enum statement_code {
   RETURN,
   ALLOCATE,
   DEALLOCATE,
+  GC,
   ADDRESS,
   LOAD,
   STORE,
@@ -104,6 +105,13 @@ public:
   enum statement_code code = DEALLOCATE;
   int bits;
   deallocate(ErlNifEnv*,const ERL_NIF_TERM*);
+};
+
+class gc: public statement {
+public:
+  enum statement_code code = GC;
+  int number;
+  gc(ErlNifEnv*,const ERL_NIF_TERM*);
 };
 
 class jump: public statement {

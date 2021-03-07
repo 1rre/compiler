@@ -147,7 +147,10 @@ address::address(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   mem_factory(Env,Elems[0],&src);
   reg_factory(Env,Elems[1],&dest);
 
-  fprintf(stderr,"Address: {<unknown>,%d} -> {y,%d}\r\n",src->number,dest->number);
+  if (src->code == arg::REG)
+    fprintf(stderr,"Address: {x,%d} -> {x,%d}",src->number,dest->number);
+  else if (src->code == arg::STACK)
+    fprintf(stderr,"Address: {y,%d} -> {x,%d}",src->number,dest->number);
 }
 allocate::allocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
@@ -182,6 +185,7 @@ cast::cast(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   fprintf(stderr,"Cast: {x,%d} -> {%d,%c,%d}\r\n",reg->number,type->ref_level,
                                                   type->data_type,type->width);
 }
+// DEPRECATED
 deallocate::deallocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   // TODO: Better error code
   if(!enif_get_int(Env,Elems[0],&bits)) exit(1);
@@ -231,6 +235,13 @@ function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,hashmap& Functions) 
   if (Length >= 0) {
     first=Terms[0];
   }
+}
+gc::gc(ErlNifEnv* Env, const ERL_NIF_TERM* Elems) {
+  if (!enif_get_int(Env,Elems[0],&number)) {
+    fprintf(stderr, "Couldn't get stack size for GC\r\n");
+    exit(1);
+  }
+  fprintf(stderr,"Gc: %d\r\n",number);
 }
 jump::jump(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   lbl_factory(Env,Elems[0],&lbl);
@@ -362,13 +373,13 @@ bif::bif(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,char Op_0,char Op_1) {
       code=ERR;
       break;
   }
-  reg_factory(Env,Elems[0],&dest);
   ERL_NIF_TERM Head;
-  ERL_NIF_TERM Tail = Elems[1];
+  ERL_NIF_TERM Tail = Elems[0];
   enif_get_list_cell(Env, Tail, &Head, &Tail);
   reg_factory(Env,Head,&a);
   enif_get_list_cell(Env, Tail, &Head, &Tail);
   reg_factory(Env,Head,&b);
+  reg_factory(Env,Elems[1],&dest);
   fprintf(stderr,"%c%c: [{x,%d}, {x,%d}] -> {x,%d}\r\n",Op_0,Op_1,a->number,b->number,dest->number);
 }
 
@@ -400,6 +411,7 @@ statement* factory(ErlNifEnv* Env, ERL_NIF_TERM St, hashmap& Functions) {
     }
     case 'd': return new deallocate(Env,Elems+1);
     case 'f': return new function(Env,Elems+1,Functions);
+    case 'g': return new gc(Env,Elems+1);
     case 'j': return new jump(Env,Elems+1);
     case 'l': switch (Third) {
       case 'b': return new label(Env,Elems+1);
