@@ -103,7 +103,6 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
       Lv_Cnt = State#state.lvcnt,
       Rv_Cnt = State#state.rvcnt,
       Alloc_St = [{allocate,?SIZEOF_INT} || _ <- lists:seq(0,Lv_Cnt-1)],
-      io:fwrite("calling ~s -> ~p, ~p~n",[Ident,Arity,Lv_Cnt]),
       Mv_To_St = [{move,{x,N},{y,Rv_Cnt+N}} || N <- lists:seq(0,Lv_Cnt-1)],
       To_A_St = [{move,{x,Lv_Cnt+N},{z,N}} || N <- lists:seq(0,Arity-1)],
       Call_St = {call,Ident,Arity},
@@ -232,10 +231,8 @@ process({{for,_},{Init,Predicate,Update},Loop}, State) ->
 %% TODO: #N/A
 %        Find a more efficient way to do this, as this is exponential complexity.
 process({bif,T,[A,B]}, State) ->
-  io:fwrite("~p + ~p~n",[A,B]),
-  io:fwrite("~p~n",[State]),
-  Way_1 = process_bif(T,A,B,State,a),
-  Way_2 = process_bif(T,A,B,State,b),
+  Way_1 = process_bif(T,A,B,State,true),
+  Way_2 = process_bif(T,A,B,State,false),
   case {(element(2,Way_1))#state.lvcnt,(element(2,Way_2))#state.lvcnt} of
     {_A,_B} when _A>_B -> Way_2;
     _ -> Way_1
@@ -448,8 +445,12 @@ get_ptr_load_st(N,Reg,Ptr) -> [{load,Ptr,Reg}|get_ptr_load_st(N-1,Reg,Reg)].
 %        Check for other pointer operations
 %% TODO: N/A
 %        Tidy this up
-process_bif('+',A,B,State,a) ->
+process_bif('+',Fst,Sec,State,Swap) ->
   Lv_Cnt = State#state.lvcnt,
+  {A,B} = if Swap -> {Sec,Fst};
+             true -> {Fst,Sec} end,
+  {R1,R2} = if Swap -> {{x,Lv_Cnt+1},{x,Lv_Cnt}};
+               true -> {{x,Lv_Cnt},{x,Lv_Cnt+1}} end,
   {ok,A_State,A_St} = process(A,State),
   A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
   N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
@@ -462,32 +463,18 @@ process_bif('+',A,B,State,a) ->
     Types -> error({{undefined_op_cast,'+'},Types})
   end,
   Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
+  Statement = A_St ++ B_St ++ [{'+',[R1,R2],{x,Lv_Cnt}}],
   N_Types = maps:put({x,Lv_Cnt},R_Type,B_State#state.typecheck),
   Rtn_State = B_State#state{typecheck=N_Types},
   {ok,Rtn_State,Statement};
 
-process_bif('+',A,B,State,b) ->
-  Lv_Cnt = State#state.lvcnt,
-  {ok,B_State,B_St} = process(B,State),
-  B_Type = maps:get({x,Lv_Cnt},B_State#state.typecheck,undefined),
-  N_B_State = B_State#state{lvcnt=Lv_Cnt+1},
-  {ok,A_State,A_St} = process(A,N_B_State),
-  A_Type = maps:get({x,Lv_Cnt+1},A_State#state.typecheck,undefined),
-  R_Type = case {A_Type,B_Type} of
-    {{0,T,S_A},{0,T,S_B}} -> {0,i,max(S_A,S_B)};
-    {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of A
-    {{0,i,S_A},{N,T,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
-    Types -> error({{undefined_op_cast,'+'},Types})
-  end,
-  Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{'+',[{x,Lv_Cnt+1},{x,Lv_Cnt}],{x,Lv_Cnt}}],
-  N_Types = maps:put({x,Lv_Cnt},R_Type,A_State#state.typecheck),
-  Rtn_State = B_State#state{typecheck=N_Types},
-  {ok,Rtn_State,Statement};
 
-process_bif('-',A,B,State,a) ->
+process_bif('-',Fst,Sec,State,Swap) ->
   Lv_Cnt = State#state.lvcnt,
+  {A,B} = if Swap -> {Sec,Fst};
+             true -> {Fst,Sec} end,
+  {R1,R2} = if Swap -> {{x,Lv_Cnt+1},{x,Lv_Cnt}};
+               true -> {{x,Lv_Cnt},{x,Lv_Cnt+1}} end,
   {ok,A_State,A_St} = process(A,State),
   N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
   {ok,B_State,B_St} = process(B,N_A_State),
@@ -499,26 +486,8 @@ process_bif('-',A,B,State,a) ->
     Types -> error({{undefined_op_cast,'-'},Types})
   end,
   Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{'-',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
+  Statement = A_St ++ B_St ++ [{'-',[R1,R2],{x,Lv_Cnt}}],
   N_Types = maps:put({x,Lv_Cnt},R_Type,B_State#state.typecheck),
-  Rtn_State = B_State#state{typecheck=N_Types},
-  {ok,Rtn_State,Statement};
-
-process_bif('-',A,B,State,b) ->
-  Lv_Cnt = State#state.lvcnt,
-  {ok,B_State,B_St} = process(B,State),
-  B_Type = maps:get({x,Lv_Cnt},B_State#state.typecheck,undefined),
-  N_B_State = B_State#state{lvcnt=Lv_Cnt+1},
-  {ok,A_State,A_St} = process(A,N_B_State),
-  A_Type = maps:get({x,Lv_Cnt+1},A_State#state.typecheck,undefined),
-  R_Type = case {A_Type,B_Type} of
-    {{0,T,S_A},{0,T,S_B}} -> {0,i,max(S_A,S_B)};
-    {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
-    Types -> error({{undefined_op_cast,'-'},Types})
-  end,
-  Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{'-',[{x,Lv_Cnt+1},{x,Lv_Cnt}],{x,Lv_Cnt}}],
-  N_Types = maps:put({x,Lv_Cnt},R_Type,A_State#state.typecheck),
   Rtn_State = B_State#state{typecheck=N_Types},
   {ok,Rtn_State,Statement};
 
@@ -526,8 +495,12 @@ process_bif('-',A,B,State,b) ->
 %  adding a statement which will take the active register and the register above it,
 %  perform the built-in function in the values in those registers and store the result
 %  in the active register.
-process_bif(Type,A,B,State,a) ->
+process_bif(Type,Fst,Sec,State,Swap) ->
   Lv_Cnt = State#state.lvcnt,
+  {A,B} = if Swap -> {Sec,Fst};
+             true -> {Fst,Sec} end,
+  {R1,R2} = if Swap -> {{x,Lv_Cnt+1},{x,Lv_Cnt}};
+               true -> {{x,Lv_Cnt},{x,Lv_Cnt+1}} end,
   {ok,A_State,A_St} = process(A,State),
   N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
   {ok,B_State,B_St} = process(B,N_A_State),
@@ -538,25 +511,8 @@ process_bif(Type,A,B,State,a) ->
     Types -> error({{undefined_op_cast,Type},Types})
   end,
   Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{Type,[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
+  Statement = A_St ++ B_St ++ [{Type,[R1,R2],{x,Lv_Cnt}}],
   N_Types = maps:put({x,Lv_Cnt},R_Type,B_State#state.typecheck),
-  Rtn_State = B_State#state{typecheck=N_Types},
-  {ok,Rtn_State,Statement};
-
-process_bif(Type,A,B,State,b) ->
-  Lv_Cnt = State#state.lvcnt,
-  {ok,B_State,B_St} = process(B,State),
-  B_Type = maps:get({x,Lv_Cnt},B_State#state.typecheck,undefined),
-  N_B_State = B_State#state{lvcnt=Lv_Cnt+1},
-  {ok,A_State,A_St} = process(A,N_B_State),
-  A_Type = maps:get({x,Lv_Cnt+1},A_State#state.typecheck,undefined),
-  R_Type = case {A_Type,B_Type} of
-    {{0,i,S_A},{0,i,S_B}} -> {0,i,max(S_A,S_B)};
-    Types -> error({{undefined_op_cast,Type},Types})
-  end,
-  Lv_Cnt = State#state.lvcnt,
-  Statement = A_St ++ B_St ++ [{Type,[{x,Lv_Cnt+1},{x,Lv_Cnt}],{x,Lv_Cnt}}],
-  N_Types = maps:put({x,Lv_Cnt},R_Type,A_State#state.typecheck),
   Rtn_State = B_State#state{typecheck=N_Types},
   {ok,Rtn_State,Statement}.
 
