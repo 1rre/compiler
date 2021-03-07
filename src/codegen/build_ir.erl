@@ -1,7 +1,8 @@
 -module(build_ir).
 -export([process/1]).
 
--record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},var=#{},typedef=#{},struct=#{},enum=#{},typecheck=#{}}).
+-record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},sizeof=#{},
+               var=#{},typedef=#{},struct=#{},enum=#{},typecheck=#{}}).
 
 -include("arch_type_consts.hrl").
 
@@ -121,16 +122,22 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
   end;
 
 process({sizeof,Expr},State) ->
+  Lv_Cnt = State#state.lvcnt,
   case get_type(Expr,State) of
-    {ok,{0,_,S}} -> {ok,State,[{move,{i,S div 8},{x,State#state.lvcnt}}]};
-    {ok,_} -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,State#state.lvcnt}}]};
+    {ok,{0,_,S}} -> {ok,State,[{move,{i,S div 8},{x,Lv_Cnt}}]};
+    {ok,_} -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,Lv_Cnt}}]};
     _ ->
-      {ok,Expr_State,_} = process(Expr, State),
-      Lv_Cnt = State#state.lvcnt,
-      case maps:get({x,Lv_Cnt},Expr_State#state.typecheck,{0,n,0}) of
-        {0,_,S} -> {ok,State,[{move,{i,S div 8},{x,Lv_Cnt}}]};
-        R -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,Lv_Cnt}}]}
-      end
+      {ok,Expr_State,Expr_St} = process(Expr, State),
+      Size = case lists:last(Expr_St) of
+        {move,{y,Rv},{x,Lv}} ->
+          maps:get({y,Rv},Expr_State#state.sizeof,undefined);
+        _ ->
+          case maps:get({x,Lv_Cnt},Expr_State#state.typecheck,{0,n,0}) of
+            {0,_,S} -> S;
+            R -> ?SIZEOF_POINTER
+          end
+        end,
+      {ok,State,[{move,{i,Size div 8},{x,Lv_Cnt}}]}
   end;
 
 %% As there are multiple cases for assignment, it is delegated to a helper function.
@@ -357,12 +364,18 @@ get_ident_specs(Ident, _State) ->
 
 %% To allocate stack memory for a variable, allocate the size of the variable type.
 allocate_mem(Type,[],State) ->
-  {ok,State,[{allocate,sizeof(Type,State)}]};
+  Rv_Cnt = State#state.rvcnt,
+  N_Sizes = maps:put({y,Rv_Cnt},sizeof(Type,State),State#state.sizeof),
+  N_State = State#state{sizeof=N_Sizes},
+  {ok,N_State,[{allocate,sizeof(Type,State)}]};
 allocate_mem(Type,Arr,State)->
   Heap_St = lists:flatten(gen_heap(Type,Arr,State)),
-  {ok,State,Heap_St++[{allocate,?SIZEOF_POINTER},
-                      {move,{x,State#state.lvcnt},
-                      {y,State#state.rvcnt}}]}.
+  Size = lists:foldr(fun (V,Acc) -> Acc*V end,sizeof(Type,State),Arr),
+  Rv_Cnt = State#state.rvcnt,
+  N_Sizes = maps:put({y,Rv_Cnt},Size,State#state.sizeof),
+  N_State = State#state{sizeof=N_Sizes},
+  {ok,N_State,Heap_St++[{allocate,?SIZEOF_POINTER},
+                      {move,{x,State#state.lvcnt},{y,Rv_Cnt}}]}.
 
 % This is absolutely hideous
 % but I don't think multi-dimensional arrays will come up too much
@@ -566,7 +579,7 @@ get_type(Type,_)                  -> {error,{unknown_type, Type}}.
 %        Add support for compile-time evaluation of the size of variables,
 %        if this is possible (confirm that allocation is done at declaration time?).
 sizeof({0,_,S},_) -> S;
-sizeof({_,_,_},_) -> ?SIZEOF_POINTER;
+sizeof({_,_,_},State) -> ?SIZEOF_POINTER;
 sizeof(Type,State) -> error({type,Type}).
 
 %% 2x helper functions to copy the label/local variable count from 1 state to another.

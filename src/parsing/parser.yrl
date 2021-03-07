@@ -226,7 +226,7 @@ declarator -> direct_declarator : '$1'.
 direct_declarator -> identifier : '$1'.
 direct_declarator -> '(' declarator ')' : '$2'.
 direct_declarator -> direct_declarator '[' expression ']' : {'$1',{array,'$3'}}.
-direct_declarator -> direct_declarator '[' ']' : {'$1',{array,[]}}.
+direct_declarator -> direct_declarator '[' ']' : {{'*',element(2,'$2')},'$1'}.
 direct_declarator -> direct_declarator '(' parameter_type_list ')' : {'$1','$3'}.
 direct_declarator -> direct_declarator '(' identifier_list ')' : {'$1','$3'}.
 direct_declarator -> direct_declarator '(' ')' : {'$1', []}.
@@ -261,9 +261,9 @@ abstract_declarator -> direct_abstract_declarator : '$1'.
 
 direct_abstract_declarator -> '(' abstract_declarator ')' : '$2'.
 direct_abstract_declarator -> direct_abstract_declarator '[' expression ']' : {'$1',{array,'$3'}}.
-direct_abstract_declarator -> direct_abstract_declarator '[' ']' : {'$1',{array,[]}}.
+direct_abstract_declarator -> direct_abstract_declarator '[' ']' :  {{'*',element(2,'$2')},'$1'}.
 direct_abstract_declarator ->  '[' expression ']' : {array,'$2'}.
-direct_abstract_declarator ->  '[' ']' : {array,[]}.
+direct_abstract_declarator ->  '[' ']' :  {'*',element(2,'$2')}.
 direct_abstract_declarator -> direct_abstract_declarator '(' parameter_type_list ')' : {'$1','$2','$3','$4'}.
 direct_abstract_declarator -> direct_abstract_declarator '(' ')' : {'$1','$2','$3'}.
 direct_abstract_declarator ->  '(' parameter_type_list ')' : {'$1','$2','$3'}.
