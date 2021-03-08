@@ -1,5 +1,5 @@
--module(gen_ir).
--export([process/1]).
+-module(ir).
+-export([generate/1]).
 
 -record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},sizeof=#{},
                var=#{},typedef=#{},struct=#{},enum=#{},typecheck=#{}}).
@@ -10,30 +10,30 @@
 %       This form is also a lot closer to the target language (MIPS ASM) than an AST.
 
 %% Arity 1 function for default arguments
-process(Ast) ->
-  process(Ast, #state{}).
+generate(Ast) ->
+  generate(Ast, #state{}).
 
 %% On a leaf node of the AST, return the current state
-process([], State) -> {ok, State, []};
+generate([], State) -> {ok, State, []};
 
 %% For a node with branches, process the node, then the branch & return the merged IR code
-process([Hd|Tl], State) ->
-  {ok, Hd_State, Hd_St} = process(Hd,State),
-  {ok, Tl_State, Tl_St} = process(Tl,Hd_State),
+generate([Hd|Tl], State) ->
+  {ok, Hd_State, Hd_St} = generate(Hd,State),
+  {ok, Tl_State, Tl_St} = generate(Tl,Hd_State),
   {ok,Tl_State,Hd_St++Tl_St};
 
 %% Process a declaration of a function by adding specification about it to the state &
 %  processing the branches of the function node (arguments & statement list)
-process({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
+generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
   {ok, Ident, _Ptr_Ident, Arr} = get_ident_specs(Raw_Ident,State),
   if Arr =/= [] -> error({return_type,array});
   true -> ok end,
-  {ok, Arg_State, Arg_St} = process(Raw_Args, State),
+  {ok, Arg_State, Arg_St} = generate(Raw_Args, State),
   Arity = length(Raw_Args),
   Alloc_St = lists:flatten([[{allocate,?SIZEOF_INT},{move,{z,N},{y,N}}] || N <- lists:seq(0,Arity-1)]),
   New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
-  {ok, N_State, N_St} = process(Raw_St,Arg_State#state{fn=New_Fn}),
+  {ok, N_State, N_St} = generate(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = case lists:last(N_St) of
     return ->
       [{function,Type,Ident,length(Raw_Args),Alloc_St++N_St}];
@@ -44,7 +44,7 @@ process({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St};
 
 %% As there are multiple cases for declaration, it is delegated to a helper function.
-process({declaration,Raw_Type,Raw_St}, State) ->
+generate({declaration,Raw_Type,Raw_St}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
   get_decl_specs(Type,Raw_St,State);
 
@@ -52,25 +52,25 @@ process({declaration,Raw_Type,Raw_St}, State) ->
 %  As longs are out of spec we currently don't differentiate however it may be useful to later
 %% TODO: N/A
 %        Add unsigned
-process({int_l,_Line,Val,[]}, State) ->
+generate({int_l,_Line,Val,[]}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_INT},State#state.typecheck),
   {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}}]};
-process({int_l,_Line,Val,[$l]}, State) ->
+generate({int_l,_Line,Val,[$l]}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_LONG},State#state.typecheck),
   {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}}]};
 
 %% Process a float node by moving the literal value to the active register
 %  As doubles are out of spec we currently don't support these however it may be useful to later
-process({float_l,_Line,Val,_Suffix}, State) ->
+generate({float_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{0,f,?SIZEOF_FLOAT},State#state.typecheck),
   {ok,State#state{typecheck=N_Types},[{move,{f,Val},{x,Lv_Cnt}}]};
 
 %% Process an identifier by finding the integer's location on the stack
 %  and moving it to the active register
-process({identifier,Ln,Ident}, State) ->
+generate({identifier,Ln,Ident}, State) ->
   case maps:get(Ident,State#state.var,undefined) of
     {Type, X} ->
       Lv_Cnt = State#state.lvcnt,
@@ -79,10 +79,10 @@ process({identifier,Ln,Ident}, State) ->
     Other -> error({Other,Ident,{line,Ln},{state,State}})
   end;
 
-process({Rest,{array, Offset}}, State) ->
+generate({Rest,{array, Offset}}, State) ->
   Lv_Cnt = State#state.lvcnt,
-  {ok,Ptr_State,Ptr_St} = process(Rest,State),
-  {ok,Off_State,Off_St} = process(Offset,State#state{lvcnt=Lv_Cnt+1}),
+  {ok,Ptr_State,Ptr_St} = generate(Rest,State),
+  {ok,Off_State,Off_St} = generate(Offset,State#state{lvcnt=Lv_Cnt+1}),
   Rtn_St = Ptr_St++Off_St++[{'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}},
                             {load,{x,Lv_Cnt},{x,Lv_Cnt}}],
   {ok,copy_lvcnt(Off_State,Ptr_State),Rtn_St};
@@ -92,10 +92,10 @@ process({Rest,{array, Offset}}, State) ->
 % calling the function, then restoring the register state.
 %% TODO: N/A
 %        Debug arg processing order; Potentially it is in the wrong order.
-process({{identifier,Ln,Ident},{apply,Args}}, State) ->
+generate({{identifier,Ln,Ident},{apply,Args}}, State) ->
   {ok,Arg_State,Arg_St} = lists:foldl(fun
     (Arg,{ok,Acc_State,Acc_St}) ->
-      {ok,Acc_Rtn_State,Acc_Rtn_St} = process(Arg,Acc_State),
+      {ok,Acc_Rtn_State,Acc_Rtn_St} = generate(Arg,Acc_State),
       Lv_Cnt = Acc_State#state.lvcnt,
       {ok,copy_lbcnt(Acc_Rtn_State,Acc_State#state{lvcnt=Lv_Cnt+1}),Acc_St++Acc_Rtn_St}
   end, {ok,State,[]}, Args),
@@ -121,13 +121,13 @@ process({{identifier,Ln,Ident},{apply,Args}}, State) ->
       error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})
   end;
 
-process({sizeof,Expr},State) ->
+generate({sizeof,Expr},State) ->
   Lv_Cnt = State#state.lvcnt,
   case get_type(Expr,State) of
     {ok,{0,_,S}} -> {ok,State,[{move,{i,S div 8},{x,Lv_Cnt}}]};
     {ok,_} -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,Lv_Cnt}}]};
     _ ->
-      {ok,Expr_State,Expr_St} = process(Expr, State),
+      {ok,Expr_State,Expr_St} = generate(Expr, State),
       Size = case lists:last(Expr_St) of
         {move,{y,Rv},{x,Lv}} ->
           maps:get({y,Rv},Expr_State#state.sizeof,undefined);
@@ -141,20 +141,20 @@ process({sizeof,Expr},State) ->
   end;
 
 %% As there are multiple cases for assignment, it is delegated to a helper function.
-process({assign,{Op,_Ln},Raw_Specs}, State) ->
+generate({assign,{Op,_Ln},Raw_Specs}, State) ->
   get_assign_specs(Op,Raw_Specs,State);
 
 %% ++ and -- for both prefix and postfix operators
-process({Rest,{increment,Op,{_,Ln}}}, State) ->
+generate({Rest,{increment,Op,{_,Ln}}}, State) ->
   get_assign_specs('=',[Rest,{bif,Op,[Rest,{int_l,Ln,1,[]}]}], State);
-process({{increment,Op,{_,Ln}},Rest}, State) ->
+generate({{increment,Op,{_,Ln}},Rest}, State) ->
   get_assign_specs('=',[Rest,{bif,Op,[Rest,{int_l,Ln,1,[]}]}], State);
 
 %% Process a return value by deallocating any memory used (and args),
 %  processing the expression which calculates the value to return
 %  and storing it in the active register (which should always be 0)
-process({{return,_},Raw_St}, State) ->
-  {ok, Rtn_State, Rtn_St} = process(Raw_St, State),
+generate({{return,_},Raw_St}, State) ->
+  {ok, Rtn_State, Rtn_St} = generate(Raw_St, State),
   {ok, Dealloc} = deallocate_mem(#{},Rtn_State#state.var),
   {ok, Rtn_State#state{lvcnt=0,rvcnt=0}, Rtn_St++[Dealloc,return]};
 
@@ -162,16 +162,16 @@ process({{return,_},Raw_St}, State) ->
 %  and the "if false" statement, then controlling the PC flow with jumps.
 %  For simple 'if's, only the "if true" statement is returned, and for 'if/else'
 %  both are returned.
-process({{'if',_},Predicate,True,False}, State) ->
+generate({{'if',_},Predicate,True,False}, State) ->
   Lb_Cnt = State#state.lbcnt,
   Lv_Cnt = State#state.lvcnt,
-  {ok,If_State,If_St} = process(Predicate,State#state{lbcnt=Lb_Cnt+2}),
+  {ok,If_State,If_St} = generate(Predicate,State#state{lbcnt=Lb_Cnt+2}),
   Test_State = If_State#state{lvcnt=Lv_Cnt},
   Test_Jump = {test,{x,Lv_Cnt},{l,Lb_Cnt+1}},
-  {ok,True_State,True_St} = process(True,Test_State),
+  {ok,True_State,True_St} = generate(True,Test_State),
   {ok,True_Dealloc} = deallocate_mem(Test_State#state.var,True_State#state.var),
   False_Label = {label,Lb_Cnt+1},
-  {ok,False_State,False_St} = process(False,copy_lbcnt(True_State,Test_State)),
+  {ok,False_State,False_St} = generate(False,copy_lbcnt(True_State,Test_State)),
   {ok,False_Dealloc} = deallocate_mem(Test_State#state.var,False_State#state.var),
   Rtn_State = copy_lbcnt(False_State,State),
   if
@@ -188,12 +188,12 @@ process({{'if',_},Predicate,True,False}, State) ->
 %% Process a while loop by processing each of the predicate and the loop body,
 %  having the PC jump to beyond the end of the loop if the predicate evaluates to zero
 %  and having an unconditional jump to before the predicate at the end of the loop.
-process({{while,_},Predicate,Do}, State) ->
+generate({{while,_},Predicate,Do}, State) ->
   Lb_Cnt = State#state.lbcnt + 1,
   Start_Label = {label,Lb_Cnt},
-  {ok,Pred_State,Pred_St} = process(Predicate,State#state{lbcnt=Lb_Cnt+1}),
+  {ok,Pred_State,Pred_St} = generate(Predicate,State#state{lbcnt=Lb_Cnt+1}),
   Test_Jump = {test,{x,State#state.lvcnt},{l,Lb_Cnt+1}},
-  {ok,Do_State,Do_St} = process(Do,copy_lvcnt(State,Pred_State)),
+  {ok,Do_State,Do_St} = generate(Do,copy_lvcnt(State,Pred_State)),
   {ok,Do_Dealloc} = deallocate_mem(Pred_State#state.var,Do_State#state.var),
   Jump = {jump,{l,Lb_Cnt}},
   End_Label = {label,Lb_Cnt + 1},
@@ -204,12 +204,12 @@ process({{while,_},Predicate,Do}, State) ->
 %% Process a do while loop by processing each of the loop body and the predicate
 %  and having the PC jump back to the start of the loop if the predicate,
 %  which is evaluated after the loop body, evaluates to non-zero.
-process({{do,_},Do,Predicate}, State) ->
+generate({{do,_},Do,Predicate}, State) ->
   Lb_Cnt = State#state.lbcnt,
   Start_Label = {label,Lb_Cnt + 1},
-  {ok,Do_State,Do_St} = process(Do,State#state{lbcnt=Lb_Cnt+2}),
+  {ok,Do_State,Do_St} = generate(Do,State#state{lbcnt=Lb_Cnt+2}),
   {ok,Do_Dealloc} = deallocate_mem(State#state.var,Do_State#state.var),
-  {ok,Pred_State,Pred_St} = process(Predicate,copy_lbcnt(Do_State,State)),
+  {ok,Pred_State,Pred_St} = generate(Predicate,copy_lbcnt(Do_State,State)),
   Test_Jump = {test,{x,State#state.lvcnt},{l,Lb_Cnt+2}},
   Jump = {jump,{l,Lb_Cnt+1}},
   End_Label = {label,Lb_Cnt + 2},
@@ -221,17 +221,17 @@ process({{do,_},Do,Predicate}, State) ->
 %  creating a snapshot of the state & then using this as a root state to process
 %  each of the predicate, loop body and the 'update' statement.
 %  If the predicate evaluates to zero, the PC jumps beyond the end of the loop.
-process({{for,_},{Init,Predicate,Update},Loop}, State) ->
+generate({{for,_},{Init,Predicate,Update},Loop}, State) ->
   Lb_Cnt = State#state.lbcnt,
   Lv_Cnt = State#state.lvcnt,
-  {ok,Init_State,Init_St} = process(Init,State#state{lbcnt=Lb_Cnt+2}),
+  {ok,Init_State,Init_St} = generate(Init,State#state{lbcnt=Lb_Cnt+2}),
   Root_State = Init_State#state{lvcnt=Lv_Cnt},
   Pred_Label = {label,Lb_Cnt+1},
-  {ok,Pred_State,Pred_St} = process(Predicate,Root_State),
+  {ok,Pred_State,Pred_St} = generate(Predicate,Root_State),
   Pred_Test = {test,{x,Lv_Cnt},{l,Lb_Cnt+2}},
-  {ok,Loop_State,Loop_St} = process(Loop,copy_lbcnt(Pred_State,Root_State)),
+  {ok,Loop_State,Loop_St} = generate(Loop,copy_lbcnt(Pred_State,Root_State)),
   {ok,Dealloc} = deallocate_mem(Init_State#state.var,Loop_State#state.var),
-  {ok,Update_State,Update_St} = process(Update,copy_lbcnt(Loop_State,Root_State)),
+  {ok,Update_State,Update_St} = generate(Update,copy_lbcnt(Loop_State,Root_State)),
   Jump = {jump,{l,Lb_Cnt+1}},
   End_Label = {label,Lb_Cnt+2},
   Next_State = copy_lbcnt(Update_State,State),
@@ -243,7 +243,7 @@ process({{for,_},{Init,Predicate,Update},Loop}, State) ->
 %  intensive, then returning the way which is less register intensive.
 %% TODO: #N/A
 %        Find a more efficient way to do this, as this is exponential complexity.
-process({bif,T,[A,B]}, State) ->
+generate({bif,T,[A,B]}, State) ->
   Way_1 = process_bif(T,A,B,State,true),
   Way_2 = process_bif(T,A,B,State,false),
   case {(element(2,Way_1))#state.lvcnt,(element(2,Way_2))#state.lvcnt} of
@@ -254,8 +254,8 @@ process({bif,T,[A,B]}, State) ->
 %% Process an address operator by adding an expression to take the address of
 %  the value which was loaded to a register or put on the stack in the last instruction
 %  and store it in the destination of the last instruction.
-process({{'&',Ln},Raw_St}, State) ->
-  {ok, Ref_State, Ref_St} = process(Raw_St, State),
+generate({{'&',Ln},Raw_St}, State) ->
+  {ok, Ref_State, Ref_St} = generate(Raw_St, State),
   case lists:last(Ref_St) of
     {move,Src,Dest} ->
       Next_St = lists:droplast(Ref_St) ++ [{address,Src,Dest}],
@@ -272,8 +272,8 @@ process({{'&',Ln},Raw_St}, State) ->
 %% Process a dereference operator by finding the location of the variable we are
 %  dereferencing and either replacing the `move` statement with a `load` statement
 %  or adding a `load` statement to the end, depending on what we are dereferncing.
-process({{'*',Ln},Raw_St},State) ->
-  {ok, Ptr_State, Ptr_St} = process(Raw_St, State),
+generate({{'*',Ln},Raw_St},State) ->
+  {ok, Ptr_State, Ptr_St} = generate(Raw_St, State),
   Active_Reg = {x,State#state.lvcnt},
   {N,T,S} = maps:get(Active_Reg,Ptr_State#state.typecheck,undefined),
   New_Types = maps:put(Active_Reg,{N-1,T,S},Ptr_State#state.typecheck),
@@ -300,7 +300,7 @@ process({{'*',Ln},Raw_St},State) ->
 %% TODO: #5
 %        We need to support array declarations and accesses,
 %        which will be done using the `[]` operators and the `offset` token.
-process(Other, State) -> error({Other,State}).
+generate(Other, State) -> error({Other,State}).
 
 %% Delegated function for declarations.
 %% Declarations with an initialisation are processed by allocating memory
@@ -310,7 +310,7 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
   Type = {N+Ptr_Depth,Raw_T,Raw_S},
   {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State),
-  {ok, Decl_State, Decl_St} = process(Raw_St, Mem_State),
+  {ok, Decl_State, Decl_St} = generate(Raw_St, Mem_State),
   Active_Reg = {x,State#state.lvcnt},
   Rv_Cnt = Decl_State#state.rvcnt,
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Decl_State#state.var),
@@ -412,7 +412,7 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   % TODO: Arrays
   {ok,Ptr_Type,Ptr_St} = get_ptr(Raw_Type,Ptr_Depth,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
   Lv_Cnt = State#state.lvcnt,
-  {ok,Assign_State,Assign_St} = process(Raw_St,State),
+  {ok,Assign_State,Assign_St} = generate(Raw_St,State),
   St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
   case Ptr_St of
     [] ->
@@ -467,10 +467,10 @@ process_bif('+',Fst,Sec,State,Swap) ->
              true -> {Fst,Sec} end,
   {R1,R2} = if Swap -> {{x,Lv_Cnt+1},{x,Lv_Cnt}};
                true -> {{x,Lv_Cnt},{x,Lv_Cnt+1}} end,
-  {ok,A_State,A_St} = process(A,State),
+  {ok,A_State,A_St} = generate(A,State),
   A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
   N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
-  {ok,B_State,B_St} = process(B,N_A_State),
+  {ok,B_State,B_St} = generate(B,N_A_State),
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   R_Type = case {A_Type,B_Type} of
     {{0,T,S_A},{0,T,S_B}} -> {0,T,max(S_A,S_B)};
@@ -491,9 +491,9 @@ process_bif('-',Fst,Sec,State,Swap) ->
              true -> {Fst,Sec} end,
   {R1,R2} = if Swap -> {{x,Lv_Cnt+1},{x,Lv_Cnt}};
                true -> {{x,Lv_Cnt},{x,Lv_Cnt+1}} end,
-  {ok,A_State,A_St} = process(A,State),
+  {ok,A_State,A_St} = generate(A,State),
   N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
-  {ok,B_State,B_St} = process(B,N_A_State),
+  {ok,B_State,B_St} = generate(B,N_A_State),
   A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   R_Type = case {A_Type,B_Type} of
@@ -517,9 +517,9 @@ process_bif(Type,Fst,Sec,State,Swap) ->
              true -> {Fst,Sec} end,
   {R1,R2} = if Swap -> {{x,Lv_Cnt+1},{x,Lv_Cnt}};
                true -> {{x,Lv_Cnt},{x,Lv_Cnt+1}} end,
-  {ok,A_State,A_St} = process(A,State),
+  {ok,A_State,A_St} = generate(A,State),
   N_A_State = A_State#state{lvcnt=Lv_Cnt+1},
-  {ok,B_State,B_St} = process(B,N_A_State),
+  {ok,B_State,B_St} = generate(B,N_A_State),
   A_Type = maps:get({x,Lv_Cnt},A_State#state.typecheck,undefined),
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   R_Type = case {A_Type,B_Type} of

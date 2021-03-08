@@ -189,7 +189,7 @@ run_st([{test,Data,{l,Lb}}|Rest],Context,Ir) ->
   end;
 
 %% / is a special case as erlang treats float & integer division differently
-run_st([{'/',Dest,[A,B]}|Rest],Context,Ir) ->
+run_st([{'/',[A,B],Dest}|Rest],Context,Ir) ->
   Types = Context#context.types,
   {0,TA,SA} = maps:get(A,Types,{0,n,0}),
   {0,TB,SB} = maps:get(B,Types,{0,n,0}),
