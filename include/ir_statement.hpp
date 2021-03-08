@@ -48,6 +48,8 @@ class statement {
 public:
   enum statement_code code;
   statement* next = nullptr;
+  statement(enum statement_code Code): code(Code) {}
+  statement(): code(ERR) {}
 };
 
 typedef std::unordered_map<std::string,statement*> hashmap;

@@ -1,4 +1,4 @@
--module(build_ir).
+-module(gen_ir).
 -export([process/1]).
 
 -record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},sizeof=#{},

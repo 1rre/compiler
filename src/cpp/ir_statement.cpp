@@ -143,7 +143,7 @@ void type_factory(ErlNifEnv* Env,const ERL_NIF_TERM Elem,arg::type** Type) {
   *Type = new arg::type(P,T,S);
 }
 
-address::address(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
+address::address(ErlNifEnv* Env,const ERL_NIF_TERM* Elems): statement(ADDRESS) {
   mem_factory(Env,Elems[0],&src);
   reg_factory(Env,Elems[1],&dest);
 
@@ -152,7 +152,7 @@ address::address(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   else if (src->code == arg::STACK)
     fprintf(stderr,"Address: {y,%d} -> {x,%d}",src->number,dest->number);
 }
-allocate::allocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
+allocate::allocate(ErlNifEnv* Env,const ERL_NIF_TERM* Elems): statement(ALLOCATE) {
   // TODO: Better error code
   if(!enif_get_int(Env,Elems[0],&bits)) {
     fprintf(stderr,"Error getting bits to allocate\r\n");
@@ -185,7 +185,7 @@ cast::cast(ErlNifEnv* Env,const ERL_NIF_TERM* Elems) {
   fprintf(stderr,"Cast: {x,%d} -> {%d,%c,%d}\r\n",reg->number,type->ref_level,
                                                   type->data_type,type->width);
 }
-function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,hashmap& Functions) {
+function::function(ErlNifEnv* Env,const ERL_NIF_TERM* Elems,hashmap& Functions): statement(FUNCTION) {
   type_factory(Env,Elems[0],&type);
   unsigned Length;
   if (!enif_get_atom_length(Env,Elems[1],&Length,ERL_NIF_LATIN1)) {
