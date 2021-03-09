@@ -18,11 +18,11 @@ main(Args) ->
          true -> [nif|Vm];
          _ -> Vm
        end,
-  Mips = case lists:member("-mips", Args) of
-         true -> [mips|Nif];
+  Asm = case lists:member("-S", Args) of
+         true -> [asm|Nif];
          _ -> Nif
        end,
-  Opts = Mips,
+  Opts = Asm,
   File = lists:dropwhile(fun (F) -> not filelib:is_file(F) end, Args),
   compile(File,Opts).
 
@@ -50,14 +50,14 @@ compile([File|_],[nif]) ->
   io:fwrite("Sending:~n~p~n",[Statement]),
   ir2mips:translate(Statement);
 
-compile([File|_],[mips]) ->
+compile([File|_],[asm]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
   {ok, _Context, Statement} = ir:generate(Result),
-  {ok, Mips_State, Mips_Code} = mips:generate(Statement),
+  {ok, Mips_Code} = mips:generate(Statement),
   {ok, Mips_Code};
 
 compile([File|_],[]) ->

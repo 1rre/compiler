@@ -30,16 +30,17 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   if Arr =/= [] -> error({return_type,array});
   true -> ok end,
   {ok, Arg_State, Arg_St} = generate(Raw_Args, State),
+  Arg_Types = [Arg_T || {Arg_T,_} <- maps:values(Arg_State#state.var)],
   Arity = length(Raw_Args),
   Alloc_St = lists:flatten([[{allocate,?SIZEOF_INT},{move,{z,N},{y,N}}] || N <- lists:seq(0,Arity-1)]),
   New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
   {ok, N_State, N_St} = generate(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = case lists:last(N_St) of
     return ->
-      [{function,Type,Ident,length(Raw_Args),Alloc_St++N_St}];
+      [{function,Type,Ident,Arg_Types,Alloc_St++N_St}];
     _ ->
       {ok, Dealloc} = deallocate_mem(#{},N_State#state.var),
-      [{function,Type,Ident,length(Raw_Args),Alloc_St++N_St++[Dealloc,return]}]
+      [{function,Type,Ident,Arg_Types,Alloc_St++N_St++[Dealloc,return]}]
   end,
   {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St};
 
