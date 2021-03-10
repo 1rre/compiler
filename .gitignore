@@ -9,3 +9,6 @@ test/
 bin/
 **/erl_crash.dump
 **/*.log
+.metals/
+null/
+out/
