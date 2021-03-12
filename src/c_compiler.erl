@@ -4,18 +4,24 @@
 main(Args) ->
   Opts = lists:sort(get_args(Args)),
   File = proplists:get_value(in, Opts),
-  compile(File,proplists:delete(in, Opts)).
+  Fn_Args = [list_to_integer(Arg)||{arg,Arg} <- Opts],
+  N_Args = [Atom || Atom <- Opts, is_atom(Atom) or (is_tuple(Atom) andalso (element(1,Atom) =:= out))],
+  compile(File,Fn_Args,N_Args).
 
 get_args(["-S"|Rest]) -> [asm|get_args(Rest)];
 get_args(["-o",File|Rest]) -> [{out,File}|get_args(Rest)];
 get_args(["-d"|Rest]) -> [debug|get_args(Rest)];
 get_args(["-ir"|Rest]) -> [ir|get_args(Rest)];
 get_args(["-vm"|Rest]) -> [vm|get_args(Rest)];
-get_args([File|Rest]) -> [{in,File}|get_args(Rest)];
+get_args([Arg|Rest]) ->
+  case filelib:is_file(Arg) of
+    true -> [{in,Arg}|get_args(Rest)];
+    _ -> [{arg,Arg}|get_args(Rest)]
+  end;
 get_args([]) -> [].
 
 
-compile(File,[ir]) ->
+compile(File,_,[ir]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
@@ -25,10 +31,13 @@ compile(File,[ir]) ->
   io:fwrite("~p~n",[Statement]),
   {ok, Statement};
 
-%compile([File|Args], [debug,vm]) -> halt(run_vm(File,[list_to_integer(N)||N<-Args],[debug]));
-%compile([File|Args], [vm]) -> halt(run_vm(File,[list_to_integer(N)||N<-Args]));
+compile(File, Args, [debug,vm]) ->
+  halt(run_vm(File,Args,[debug]));
 
-compile(File,[asm,{out,Out_File}]) ->
+compile(File, Args, [vm]) ->
+  halt(run_vm(File,Args));
+
+compile(File,_,[asm,{out,Out_File}]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
@@ -38,10 +47,10 @@ compile(File,[asm,{out,Out_File}]) ->
   {ok, Mips_Code} = mips:generate(Statement,{file,Out_File}),
   {ok, Mips_Code};
 
-compile(File,[asm]) ->
-  compile(File,[asm,{out,".test/test.s"}]);
+compile(File,_,[asm]) ->
+  compile(File,[],[asm,{out,".test/test.s"}]);
 
-compile(File,[]) ->
+compile(File,_,[]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
@@ -52,14 +61,14 @@ compile(File,[]) ->
 
 % Reversing the IR for now as we want main to be at the start rather than at the end
 run_vm(File,Args) ->
-  {ok,Ir} = main([File]),
+  {ok,Ir} = compile(File,Args,[]),
   ir_vm:run(lists:reverse(Ir),lists:reverse(Args),[]).
 run_vm(File,Fn,Args) when is_atom(Fn) ->
-  {ok,Ir} = main([File]),
+  {ok,Ir} = compile(File,Args,[]),
   ir_vm:run(lists:reverse(Ir),Fn,lists:reverse(Args),[]);
 run_vm(File,Args,Flags) ->
-{ok,Ir} = main([File]),
-ir_vm:run(lists:reverse(Ir),lists:reverse(Args),Flags).
+  {ok,Ir} = compile(File,Args,[]),
+  ir_vm:run(lists:reverse(Ir),lists:reverse(Args),Flags).
 
 read_file(Io_Stream) ->
   case file:read_line(Io_Stream) of

@@ -1,7 +1,7 @@
 -module(ir).
 -export([generate/1]).
 
--record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},sizeof=#{},
+-record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},sizeof=#{},scope=0,
                var=#{},typedef=#{},struct=#{},enum=#{},typecheck=#{}}).
 
 -include("arch_type_consts.hrl").
@@ -29,7 +29,7 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   {ok, Ident, _Ptr_Ident, Arr} = get_ident_specs(Raw_Ident,State),
   if Arr =/= [] -> error({return_type,array});
   true -> ok end,
-  {ok, Arg_State, Arg_St} = generate(Raw_Args, State),
+  {ok, Arg_State, Arg_St} = generate(Raw_Args, State#state{scope=1}),
   Arg_Types = [Arg_T || {Arg_T,_} <- maps:values(Arg_State#state.var)],
   Arity = length(Raw_Args),
   Alloc_St = lists:flatten([[{allocate,?SIZEOF_INT},{move,{z,N},{y,N}}] || N <- lists:seq(0,Arity-1)]),
@@ -304,25 +304,6 @@ generate({{'*',Ln},Raw_St},State) ->
 generate(Other, State) -> error({Other,State}).
 
 %% Delegated function for declarations.
-%% Declarations with an initialisation are processed by allocating memory
-%  for them on the stack, processing the initialisation value and storing
-%  the initialisation value in the newly allocated stack slot.
-get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
-  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
-  Type = {N+Ptr_Depth,Raw_T,Raw_S},
-  {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State),
-  {ok, Decl_State, Decl_St} = generate(Raw_St, Mem_State),
-  Active_Reg = {x,State#state.lvcnt},
-  Rv_Cnt = Decl_State#state.rvcnt,
-  New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Decl_State#state.var),
-  New_Types = maps:put({y,Rv_Cnt},Type,Decl_State#state.typecheck),
-  Next_State = (copy_lvcnt(State,Decl_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
-  Next_St = case maps:get(Active_Reg,Next_State#state.typecheck,undefined) of
-    Type -> Mem_St ++ Decl_St ++ [{move,Active_Reg,{y,Rv_Cnt}}];
-    _ -> Mem_St ++ Decl_St ++ [{cast,Active_Reg,Type},{move,Active_Reg,{y,Rv_Cnt}}]
-  end,
-  {ok, Next_State, Next_St};
-
 %% Function prototypes
 get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,Args}], State) when is_list(Args) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
@@ -333,13 +314,50 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,Args}], State) when is_list(Args) ->
   New_Fn = maps:put(Ident,{Type,Arity},State#state.fn),
   {ok,State#state{fn=New_Fn},[]};
 
+%% Global Variables with an assignment
+get_decl_specs({N,Raw_T,Raw_S},[{Raw_Ident,{'=',_},Raw_St}],State) when State#state.scope =:= 0 ->
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident,State),
+  Type = {N+Ptr_Depth,Raw_T,Raw_S},
+  %% TODO: Allocate static room in memory for global variables?
+  error({todo,assign_global_var});
+
+%% Declarations with an initialisation are processed by allocating memory
+%  for them on the stack, processing the initialisation value and storing
+%  the initialisation value in the newly allocated stack slot.
+%% TODO: Initialise arrays
+get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
+  Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
+  Rv_Cnt = State#state.rvcnt,
+  {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State, {y,Rv_Cnt}),
+  {ok, Decl_State, Decl_St} = generate(Raw_St, Mem_State),
+  Active_Reg = {x,State#state.lvcnt},
+  New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Decl_State#state.var),
+  New_Types = maps:put({y,Rv_Cnt},Type,Decl_State#state.typecheck),
+  Next_State = (copy_lvcnt(State,Decl_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
+  Next_St = case maps:get(Active_Reg,Next_State#state.typecheck,undefined) of
+    Type -> Mem_St ++ Decl_St ++ [{move,Active_Reg,{y,Rv_Cnt}}];
+    _ -> Mem_St ++ Decl_St ++ [{cast,Active_Reg,Type},{move,Active_Reg,{y,Rv_Cnt}}]
+  end,
+  {ok, Next_State, Next_St};
+
+%% Global variables which are not assigned
+get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) when State#state.scope =:= 0 ->
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
+  Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
+  {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State, {g,Ident}),
+  New_Var = maps:put(Ident,{Type,{g,Ident}},Mem_State#state.var),
+  New_Types = maps:put({g,Ident},Type,Mem_State#state.typecheck),
+  New_State = (copy_lvcnt(State,Mem_State))#state{typecheck=New_Types,var=New_Var},
+  {ok,New_State,[{global,Type,Ident,Mem_St}]};
+
 %% Declarations without an initialisation are processed by allocating memory
 %  for them on the stack and then updating the state to indicate the new stack size.
 get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
   Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
-  {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State),
-  Rv_Cnt = Mem_State#state.rvcnt,
+  Rv_Cnt = State#state.rvcnt,
+  {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State,{y,Rv_Cnt}),
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
@@ -376,23 +394,30 @@ get_ident_specs(Ident, _State) ->
 
 
 %% To allocate stack memory for a variable, allocate the size of the variable type.
-allocate_mem(Type,[],State) ->
-  Rv_Cnt = State#state.rvcnt,
-  N_Sizes = maps:put({y,Rv_Cnt},sizeof(Type,State),State#state.sizeof),
+allocate_mem(Type,[],State,{y,N}) ->
+  N_Sizes = maps:put({y,N},sizeof(Type,State),State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes},
   {ok,N_State,[{allocate,sizeof(Type,State)}]};
-allocate_mem(Type,Arr,State)->
+allocate_mem(Type,[],State,Dest) ->
+  N_Sizes = maps:put(Dest,sizeof(Type,State),State#state.sizeof),
+  N_State = State#state{sizeof=N_Sizes},
+  {ok,N_State,[{data,Type,{i,0}}]};
+allocate_mem(Type,Arr,State,{y,N})->
   Heap_St = lists:flatten(gen_heap(Type,Arr,State)),
   Size = lists:foldr(fun (V,Acc) -> Acc*V end,sizeof(Type,State),Arr),
-  Rv_Cnt = State#state.rvcnt,
-  N_Sizes = maps:put({y,Rv_Cnt},Size,State#state.sizeof),
+  N_Sizes = maps:put({y,N},Size,State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes},
-  {ok,N_State,Heap_St++[{allocate,?SIZEOF_POINTER},
-                      {move,{x,State#state.lvcnt},{y,Rv_Cnt}}]}.
+  {ok,N_State,Heap_St++[{allocate,?SIZEOF_POINTER},{move,{x,State#state.lvcnt},{y,N}}]};
+allocate_mem(Type,Arr,State,{g,Ident}) ->
+  Heap_St = lists:flatten(gen_global_heap(Type,Arr,State)),
+  Size = lists:foldr(fun (V,Acc) -> Acc*V end,sizeof(Type,State),Arr),
+  N_Sizes = maps:put({g,Ident},Size,State#state.sizeof),
+  N_State = State#state{sizeof=N_Sizes},
+  {ok,N_State,Heap_St}.
 
 % This is absolutely hideous
 % but I don't think multi-dimensional arrays will come up too much
-gen_heap({P,T,S},[],State) ->
+gen_heap(Type,[],State) ->
   [{move,{i,0},{x,State#state.lvcnt}}];
 gen_heap({P,T,S},[N|Arr],State) ->
   Lv_Cnt = State#state.lvcnt,
@@ -402,6 +427,16 @@ gen_heap({P,T,S},[N|Arr],State) ->
      {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt+1}} |
      gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2})] ++
     [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || Ptr <- lists:seq(0,N-1)]].
+
+gen_global_heap(Type,[],State) -> [{data,Type,{i,0}}];
+gen_global_heap({P,T,S},[N|Arr],State) ->
+  Data = lists:flatten([gen_global_heap({P-1,T,S},Arr,State) || _ <- lists:seq(1,N)]),
+  [{local,Data}].
+
+
+
+
+
 
 
 

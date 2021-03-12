@@ -1,6 +1,22 @@
 = Syntax of the Intermediate Representation
 
+== Global Statements
+[%header,cols="3,5"]
+|===
+|Syntax | Usage
+|`{function,<type>,<name>,<arity>,<st>}` | Define a function `name` (identifier) with return type `type`, arity `arity` (integer), defining it as `st` (scoped statement list).
+|`{global,<type>,<name>,<data>}` | Declare a global variable `name` (identifier) with type `type` & initialise it to `data` (data statement list).
+|===
 
+== Data Statements
+[%header,cols="3,5"]
+|===
+|Syntax | Usage
+|`{data,<type>,init}` | Initialises a static space to  in the program data at compile time for `type` (in the form `reference level`, `type`, `width`)
+|`{local,<data>}` | Declare a private section of an array& initialise it to `data` (data statement list).
+|===
+
+== Scoped Statements
 [%header,cols="3,5"]
 |===
 |Syntax | Usage
@@ -9,7 +25,6 @@
 |`{call,<fn>,<ar>,<ra>}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (stack)
 |`{cast,<ra>,<type>}` | Advises the compiler of a variable's `type` (in the form `reference level`, `type`, `width`) of a variable which would otherwise be incorrectly inferred, such as `char c = 5l;` -> `[{move,{long,5>,<rd>>, {cast,<rd>,{0,i,8>}]`
 |`{gc,<n>}` | Trim the local stack to `n` (integer) items & delete any associated data in the heap.
-|`{function,<type>,<name>,<arity>,<st>}` | Define a function `name` (identifier) with return type `type`, arity `arity` (integer), defining it as `st` (statement list).
 |`{jump,<lb>}` | Unconditionally jump to `lb` (label)
 |`{label,<lb>}` | Create `lb` (label) which can be jumped to using `test`
 |`{load,<rs>,<rd>}` | Finds the memory location pointed to by `rs` (register or stack) & stores the value in `rd` (register)
@@ -18,13 +33,13 @@
 |`{store,<rs>,<rd>}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register)
 |`{test,<ra>,<lb>}` | Branch to `lb` (label) if the value in `ra` is 0
 |`{<op>,[<ra>,<rb>],<rd>}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
-|`{global,<type>,<ident>}` | Declare a global variable of `type` with identifier `ident`.
 |`{test_heap,<size>,<rd>}` | Allocate `size` (integer) bits on the heap & stores the address in rd.
 |===
 
+== Arguments
 [%header,cols="3,5"]
 |===
-|Arguments | Meaning
+|Argument | Meaning
 |`{x,<n>}` | Register `n` (integer), given an infinite register system
 |`{y,<n>}` | The ``n``th (integer) item on the current function's part of the stack, which is mapped to an address
 |`{z,<n>}` | The ``n``th argument to a function
