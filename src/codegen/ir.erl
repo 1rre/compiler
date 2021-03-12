@@ -323,6 +323,16 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
   end,
   {ok, Next_State, Next_St};
 
+%% Function prototypes
+get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,Args}], State) when is_list(Args) ->
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
+  if Arr =/= [] -> error({return_type,array});
+     true -> ok end,
+  Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
+  Arity = length(Args),
+  New_Fn = maps:put(Ident,{Type,Arity},State#state.fn),
+  {ok,State#state{fn=New_Fn},[]};
+
 %% Declarations without an initialisation are processed by allocating memory
 %  for them on the stack and then updating the state to indicate the new stack size.
 get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) ->
@@ -357,6 +367,8 @@ get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
 get_ident_specs({Rest,{array,{int_l,_,N,_}}}, State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Rest, State),
   {ok, Ident, Ptr_Depth,[N|Arr]};
+get_ident_specs({'*',_}, State) ->
+  {ok, '', 1, []};
 get_ident_specs({identifier,_,Ident}, _State) ->
   {ok, Ident, 0, []};
 get_ident_specs(Ident, _State) ->
@@ -533,6 +545,7 @@ process_bif(Type,Fst,Sec,State,Swap) ->
   N_Types = maps:put({x,Lv_Cnt},R_Type,B_State#state.typecheck),
   Rtn_State = B_State#state{typecheck=N_Types},
   {ok,Rtn_State,Statement}.
+
 
 %% Get a shortened name of a type
 %% TODO: #18

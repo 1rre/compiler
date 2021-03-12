@@ -8,6 +8,7 @@
 main(["clean"]) ->
   file:del_dir_r(".build"),
   file:del_dir_r("bin"),
+  file:del_dir_r(".test"),
   [file:delete(File) || File <- filelib:wildcard("src/parsing/*.erl")];
 
 % Compile everything
@@ -45,7 +46,7 @@ main(["-debug"]) ->
 
 % For ease, no arguments compiles everything
 main([File]) ->
-  Files = filelib:wildcard([$*,$*,$/|File]),
+  Files = filelib:wildcard([$*,$*,$/|File]++".erl"),
   lists:search(fun (F) ->
     case filelib:is_file(F) and (filename:extension(F) =:= ".erl") of
       true -> compile:file(F,[report,binary,{d,'TARGET_ARCH',mips32}|?ERLC_FLAGS]);

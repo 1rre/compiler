@@ -18,4 +18,4 @@ bin/c_compiler: clean .build .build/parser.erl .build/lexer.erl
 	erlc -o .build/lexer.erl src/parsing/lexer.xrl
 
 clean:
-	rm -rf .build bin
+	rm -rf .build bin .test
