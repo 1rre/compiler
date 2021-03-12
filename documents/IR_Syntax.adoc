@@ -4,7 +4,7 @@
 [%header,cols="3,5"]
 |===
 |Syntax | Usage
-|`{function,<type>,<name>,<arity>,<st>}` | Define a function `name` (identifier) with return type `type`, arity `arity` (integer), defining it as `st` (scoped statement list).
+|`{function,<type>,<name>,<args>,<st>}` | Define a function `name` (identifier) with return type `type`, args `args` (list of types), defining it as `st` (scoped statement list).
 |`{global,<type>,<name>,<data>}` | Declare a global variable `name` (identifier) with type `type` & initialise it to `data` (data statement list).
 |===
 
