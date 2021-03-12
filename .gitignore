@@ -12,3 +12,4 @@ bin/
 .metals/
 null/
 out/
+.test/

@@ -2,32 +2,20 @@
 -export([main/1,run_vm/2,run_vm/3]).
 
 main(Args) ->
-  Debug = case lists:member("-d", Args) of
-            true -> [debug];
-            _ -> []
-          end,
-  Ir = case lists:member("-ir", Args) of
-         true -> [ir|Debug];
-         _ -> Debug
-       end,
-  Vm = case lists:member("-vm", Args) of
-         true -> [vm|Ir];
-         _ -> Ir
-       end,
-  Nif = case lists:member("-nif", Args) of
-         true -> [nif|Vm];
-         _ -> Vm
-       end,
-  Asm = case lists:member("-S", Args) of
-         true -> [asm|Nif];
-         _ -> Nif
-       end,
-  Opts = Asm,
-  File = lists:dropwhile(fun (F) -> not filelib:is_file(F) end, Args),
-  compile(File,Opts).
+  Opts = lists:sort(get_args(Args)),
+  File = proplists:get_value(in, Opts),
+  compile(File,proplists:delete(in, Opts)).
+
+get_args(["-S"|Rest]) -> [asm|get_args(Rest)];
+get_args(["-o",File|Rest]) -> [{out,File}|get_args(Rest)];
+get_args(["-d"|Rest]) -> [debug|get_args(Rest)];
+get_args(["-ir"|Rest]) -> [ir|get_args(Rest)];
+get_args(["-vm"|Rest]) -> [vm|get_args(Rest)];
+get_args([File|Rest]) -> [{in,File}|get_args(Rest)];
+get_args([]) -> [].
 
 
-compile([File|_],[ir]) ->
+compile(File,[ir]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
@@ -37,30 +25,23 @@ compile([File|_],[ir]) ->
   io:fwrite("~p~n",[Statement]),
   {ok, Statement};
 
-compile([File|Args], [vm,debugs]) -> halt(run_vm(File,[list_to_integer(N)||N<-Args],[debug]));
-compile([File|Args], [vm]) -> halt(run_vm(File,[list_to_integer(N)||N<-Args]));
+%compile([File|Args], [debug,vm]) -> halt(run_vm(File,[list_to_integer(N)||N<-Args],[debug]));
+%compile([File|Args], [vm]) -> halt(run_vm(File,[list_to_integer(N)||N<-Args]));
 
-compile([File|_],[nif]) ->
+compile(File,[asm,{out,Out_File}]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
   {ok, _Context, Statement} = ir:generate(Result),
-  io:fwrite("Sending:~n~p~n",[Statement]),
-  ir2mips:translate(Statement);
-
-compile([File|_],[asm]) ->
-  {ok, Io_Stream} = file:open(File, [read]),
-  {ok, Input} = read_file(Io_Stream),
-  {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
-  {Scan, _Rest} = type_enum:scan(Tokens),
-  {ok, Result} = parser:parse(Scan),
-  {ok, _Context, Statement} = ir:generate(Result),
-  {ok, Mips_Code} = mips:generate(Statement),
+  {ok, Mips_Code} = mips:generate(Statement,{file,Out_File}),
   {ok, Mips_Code};
 
-compile([File|_],[]) ->
+compile(File,[asm]) ->
+  compile(File,[asm,{out,".test/test.s"}]);
+
+compile(File,[]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),

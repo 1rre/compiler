@@ -13,6 +13,7 @@ main(["clean"]) ->
 % Compile everything
 main(["compile"]) ->
   Erl_Files = build_common(),
+  io:fwrite("~p~n", [Erl_Files]),
   [compile:file(Erl, [{outdir,".build"},{d,'TARGET_ARCH',mips32},report|?ERLC_FLAGS]) || Erl <- Erl_Files],
   halt(0);
 
@@ -85,7 +86,9 @@ wait_exe(N, Is_Ok) ->
     {_Port, {data, Message}} ->
       io:fwrite(standard_error, "~s~n", [Message]),
       wait_exe(N, true);
-    _Message -> wait_exe(N, true)
+    Message ->
+      io:fwrite(standard_error, "~s~n", [Message]),
+      wait_exe(N, true)
   end.
 
 %% Change a erlang file's extension to .beam

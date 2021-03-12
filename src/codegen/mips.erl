@@ -1,14 +1,20 @@
 -module(mips).
--export([generate/1]).
+-export([generate/2]).
 
 -include("arch_type_consts.hrl").
 
 %% TODO: Replace this with a more relevant one
 -record(context,{fn=main,global=#{},types=#{},reg=[],indent=0,
-                 args=[],stack= <<>>,s_reg=[],fp=0}).
+                 io=standard_io,args=[],stack= <<>>,s_reg=[],fp=0}).
 
-generate(Ir) ->
-  {ok,[element(2,generate(St,#context{})) || St <- Ir]}.
+generate(Ir,{file,File}) ->
+  Iostream = case file:open(File, [write]) of
+    {error,_} -> error({io_file,'.build/test'});
+    {ok, Io} -> Io
+  end,
+  [element(2,generate(St,#context{io=Iostream})) || St <- Ir],
+  file:close(Iostream),
+  {ok,nil};
 
 generate([],Context) ->
   {ok,[]};
@@ -16,37 +22,37 @@ generate([],Context) ->
 generate({function,R_Type,Name,Args,St},Context) ->
   Globl = io_lib:format(".globl ~s~n",[Name]),
   Indent = 7 + Context#context.indent,
-  io:fwrite(Globl),
-  print_label(Indent,Name),
+  io:fwrite(Context#context.io,Globl,[]),
+  print_label(Context#context.io,Indent,Name),
   N_Indent = Indent+2,
   Args_Size = lists:sum([sizeof(Arg) || Arg <- Args]),
-  print_instr(N_Indent,addiu,'$29','$29',integer_to_list(Args_Size div -8 - 4)),
+  print_instr(Context#context.io,N_Indent,addiu,'$29','$29',integer_to_list(Args_Size div -8 - 4)),
   generate(St, Context#context{indent=N_Indent,args=Args});
 
 generate([return|Rest],Context) ->
   Indent = Context#context.indent,
   Args = Context#context.args,
   Args_Size = lists:sum([sizeof(Arg) || Arg <- Args]),
-  print_instr(Indent,addiu,'$29','$29',integer_to_list(Args_Size div 8 + 4)),
-  print_instr(Indent,jr,'$31'),
-  print_instr(Indent,nop),
+  print_instr(Context#context.io,Indent,addiu,'$29','$29',integer_to_list(Args_Size div 8 + 4)),
+  print_instr(Context#context.io,Indent,jr,'$31'),
+  print_instr(Context#context.io,Indent,nop),
   generate(Rest,Context);
 
 generate([{allocate,N_Bits}|Rest],Context) ->
   Indent = Context#context.indent,
-  print_instr(Indent,addiu,'$29','$29',integer_to_list(N_Bits div 8)),
+  print_instr(Context#context.io,Indent,addiu,'$29','$29',integer_to_list(N_Bits div 8)),
   generate(Rest,Context);
 
 generate([{move,{i,N},D}|Rest],Context) ->
   Indent = Context#context.indent,
   Rd = get_reg_mapping(D),
-  print_instr(Indent,li,Rd,integer_to_list(N)),
+  print_instr(Context#context.io,Indent,li,Rd,integer_to_list(N)),
   generate(Rest,Context);
 
 generate([{gc,N}|Rest],Context) ->
   Indent = Context#context.indent,
   Fp_Add = integer_to_list(Context#context.fp*4),
-  print_instr(Indent,addiu,'$29','$29',Fp_Add),
+  print_instr(Context#context.io,Indent,addiu,'$29','$29',Fp_Add),
   generate(Rest,Context);
 
 %% Assuming int for now, TODO: Floats
@@ -55,11 +61,11 @@ generate([{'+',[A,B],C}|Rest],Context) ->
   Ra = get_reg_mapping(A),
   Rb = get_reg_mapping(B),
   Rc = get_reg_mapping(C),
-  print_instr(Indent,addu,Rc,Ra,Rb),
+  print_instr(Context#context.io,Indent,addu,Rc,Ra,Rb),
   generate(Rest,Context);
 
-generate(St,Context) ->
-  error({unknown_st,{St,Context}}).
+generate([St|_],Context) ->
+  error({unknown_st,St}).
 
 
 
@@ -91,20 +97,20 @@ get_reg_mapping(Reg) -> error({reg_not_mapped,Reg}).
 
 
 
-print_label(Indent,L) ->
-  io:fwrite("~*s:~n",[Indent+length(atom_to_list(L)),L]).
+print_label(Io,Indent,L) ->
+  io:fwrite(Io,"~*s:~n",[Indent+length(atom_to_list(L)),L]).
 
-print_instr(Indent,Op) ->
-  io:fwrite("~*s~n",[5+Indent,Op]).
+print_instr(Io,Indent,Op) ->
+  io:fwrite(Io,"~*s~n",[5+Indent,Op]).
 
-print_instr(Indent,Op,A1) ->
-  io:fwrite("~*s ~4s~n",[Indent+5,Op,A1]).
+print_instr(Io,Indent,Op,A1) ->
+  io:fwrite(Io,"~*s ~4s~n",[Indent+5,Op,A1]).
 
-print_instr(Indent,Op,A1,A2) ->
-  io:fwrite("~*s ~4s,~4s~n",[Indent+5,Op,A1,A2]).
+print_instr(Io,Indent,Op,A1,A2) ->
+  io:fwrite(Io,"~*s ~4s,~4s~n",[Indent+5,Op,A1,A2]).
 
-print_instr(Indent,Op,A1,A2,A3) ->
-  io:fwrite("~*s ~4s,~4s,~4s~n",[Indent+5,Op,A1,A2,A3]).
+print_instr(Io,Indent,Op,A1,A2,A3) ->
+  io:fwrite(Io,"~*s ~4s,~4s,~4s~n",[Indent+5,Op,A1,A2,A3]).
 
 
 sizeof({0,_,S}) -> S;
