@@ -31,7 +31,10 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   true -> ok end,
   {ok, Arg_State, Arg_St} = generate(Raw_Args, State#state{scope=1}),
   Arg_Types = [Arg_T || {{y,_},{Arg_T,_}} <- maps:to_list(Arg_State#state.var)],
-  Arity = length(Raw_Args),
+  Arity = case Raw_Args of
+    [[{void,_}]] -> 0;
+    _ -> length(Raw_Args)
+  end,
   Alloc_St = lists:flatten([[{allocate,?SIZEOF_INT},{move,{z,N},{y,N}}] || N <- lists:seq(0,Arity-1)]),
   New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
   {ok, N_State, N_St} = generate(Raw_St,Arg_State#state{fn=New_Fn}),
@@ -304,6 +307,9 @@ generate({{'*',Ln},Raw_St},State) ->
     Other -> error({Other,{line,Ln}})
   end;
 
+generate({void,_},State) ->
+  {ok,State,[]};
+
 %% Any other nodes of the AST are currently unsupported.
 %  Currently we raise an error, dumping the unsupported node as well as the current state.
 %% TODO: #11
@@ -325,14 +331,17 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,Args}], State) when is_list(Args) ->
   if Arr =/= [] -> error({return_type,array});
      true -> ok end,
   Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
-  Arity = length(Args),
+  Arity = case Args of
+    [{void,_}] -> 0;
+    _ -> length(Args)
+  end,
   New_Fn = maps:put(Ident,{Type,Arity},State#state.fn),
   {ok,State#state{fn=New_Fn},[]};
 
 %% Global Variables with an assignment
 get_decl_specs({N,Raw_T,Raw_S},[{Raw_Ident,{'=',_},Raw_St}],State) when State#state.scope =:= 0 ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident,State),
-  Type = {N+Ptr_Depth,Raw_T,Raw_S},
+  Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
   {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State, {g,Ident},Raw_St),
   New_Var = maps:put(Ident,{Type,{g,Ident}},Mem_State#state.var),
   New_Types = maps:put({g,Ident},Type,Mem_State#state.typecheck),
@@ -400,7 +409,7 @@ get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
   {ok, Ident, Ptr_Depth+1, Arr};
 get_ident_specs({Rest,{array,N}}, State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Rest, State),
-  {ok, Ident, Ptr_Depth,[N|Arr]};
+  {ok, Ident, Ptr_Depth,Arr++[N]};
 get_ident_specs({'*',_}, State) ->
   {ok, '', 1, []};
 get_ident_specs({identifier,_,Ident}, _State) ->
@@ -428,15 +437,20 @@ allocate_mem(Type,Arr,State,{y,N},Init) ->
   Size = lists:foldr(fun
     (V,Acc) -> Acc*element(2,get_constant(V,State))
   end,sizeof(Type,State),Arr),
+  Lv_Cnt = State#state.lvcnt,
+  N_Types = maps:merge(#{{x,Lv_Cnt}=>Type,{y,N}=>Type},State#state.typecheck),
   N_Sizes = maps:put({y,N},Size,State#state.sizeof),
-  N_State = State#state{sizeof=N_Sizes},
+  N_State = State#state{sizeof=N_Sizes,typecheck=N_Types},
   {ok,N_State,[{allocate,?SIZEOF_POINTER}|Heap_St]};
 
 allocate_mem(Type,Arr,State,{g,Ident},Init) ->
   Heap_St = lists:flatten(gen_global_heap(Type,Arr,State,Init)),
-  Size = lists:foldr(fun (V,Acc) -> Acc*V end,sizeof(Type,State),Arr),
+  Size = lists:foldr(fun
+    (V,Acc) -> Acc*element(2,get_constant(V,State))
+  end,sizeof(Type,State),Arr),
   N_Sizes = maps:put({g,Ident},Size,State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes},
+  io:fwrite("~p~n",[N_State#state.typecheck]),
   {ok,N_State,Heap_St}.
 
 % This is absolutely hideous
@@ -464,10 +478,12 @@ gen_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
     [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || Ptr <-lists:seq(0,N-1)]].
 
 gen_global_heap(Type,[],State,Init) -> [{data,Type,get_constant(Init,State)}];
-gen_global_heap({P,T,S},[N|Arr],State,Inits) when is_list(Inits) ->
+gen_global_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->
+  {_,N} = get_constant(Const,State),
   Data = [gen_global_heap({P-1,T,S},Arr,State,Init) || {_,Init} <- lists:zip(lists:seq(0,N-1),Inits)],
   [{local,Data}];
-gen_global_heap({P,T,S},[N|Arr],State,{int_l,0,0,[]}) ->
+gen_global_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
+  {_,N} = get_constant(Const,State),
   Data = [gen_global_heap({P-1,T,S},Arr,State,{int_l,0,0,[]}) || _ <- lists:seq(1,N)],
   [{local,Data}].
 

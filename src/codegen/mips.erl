@@ -4,56 +4,62 @@
 -include("arch_type_consts.hrl").
 
 %% TODO: Replace this with a more relevant one
--record(context,{fn=main,global=#{},types=#{},reg=[],indent=0,
-                 io=standard_io,args=[],stack= <<>>,s_reg=[],fp=0}).
+-record(context,{fn=#{},global=#{},args=#{},indent=0,io=standard_io,types=#{},fp=0,s_reg=[],reg=[]}).
 
 generate(Ir,{file,File}) ->
   Iostream = case file:open(File, [write]) of
-    {error,_} -> error({io_file,'.build/test'});
+    {error,_} -> standard_io;%error({eonent,File});
     {ok, Io} -> Io
   end,
   [element(2,generate(St,#context{io=Iostream})) || St <- Ir],
   file:close(Iostream),
-  {ok,nil};
+  [];
 
 generate([],Context) ->
-  {ok,[]};
+  [];
+
+generate({global,Type,Name,Data},Context) ->
+  {ok,St} = generate(Data,Context),
+  io_lib:format(".globl ~s~n",[Name]),
+  format_label(Context#context.indent+7,Name),
+
+  %TODO: Finish
+  [];
+
 
 generate({function,R_Type,Name,Args,St},Context) ->
-  Globl = io_lib:format(".globl ~s~n",[Name]),
+  io_lib:format(".globl ~s~n",[Name]),
   Indent = 7 + Context#context.indent,
-  io:fwrite(Context#context.io,Globl,[]),
-  print_label(Context#context.io,Indent,Name),
+  format_label(Indent,Name),
   N_Indent = Indent+2,
   Args_Size = lists:sum([sizeof(Arg) || Arg <- Args]),
-  print_instr(Context#context.io,N_Indent,addiu,'$29','$29',integer_to_list(Args_Size div -8 - 4)),
-  generate(St, Context#context{indent=N_Indent,args=Args});
+  [format_instr(N_Indent,addiu,'$29','$29',integer_to_list(Args_Size div -8 - 4))|
+   generate(St, Context#context{indent=N_Indent,args=Args})];
 
 generate([return|Rest],Context) ->
   Indent = Context#context.indent,
   Args = Context#context.args,
   Args_Size = lists:sum([sizeof(Arg) || Arg <- Args]),
-  print_instr(Context#context.io,Indent,addiu,'$29','$29',integer_to_list(Args_Size div 8 + 4)),
-  print_instr(Context#context.io,Indent,jr,'$31'),
-  print_instr(Context#context.io,Indent,nop),
-  generate(Rest,Context);
+  [format_instr(Indent,addiu,'$29','$29',integer_to_list(Args_Size div 8 + 4)),
+   format_instr(Indent,jr,'$31'),
+   format_instr(Indent,nop)|generate(Rest,Context)];
 
 generate([{allocate,N_Bits}|Rest],Context) ->
   Indent = Context#context.indent,
-  print_instr(Context#context.io,Indent,addiu,'$29','$29',integer_to_list(N_Bits div 8)),
-  generate(Rest,Context);
+  [format_instr(Indent,addiu,'$29','$29',integer_to_list(N_Bits div 8)),
+   generate(Rest,Context)];
 
 generate([{move,{i,N},D}|Rest],Context) ->
   Indent = Context#context.indent,
   Rd = get_reg_mapping(D),
-  print_instr(Context#context.io,Indent,li,Rd,integer_to_list(N)),
-  generate(Rest,Context);
+  [format_instr(Indent,li,Rd,integer_to_list(N))|
+   generate(Rest,Context)];
 
 generate([{gc,N}|Rest],Context) ->
   Indent = Context#context.indent,
   Fp_Add = integer_to_list(Context#context.fp*4),
-  print_instr(Context#context.io,Indent,addiu,'$29','$29',Fp_Add),
-  generate(Rest,Context);
+  [format_instr(Indent,addiu,'$29','$29',Fp_Add)|
+   generate(Rest,Context)];
 
 %% Assuming int for now, TODO: Floats
 generate([{'+',[A,B],C}|Rest],Context) ->
@@ -61,8 +67,8 @@ generate([{'+',[A,B],C}|Rest],Context) ->
   Ra = get_reg_mapping(A),
   Rb = get_reg_mapping(B),
   Rc = get_reg_mapping(C),
-  print_instr(Context#context.io,Indent,addu,Rc,Ra,Rb),
-  generate(Rest,Context);
+  [format_instr(Indent,addu,Rc,Ra,Rb)|
+   generate(Rest,Context)]
 
 generate([St|_],Context) ->
   error({unknown_st,St}).
@@ -71,6 +77,7 @@ generate([St|_],Context) ->
 
 
 %% General use registers
+%% TODO: Replace this with better version for 64bit data
 get_reg_mapping({x,00}) -> '$2';  % v0
 get_reg_mapping({x,01}) -> '$3';  % v1
 get_reg_mapping({x,02}) -> '$8';  % t0
@@ -97,20 +104,20 @@ get_reg_mapping(Reg) -> error({reg_not_mapped,Reg}).
 
 
 
-print_label(Io,Indent,L) ->
-  io:fwrite(Io,"~*s:~n",[Indent+length(atom_to_list(L)),L]).
+format_label(formatIndent,L) ->
+  io:format(format"~*s:~n",[Indent+length(atom_to_list(L)),L]).
 
-print_instr(Io,Indent,Op) ->
-  io:fwrite(Io,"~*s~n",[5+Indent,Op]).
+format_instr(Indent,Op) ->
+  io_lib:format("~*s~n",[5+Indent,Op]).
 
-print_instr(Io,Indent,Op,A1) ->
-  io:fwrite(Io,"~*s ~4s~n",[Indent+5,Op,A1]).
+format_instr(Indent,Op,A1) ->
+  io_lib:format("~*s ~4s~n",[Indent+5,Op,A1]).
 
-print_instr(Io,Indent,Op,A1,A2) ->
-  io:fwrite(Io,"~*s ~4s,~4s~n",[Indent+5,Op,A1,A2]).
+format_instr(Indent,Op,A1,A2) ->
+  io_lib:format("~*s ~4s,~4s~n",[Indent+5,Op,A1,A2]).
 
-print_instr(Io,Indent,Op,A1,A2,A3) ->
-  io:fwrite(Io,"~*s ~4s,~4s,~4s~n",[Indent+5,Op,A1,A2,A3]).
+format_instr(Indent,Op,A1,A2,A3) ->
+  io_lib:format("~*s ~4s,~4s,~4s~n",[Indent+5,Op,A1,A2,A3]).
 
 
 sizeof({0,_,S}) -> S;
