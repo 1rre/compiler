@@ -31,8 +31,6 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   true -> ok end,
   {ok, Arg_State, Arg_St} = generate(Raw_Args, State#state{scope=1}),
   Arg_Types = [Arg_T || {Arg_T,{y,_}} <- maps:values(Arg_State#state.var)],
-  io:fwrite("~p~n",[Arg_State#state.var]),
-  io:fwrite("~p~n",[Arg_Types]),
   Arity = case Raw_Args of
     [[{void,_}]] -> 0;
     _ -> length(Raw_Args)
@@ -447,13 +445,12 @@ allocate_mem(Type,Arr,State,{y,N},Init) ->
   {ok,N_State,[{allocate,?SIZEOF_POINTER}|Heap_St]};
 
 allocate_mem(Type,Arr,State,{g,Ident},Init) ->
-  Heap_St = lists:flatten(gen_global_heap(Type,Arr,State,Init)),
+  Heap_St = gen_global_heap(Type,Arr,State,Init),
   Size = lists:foldr(fun
     (V,Acc) -> Acc*element(2,get_constant(V,State))
   end,sizeof(Type,State),Arr),
   N_Sizes = maps:put({g,Ident},Size,State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes},
-  io:fwrite("~p~n",[N_State#state.typecheck]),
   {ok,N_State,Heap_St}.
 
 % This is absolutely hideous
@@ -480,15 +477,15 @@ gen_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
      gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2},{int_l,0,0,[]})] ++
     [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || Ptr <-lists:seq(0,N-1)]].
 
-gen_global_heap(Type,[],State,Init) -> [{data,Type,get_constant(Init,State)}];
+gen_global_heap(Type,[],State,Init) -> {data,Type,get_constant(Init,State)};
 gen_global_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->
   {_,N} = get_constant(Const,State),
   Data = [gen_global_heap({P-1,T,S},Arr,State,Init) || {_,Init} <- lists:zip(lists:seq(0,N-1),Inits)],
-  [{local,Data}];
+  {local,Data};
 gen_global_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
   {_,N} = get_constant(Const,State),
   Data = [gen_global_heap({P-1,T,S},Arr,State,{int_l,0,0,[]}) || _ <- lists:seq(1,N)],
-  [{local,Data}].
+  {local,Data}.
 
 get_constant({int_l,_,N,_},_) ->
   {i,N};
