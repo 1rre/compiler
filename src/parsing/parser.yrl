@@ -42,8 +42,9 @@ Left  250 relational_operator.
 Left  275 shift_operator.
 Left  300 addition_operator.
 Left  325 multiplication_operator.
-Right 350 cast.
-Unary 375 unary_operator.
+Right 375 cast.
+Unary 350 unary_operator.
+Unary 350 sizeof.
 Left  400 postfix_operator.
 Right 400 postfix_list.
 Right 450 declaration_list.

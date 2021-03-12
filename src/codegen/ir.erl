@@ -30,7 +30,7 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
   if Arr =/= [] -> error({return_type,array});
   true -> ok end,
   {ok, Arg_State, Arg_St} = generate(Raw_Args, State#state{scope=1}),
-  Arg_Types = [Arg_T || {Arg_T,_} <- maps:values(Arg_State#state.var)],
+  Arg_Types = [Arg_T || {{y,_},{Arg_T,_}} <- maps:to_list(Arg_State#state.var)],
   Arity = length(Raw_Args),
   Alloc_St = lists:flatten([[{allocate,?SIZEOF_INT},{move,{z,N},{y,N}}] || N <- lists:seq(0,Arity-1)]),
   New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
@@ -57,10 +57,18 @@ generate({int_l,_Line,Val,[]}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_INT},State#state.typecheck),
   {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}}]};
-generate({int_l,_Line,Val,[$l]}, State) ->
+generate({int_l,_Line,Val,[u]}, State) ->
+  Lv_Cnt = State#state.lvcnt,
+  N_Types = maps:put({x,Lv_Cnt},{0,u,?SIZEOF_INT},State#state.typecheck),
+  {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{0,u,?SIZEOF_INT}}]};
+generate({int_l,_Line,Val,[l]}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_LONG},State#state.typecheck),
-  {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}}]};
+  {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{0,i,?SIZEOF_LONG}}]};
+generate({int_l,_Line,Val,[ul]}, State) ->
+  Lv_Cnt = State#state.lvcnt,
+  N_Types = maps:put({x,Lv_Cnt},{0,u,?SIZEOF_LONG},State#state.typecheck),
+  {ok,State#state{typecheck=N_Types},[{move,{i,Val},{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{0,u,?SIZEOF_LONG}}]};
 
 %% Process a float node by moving the literal value to the active register
 %  As doubles are out of spec we currently don't support these however it may be useful to later
@@ -132,6 +140,8 @@ generate({sizeof,Expr},State) ->
       Size = case lists:last(Expr_St) of
         {move,{y,Rv},{x,Lv}} ->
           maps:get({y,Rv},Expr_State#state.sizeof,undefined);
+        {move,{g,Ident},{x,Lv}} ->
+          maps:get({g,Ident},Expr_State#state.sizeof,undefined);
         _ ->
           case maps:get({x,Lv_Cnt},Expr_State#state.typecheck,{0,n,0}) of
             {0,_,S} -> S;
@@ -406,7 +416,7 @@ allocate_mem(Type,[],State,{y,N},Init) ->
 allocate_mem(Type,[],State,Dest,Init) ->
   N_Sizes = maps:put(Dest,sizeof(Type,State),State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes},
-  {ok,N_State,[{data,Type,get_constant(Init)}]};
+  {ok,N_State,[{data,Type,get_constant(Init,State)}]};
 
 allocate_mem(Type,Arr,State,{y,N},Init) ->
   Heap_St = lists:flatten(gen_heap(Type,Arr,State,Init)),
@@ -445,7 +455,7 @@ gen_heap({P,T,S},[N|Arr],State,{int_l,0,0,[]}) ->
      gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2},{int_l,0,0,[]})] ++
     [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || Ptr <-lists:seq(0,N-1)]].
 
-gen_global_heap(Type,[],State,Init) -> [{data,Type,get_constant(Init)}];
+gen_global_heap(Type,[],State,Init) -> [{data,Type,get_constant(Init,State)}];
 gen_global_heap({P,T,S},[N|Arr],State,Inits) when is_list(Inits) ->
   Data = [gen_global_heap({P-1,T,S},Arr,State,Init) || {_,Init} <- lists:zip(lists:seq(0,N-1),Inits)],
   [{local,Data}];
@@ -453,12 +463,24 @@ gen_global_heap({P,T,S},[N|Arr],State,{int_l,0,0,[]}) ->
   Data = [gen_global_heap({P-1,T,S},Arr,State,{int_l,0,0,[]}) || _ <- lists:seq(1,N)],
   [{local,Data}].
 
-get_constant({int_l,_,N,_}) ->
+get_constant({int_l,_,N,_},_) ->
   {i,N};
-get_constant({float_l,_,N,_}) ->
+get_constant({float_l,_,N,_},_) ->
   {f,N};
-get_constant(Type) ->
+get_constant({bif,T,[A,B]},State) ->
+  {At,Ac} = get_constant(A,State),
+  {Bt,Bc} = get_constant(B,State),
+  {resolve_type(At,Bt),do_op(T,[Ac,Bc])};
+get_constant({sizeof,T},State) ->
+  {ok,_,[{move,N,_}]} = generate({sizeof,T},State),
+  N;
+get_constant(Type,State) ->
   error({not_const,Type}).
+
+resolve_type(i,i) -> i;
+resolve_type(_,f) -> f;
+resolve_type(f,_) -> f;
+resolve_type(_,_) -> i.
 
 %% To deallocate memory due to variables going out of scope,
 %  such as at the end of a compound statement or for a return statement,
@@ -605,6 +627,18 @@ process_bif(Type,Fst,Sec,State,Swap) ->
 %% Get a shortened name of a type
 %% TODO: #18
 %        We need to add a typedef, enum & struct resolver here
+get_type([{long,_},{double,_}],_) -> {ok,{0,f,?SIZEOF_L_DOUBLE}};
+get_type([{double,_}],_)          -> {ok,{0,f,?SIZEOF_DOUBLE}};
+get_type([{float,_}],_)           -> {ok,{0,f,?SIZEOF_FLOAT}};
+get_type([{long,_},{int,_}],_)    -> {ok,{0,i,?SIZEOF_LONG}};
+get_type([{long,_}],_)            -> {ok,{0,i,?SIZEOF_LONG}};
+get_type([{unsigned,_}],C)        -> {ok,{0,u,?SIZEOF_INT}};
+get_type([{signed,_}],C)          -> {ok,{0,i,?SIZEOF_INT}};
+get_type([{int,_}],_)             -> {ok,{0,i,?SIZEOF_INT}};
+get_type([{short,_},{int,_}],_)   -> {ok,{0,i,?SIZEOF_SHORT}};
+get_type([{short,_}],_)           -> {ok,{0,i,?SIZEOF_SHORT}};
+get_type([{char,_}],_)            -> {ok,{0,i,?SIZEOF_CHAR}};
+get_type([{void,_}],_)            -> {ok,{0,n,0}};
 get_type([{unsigned,_}|Type],C) ->
   case get_type(Type,C) of
     {ok,{P,i,N}} -> {ok,{P,u,N}};
@@ -617,16 +651,6 @@ get_type([{signed,_}|Type],C) ->
     {error,{unknown_type,T}} -> {error,{unknown_type,[signed|T]}};
     _ -> {error,{unknown_type,[signed|Type]}}
   end;
-get_type([{long,_},{double,_}],_) -> {ok,{0,f,?SIZEOF_L_DOUBLE}};
-get_type([{double,_}],_)          -> {ok,{0,f,?SIZEOF_DOUBLE}};
-get_type([{float,_}],_)           -> {ok,{0,f,?SIZEOF_FLOAT}};
-get_type([{long,_},{int,_}],_)    -> {ok,{0,i,?SIZEOF_LONG}};
-get_type([{long,_}],_)            -> {ok,{0,i,?SIZEOF_LONG}};
-get_type([{int,_}],_)             -> {ok,{0,i,?SIZEOF_INT}};
-get_type([{short,_},{int,_}],_)   -> {ok,{0,i,?SIZEOF_SHORT}};
-get_type([{short,_}],_)           -> {ok,{0,i,?SIZEOF_SHORT}};
-get_type([{char,_}],_)            -> {ok,{0,i,?SIZEOF_CHAR}};
-get_type([{void,_}],_)            -> {ok,{0,n,0}};
 get_type(Type,_)                  -> {error,{unknown_type, Type}}.
 
 %% Function to return the size of different types.
@@ -641,6 +665,18 @@ get_type(Type,_)                  -> {error,{unknown_type, Type}}.
 sizeof({0,_,S},_) -> S;
 sizeof({_,_,_},State) -> ?SIZEOF_POINTER;
 sizeof(Type,State) -> error({type,Type}).
+
+do_op('+',[A,B]) -> A+B;
+do_op('-',[A,B]) -> A-B;
+do_op('*',[A,B]) -> A*B;
+do_op('%',[A,B]) -> A rem B;
+do_op('==',[A,B]) -> A==B;
+do_op('!=',[A,B]) -> A/=B;
+do_op('>=',[A,B]) -> A>=B;
+do_op('<=',[A,B]) -> B>=A;
+do_op('>',[A,B]) -> A>B;
+do_op('<',[A,B]) -> B>A;
+do_op(Op,_) -> error({bif_not_recognised,Op}).
 
 %% 2x helper functions to copy the label/local variable count from 1 state to another.
 copy_lbcnt(State_1,State_2) -> State_2#state{lbcnt=State_1#state.lbcnt}.

@@ -15,8 +15,11 @@ main(["clean"]) ->
 main(["compile"]) ->
   Erl_Files = build_common(),
   io:fwrite("~p~n", [Erl_Files]),
-  [compile:file(Erl, [{outdir,".build"},{d,'TARGET_ARCH',mips32},report|?ERLC_FLAGS]) || Erl <- Erl_Files],
-  halt(0);
+  Out = [compile:file(Erl, [{outdir,".build"},{d,'TARGET_ARCH',mips32},report|?ERLC_FLAGS]) || Erl <- Erl_Files],
+  case lists:member(error,Out) of
+    true -> halt(1);
+    _ -> halt(0)
+  end;
 
 % Compile everything
 main(["bin/c_compiler"]) ->

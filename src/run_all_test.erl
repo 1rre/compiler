@@ -10,18 +10,31 @@ c_test([File|Tests],Gcc,Qemu) ->
   process_flag(trap_exit, true),
   try c_compiler:main(["-S", "-o", ".test/test.s", File]) of
     Result ->
-      io:fwrite(standard_error,"~s: \e[1;32mcompiles\e[0;37m~n",[File]),
+      io:fwrite(standard_error,"~s: ",[File]),
       open_port({spawn_executable, Gcc},
                 [stderr_to_stdout,
+                 exit_status,
                  {args, ["-mfp32", "-o", ".test/test.o", "-c", ".test/test.s"]}]),
-      wait_exe(1, false),
+      wait_exe(),
       Driver = filename:rootname(File) ++ "_driver.c",
       open_port({spawn_executable, Gcc},
                 [stderr_to_stdout,
+                 exit_status,
                  {args, ["-mfp32", "-static", "-o", "test/test.bin", ".test/test.o", Driver]}]),
-      wait_exe(1, false),
-      
-      1
+      wait_exe(),
+      open_port({spawn_executable, Qemu},
+                [stderr_to_stdout,
+                 exit_status,
+                 {args, ["test/test.bin"]}]),
+      case wait_exe() of
+        0 ->
+          io:fwrite(standard_error,"\e[1;32mpass\e[0;37m~n",[]),
+          1;
+        N ->
+          io:fwrite(standard_error,"\e[1;31mfail\e[0;37m~n",[]),
+          io:fwrite(standard_error,"Reason:~nqemu-mips exited with code ~B~n",[N]),
+          0
+      end
   catch
     _:Err ->
       io:fwrite(standard_error,"~s: \e[1;31mfail\e[0;37m~n",[File]),
@@ -29,19 +42,13 @@ c_test([File|Tests],Gcc,Qemu) ->
       0
   end + c_test(Tests,Gcc,Qemu).
 
-wait_exe(0, true) ->
-  error;
-wait_exe(0, _) ->
-  ok;
-wait_exe(N, Is_Ok) ->
+wait_exe() ->
   receive
-    {'EXIT', _, normal} -> wait_exe(N - 1, Is_Ok);
-    Message ->
-      io:fwrite(standard_error,"~p~n",[Message]),
-      wait_exe(N, true)
+    {_,{exit_status,N}} -> N
   end.
 
 run() ->
+  file:make_dir(".test"),
   Tests = filelib:wildcard("compiler_tests/*/*.c") -- filelib:wildcard("compiler_tests/*/*_driver.c"),
   Gcc = case {os:find_executable("mips-linux-gnu-gcc"),os:find_executable("mips-linux-musl-gcc")} of
     {false,false} -> error({not_found,'mips-linux-gnu-gcc'});

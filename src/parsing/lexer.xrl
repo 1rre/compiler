@@ -45,7 +45,7 @@ Erlang code.
 char_to_int(Line, Chars) ->
   case resolve_escapes(Chars, char) of
     {error, Error} -> {error, Error};
-    Esc -> {token, {char_l, Line, lists:foldr(fun (V,A) -> A * 256 + V end, 0, Esc)}}
+    Esc -> {token, {int_l, Line, lists:foldr(fun (V,A) -> A * 256 + V end, 0, Esc),[c]}}
   end.
 
 string_escape(Line, Chars) ->
@@ -122,17 +122,24 @@ ifloat(Chars, Line) ->
   {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $f) and (X =/= $F) and (X =/= $l) and (X =/= $L) end, [$0 | Chars]),
   [Man, Exp] = string:split(Str, "e"),
   {float_l, Line, list_to_integer(Man) * math:pow(10, list_to_integer(Exp)), Suffix}.
+
+i_suffix([_,_]) -> [u,l];
+i_suffix([$l]) -> [l];
+i_suffix([$L]) -> [l];
+i_suffix([_]) -> [u];
+i_suffix([]) -> [].
+
 oct(Chars, Line) ->
   {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $u) and (X =/= $U) and (X =/= $l) and (X =/= $L) end, Chars),
-  {int_l, Line, list_to_integer(Str, 8), Suffix}.
+  {int_l, Line, list_to_integer(Str, 8), i_suffix(Suffix)}.
 
 dec(Chars, Line) ->
   {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $u) and (X =/= $U) and (X =/= $l) and (X =/= $L) end, Chars),
-  {int_l, Line, list_to_integer(Str, 10), Suffix}.
+  {int_l, Line, list_to_integer(Str, 10), i_suffix(Suffix)}.
 
 hex([_,_|Chars], Line) ->
   {Str, Suffix} = lists:splitwith(fun (X) -> (X =/= $u) and (X =/= $U) and (X =/= $l) and (X =/= $L) end, Chars),
-  {int_l, Line, list_to_integer(Str, 16), Suffix}.
+  {int_l, Line, list_to_integer(Str, 16), i_suffix(Suffix)}.
 
 
 -undef(OCT_DIGIT).
