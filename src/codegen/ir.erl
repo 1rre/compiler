@@ -347,8 +347,8 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
   Next_St = case maps:get(Active_Reg,Next_State#state.typecheck,undefined) of
-    Type -> Mem_St ++ Mem_St ++ [{move,Active_Reg,{y,Rv_Cnt}}];
-    _ -> Mem_St ++ Mem_St ++ [{cast,Active_Reg,Type},{move,Active_Reg,{y,Rv_Cnt}}]
+    Type -> Mem_St ++ [{move,Active_Reg,{y,Rv_Cnt}}];
+    _ -> Mem_St ++ [{cast,Active_Reg,Type},{move,Active_Reg,{y,Rv_Cnt}}]
   end,
   {ok, Next_State, Next_St};
 
@@ -423,8 +423,7 @@ allocate_mem(Type,Arr,State,{y,N},Init) ->
   Size = lists:foldr(fun (V,Acc) -> Acc*V end,sizeof(Type,State),Arr),
   N_Sizes = maps:put({y,N},Size,State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes},
-  {ok, Decl_State, Decl_St} = generate(Init, N_State),
-  {ok,N_State,Heap_St++[{allocate,?SIZEOF_POINTER},{move,{x,State#state.lvcnt},{y,N}}]};
+  {ok,N_State,Heap_St++[{allocate,?SIZEOF_POINTER}]};
 
 allocate_mem(Type,Arr,State,{g,Ident},Init) ->
   Heap_St = lists:flatten(gen_global_heap(Type,Arr,State,Init)),
@@ -495,16 +494,20 @@ deallocate_mem(State_1,State_2) ->
 %  a memory location and then the appropriate move/store instructions are returned.
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   {ok,Ident,Ptr_Depth,Arr} = get_ident_specs(Raw_Ident, State),
-  {ok,Raw_Type,Ptr} = case maps:get(Ident,State#state.var,undefined) of
+  Active_Reg = {x,State#state.lvcnt},
+  {ok,{Rp,Rt,Rs},Ptr} = case maps:get(Ident,State#state.var,undefined) of
     {T,Ptr_Loc} -> {ok,T,Ptr_Loc};
     Other -> {error, {Other,{undeclared,Ident}}}
   end,
+  {ok,Loc,Arr_St} = gen_array_offset(Ptr,Arr,State),
+  io:fwrite("Array:~n~p~n",[Arr_St]),
   % TODO: Arrays
-  {ok,Ptr_Type,Ptr_St} = get_ptr(Raw_Type,Ptr_Depth,Ptr,State#state{lvcnt=State#state.lvcnt+1}),
+  {ok,Ptr_Type,Ptr_St} = get_ptr({Rp-length(Arr),Rt,Rs},Ptr_Depth,Loc,State#state{lvcnt=State#state.lvcnt+1}),
+  io:fwrite("Pointer:~n~p~n",[Ptr_St]),
   Lv_Cnt = State#state.lvcnt,
   {ok,Assign_State,Assign_St} = generate(Raw_St,State),
   St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
-  case Ptr_St of
+  case Arr_St++Ptr_St of
     [] ->
       End_St = if
         St_Type =/= Ptr_Type -> [{cast,{x,Lv_Cnt},Ptr_Type},{move,{x,Lv_Cnt},Ptr}];
@@ -512,13 +515,13 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
       end,
       Next_St = Assign_St ++ End_St,
       {ok,copy_lbcnt(Assign_State,State),Next_St};
-    Ptr_St ->
+    Var_St ->
       {_,_,Dest} = lists:last(Assign_St),
       End_St = if
         St_Type =/= Ptr_Type -> [{cast,{x,Lv_Cnt},Ptr_Type},{store,Dest,{x,Lv_Cnt+1}}];
         true -> [{store,Dest,{x,Lv_Cnt+1}}]
       end,
-      Next_St = Assign_St ++ Ptr_St ++ End_St,
+      Next_St = Assign_St ++ Var_St ++ End_St,
       {ok,copy_lbcnt(Assign_State,State),Next_St}
   end;
 
