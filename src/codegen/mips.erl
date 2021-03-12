@@ -27,7 +27,7 @@ generate(Ir,{file,_File}) ->
       {Data++Asm,Text}
   end,{[],[]},lists:sort(Ir)),
   io:fwrite("~p~n~n~p~n",[Data,Text]),
-  {ok,{Data,Text}}.
+  {ok,{['.data'|Data],['.text'|Text]}}.
 
 
 %% TODO: get register positions for call
@@ -85,11 +85,6 @@ gen_data({0,f,64},{i,Val}) ->
 %% Pointer
 gen_data({_,_,_},{i,Val}) ->
   {ok,[{'.word',Val}]}.
-
-% gen_global_ptr({local,Frame},Name,[]) ->
-%   Local = [{Name,[]},{'.word',{Name,[1]}},'.endb'],
-%   Indices = lists:zip(Frame,lists:seq(1,length(Frame))),
-%   lists:flatten([gen_global_ptr(Sub_Frame,Name,[N]) || {Sub_Frame,N} <- Indices] ++ Local);
 
 gen_global_ptr({local,Frame},Name,Depth) ->
   Local = case hd(Frame) of

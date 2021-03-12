@@ -431,7 +431,7 @@ allocate_mem(Type,[],State,{y,N},Init) ->
 allocate_mem(Type,[],State,Dest,Init) ->
   N_Sizes = maps:put(Dest,sizeof(Type,State),State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes},
-  {ok,N_State,[{data,Type,get_constant(Init,State)}]};
+  {ok,N_State,{data,Type,get_constant(Init,State)}};
 
 allocate_mem(Type,Arr,State,{y,N},Init) ->
   Heap_St = lists:flatten(gen_heap(Type,Arr,State,Init)),
