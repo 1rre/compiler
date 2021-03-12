@@ -133,7 +133,10 @@ generate({{identifier,Ln,Ident},{apply,Args}}, State) ->
 generate({sizeof,Expr},State) ->
   Lv_Cnt = State#state.lvcnt,
   case get_type(Expr,State) of
-    {ok,{0,_,S}} -> {ok,State,[{move,{i,S div 8},{x,Lv_Cnt}}]};
+    {ok,{0,_,S}} ->
+      Types = State#state.typecheck,
+      N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_INT},Types),
+      {ok,State#state{typecheck=N_Types},[{move,{i,S div 8},{x,Lv_Cnt}}]};
     {ok,_} -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,Lv_Cnt}}]};
     _ ->
       {ok,Expr_State,Expr_St} = generate(Expr, State),
@@ -148,7 +151,9 @@ generate({sizeof,Expr},State) ->
             R -> ?SIZEOF_POINTER
           end
         end,
-      {ok,State,[{move,{i,Size div 8},{x,Lv_Cnt}}]}
+      Types = State#state.typecheck,
+      N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_INT},Types),
+      {ok,State#state{typecheck=N_Types},[{move,{i,Size div 8},{x,Lv_Cnt}}]}
   end;
 
 %% As there are multiple cases for assignment, it is delegated to a helper function.
@@ -393,7 +398,7 @@ get_ident_specs({{'*',_},Rest}, State) ->
 get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs({Ptr,Rest}, State),
   {ok, Ident, Ptr_Depth+1, Arr};
-get_ident_specs({Rest,{array,{int_l,_,N,_}}}, State) ->
+get_ident_specs({Rest,{array,N}}, State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Rest, State),
   {ok, Ident, Ptr_Depth,[N|Arr]};
 get_ident_specs({'*',_}, State) ->
@@ -420,10 +425,12 @@ allocate_mem(Type,[],State,Dest,Init) ->
 
 allocate_mem(Type,Arr,State,{y,N},Init) ->
   Heap_St = lists:flatten(gen_heap(Type,Arr,State,Init)),
-  Size = lists:foldr(fun (V,Acc) -> Acc*V end,sizeof(Type,State),Arr),
+  Size = lists:foldr(fun
+    (V,Acc) -> Acc*element(2,get_constant(V,State))
+  end,sizeof(Type,State),Arr),
   N_Sizes = maps:put({y,N},Size,State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes},
-  {ok,N_State,Heap_St++[{allocate,?SIZEOF_POINTER}]};
+  {ok,N_State,[{allocate,?SIZEOF_POINTER}|Heap_St]};
 
 allocate_mem(Type,Arr,State,{g,Ident},Init) ->
   Heap_St = lists:flatten(gen_global_heap(Type,Arr,State,Init)),
@@ -437,7 +444,8 @@ allocate_mem(Type,Arr,State,{g,Ident},Init) ->
 gen_heap(Type,[],State,Init) ->
   {ok,_,St} = generate(Init,State),
   St;
-gen_heap({P,T,S},[N|Arr],State,Inits) when is_list(Inits) ->
+gen_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->
+  {_,N} = get_constant(Const,State),
   Lv_Cnt = State#state.lvcnt,
   Size = sizeof({P,T,S},State),
   [{test_heap,Size*N,{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{P,T,S}} |
@@ -445,7 +453,8 @@ gen_heap({P,T,S},[N|Arr],State,Inits) when is_list(Inits) ->
      {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt+1}} |
      gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2},Init)] ++
     [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)]];
-gen_heap({P,T,S},[N|Arr],State,{int_l,0,0,[]}) ->
+gen_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
+  {_,N} = get_constant(Const,State),
   Lv_Cnt = State#state.lvcnt,
   Size = sizeof({P,T,S},State),
   [{test_heap,Size*N,{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{P,T,S}} |
@@ -499,11 +508,12 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
     {T,Ptr_Loc} -> {ok,T,Ptr_Loc};
     Other -> {error, {Other,{undeclared,Ident}}}
   end,
-  {ok,Loc,Arr_St} = gen_array_offset(Ptr,Arr,State),
-  io:fwrite("Array:~n~p~n",[Arr_St]),
-  % TODO: Arrays
+  {ok,Loc,Raw_Arr_St} = gen_array_offset(Ptr,Arr,State#state{lvcnt=State#state.lvcnt+1}),
+  Arr_St = if
+    Raw_Arr_St =:= [] -> [];
+    true -> lists:droplast(Raw_Arr_St)
+  end,
   {ok,Ptr_Type,Ptr_St} = get_ptr({Rp-length(Arr),Rt,Rs},Ptr_Depth,Loc,State#state{lvcnt=State#state.lvcnt+1}),
-  io:fwrite("Pointer:~n~p~n",[Ptr_St]),
   Lv_Cnt = State#state.lvcnt,
   {ok,Assign_State,Assign_St} = generate(Raw_St,State),
   St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
@@ -548,6 +558,18 @@ get_ptr({N,T,S},Ptr_Depth,Ptr,State) ->
 get_ptr_load_st(1,Reg,Ptr) -> [];
 get_ptr_load_st(N,Reg,Ptr) -> [{load,Ptr,Reg}|get_ptr_load_st(N-1,Reg,Reg)].
 
+gen_array_offset({x,N},[Hd|Arr],State) ->
+  {ok,_,Offset_St} = generate(Hd,State#state{lvcnt=State#state.lvcnt+1}),
+  Move_St = [{'+',[{x,N},{x,N+1}],{x,N}},{load,{x,N},{x,N}}],
+  {ok,Loc,Arr_St} = gen_array_offset({x,N},Arr,State),
+  {ok,Loc,Offset_St++Move_St++Arr_St};
+gen_array_offset(Src,[Hd|Arr],State) ->
+  N = State#state.lvcnt,
+  {ok,Loc,St} = gen_array_offset({x,N},[Hd|Arr],State),
+  {ok,Loc,[{move,Src,{x,N}}|St]};
+gen_array_offset(Src,[],_State) ->
+  {ok,Src,[]}.
+
 %% Delegated function for processing built-in functions.
 %% A special case for operations which can be done on pointers
 %% TODO: N/A
@@ -569,7 +591,7 @@ process_bif('+',Fst,Sec,State,Swap) ->
     {{0,T,S_A},{0,T,S_B}} -> {0,T,max(S_A,S_B)};
     {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of A
     {{0,i,S_A},{N,T,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
-    Types -> error({{undefined_op_cast,'+'},Types})
+    Types -> error({{undefined_op_cast,'+'},Types,State,A,B})
   end,
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{'+',[R1,R2],{x,Lv_Cnt}}],
