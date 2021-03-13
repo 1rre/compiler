@@ -139,6 +139,13 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
   %% TODO: Find out what way around SP should be
   [{Instr,Dest,{sp,Src-Context#context.sp}}|gen_scoped(Rest,Reg_Context)];
 
+gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
+  io:fwrite("~p~n",[Context#context.types]),
+  io:fwrite("Src 1~n~p~n",[Src_1]),
+  io:fwrite("Src 2~n~p~n",[Src_2]),
+  io:fwrite("Dest~n~p~n",[Dest]),
+  error({no_mips,Op});
+
 
 gen_scoped([],Context) -> [];
 gen_scoped([Other|_],Context) -> error({no_mips,Other}).

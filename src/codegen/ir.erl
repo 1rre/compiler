@@ -164,7 +164,7 @@ generate({{identifier,Ln,Ident},{apply,Args}}, State) ->
           Mv_0_St = {move,{x,0},{x,Lv_Cnt}},
           Arg_St++Alloc_St++Mv_To_St++To_A_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
       end,
-      N_Types = maps:put({x,Lv_Cnt},Type,State#state.typecheck),
+      N_Types = maps:put({x,Lv_Cnt},{[],Type},State#state.typecheck),
       {ok,copy_lbcnt(Arg_State,State#state{typecheck=N_Types}),New_St};
     Other ->
       error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})
@@ -688,8 +688,8 @@ process_bif('-',Fst,Sec,State,Swap) ->
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   %% TODO: THIS WILL CRASH
   R_Type = case {A_Type,B_Type} of
-    {{0,T,S_A},{0,T,S_B}} -> {0,T,max(S_A,S_B)};
-    {{N,T,S_A},{0,i,S_B}} -> {N,T,S_A}; %% TODO: Change size of B
+    {{[],{0,T,S_A}},{[],{0,T,S_B}}} -> {[],{0,T,max(S_A,S_B)}};
+    {{[],{N,T,S_A}},{[],{0,i,S_B}}} -> {[],{N,T,S_A}}; %% TODO: Change size of B
     Types -> error({{undefined_op_cast,'-'},Types})
   end,
   Lv_Cnt = State#state.lvcnt,
@@ -715,8 +715,8 @@ process_bif(Type,Fst,Sec,State,Swap) ->
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   %% TODO: THIS WILL CRASH
   R_Type = case {A_Type,B_Type} of
-    {{0,T,S_A},{0,T,S_B}} -> {0,T,max(S_A,S_B)};
-    {{0,_,S_A},{0,_,S_B}} -> {0,f,max(S_A,S_B)};
+    {{[],{0,T,S_A}},{[],{0,T,S_B}}} -> {0,T,max(S_A,S_B)};
+    {{[],{0,_,S_A}},{[],{0,_,S_B}}} -> {0,f,max(S_A,S_B)};
     Types -> error({{undefined_op_cast,Type},Types})
   end,
   Lv_Cnt = State#state.lvcnt,

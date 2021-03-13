@@ -1,0 +1,21 @@
+compiler_tests/float/add_mul.c: fail
+Reason:
+{{undefined_op_cast,'+'},
+ {{0,f,32},{[],{0,f,32}}},
+ {state,0,3,0,
+        #{f => {{0,f,32},3}},
+        #{{y,0} => 32,{y,1} => 32,{y,2} => 32},
+        1,
+        #{x => {{[],{0,f,32}},{y,0}},
+          y => {{[],{0,f,32}},{y,1}},
+          z => {{[],{0,f,32}},{y,2}}},
+        #{},#{},#{},
+        #{{x,0} => {[],{0,i,32}},
+          {y,0} => {[],{0,f,32}},
+          {y,1} => {[],{0,f,32}},
+          {y,2} => {[],{0,f,32}}}},
+ {bif,'*',[{identifier,3,y},{identifier,3,z}]},
+ {identifier,3,x}}
+
+^ This is a type not being inserted properly, it should be {{[],{0,f,32}},{[],{0,f,32}}}
+Maybe due to return type of fn?

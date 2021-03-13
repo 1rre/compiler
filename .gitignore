@@ -13,3 +13,4 @@ bin/
 null/
 out/
 .test/
+test.sh
