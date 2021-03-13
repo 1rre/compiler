@@ -114,6 +114,7 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   end,
   N_Types = maps:put({y,Nd},{Pd,Td,Sd},Context#context.types),
   N_Context = Context#context{types=N_Types},
+  %% TODO: Find out what way around SP should be
   [{Instr,Src,{sp,Dest-Context#context.sp}}|gen_scoped(Rest,N_Context)];
 
 
@@ -135,6 +136,7 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
     {16,Reg} -> lh;
     {8,Reg} -> lb
   end,
+  %% TODO: Find out what way around SP should be
   [{Instr,Dest,{sp,Src-Context#context.sp}}|gen_scoped(Rest,Reg_Context)];
 
 
