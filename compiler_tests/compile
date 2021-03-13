@@ -1,0 +1,1 @@
+mips-linux-musl-gcc -mfp32 .test/test.s -c -o .test/test.o && mips-linux-musl-gcc -mfp32 -static compiler_tests/{TEST} .test/test.o -S -o .test/test.s

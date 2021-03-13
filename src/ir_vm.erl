@@ -94,12 +94,12 @@ run_st([{gc,N}|Rest],Context,Ir) ->
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
-run_st([{test_heap,N,{x,Rn}}|Rest],Context,Ir) ->
+run_st([{test_heap,N}|Rest],Context,Ir) ->
   Stack = Context#context.stack,
   N_Stack = <<0:N,Stack/bits>>,
-  Old_Reg = Context#context.reg,
-  Reg = set_reg(Old_Reg,Rn,?STACK_PTR-byte_size(Stack)),
-  N_Context = Context#context{stack=N_Stack,reg=Reg},
+  %Old_Reg = Context#context.reg,
+  %Reg = set_reg(Old_Reg,Rn,?STACK_PTR-byte_size(Stack)),
+  N_Context = Context#context{stack=N_Stack},
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
 
