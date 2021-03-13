@@ -89,33 +89,51 @@ generate({int_l,_Line,Val,[ul]}, State) ->
 %  As doubles are out of spec we currently don't support these however it may be useful to later
 generate({float_l,_Line,Val,_Suffix}, State) ->
   Lv_Cnt = State#state.lvcnt,
-  N_Types = maps:put({x,Lv_Cnt},{0,f,?SIZEOF_FLOAT},State#state.typecheck),
+  N_Types = maps:put({x,Lv_Cnt},{[],{0,f,?SIZEOF_FLOAT}},State#state.typecheck),
   {ok,State#state{typecheck=N_Types},[{move,{f,Val},{x,Lv_Cnt}}]};
 
 %% Process an identifier by finding the integer's location on the stack
 %  and moving it to the active register
 generate({identifier,Ln,Ident}, State) ->
   case maps:get(Ident,State#state.var,undefined) of
-    {Type, X} ->
+    {{[],Type}, X} ->
+      io:fwrite("~p~n",[Type]),
       Lv_Cnt = State#state.lvcnt,
-      N_Types = maps:put({x,Lv_Cnt},Type,State#state.typecheck),
+      N_Types = maps:put({x,Lv_Cnt},{[],Type},State#state.typecheck),
       {ok,State#state{typecheck=N_Types},[{move,X,{x,Lv_Cnt}}]};
+    {{Arr,{P,T,S}},X} ->
+      Lv_Cnt = State#state.lvcnt,
+      N_Types = maps:put({x,Lv_Cnt},{Arr,{P+1,T,S}},State#state.typecheck),
+      {ok,State#state{typecheck=N_Types},[{address,X,{x,Lv_Cnt}}]};
     Other -> error({Other,Ident,{line,Ln},{state,State}})
   end;
 
+%% TODO: Fix this for new arrays
 generate({Rest,{array, Offset}}, State) ->
   Lv_Cnt = State#state.lvcnt,
+  io:fwrite("~p~n",[Rest]),
   {ok,Ptr_State,Ptr_St} = generate(Rest,State),
-  {ok,Off_State,Off_St} = generate(Offset,State#state{lvcnt=Lv_Cnt+1}),
-  Rtn_St = Ptr_St++Off_St++[{'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}},
-                            {load,{x,Lv_Cnt},{x,Lv_Cnt}}],
-  {ok,copy_lvcnt(Off_State,Ptr_State),Rtn_St};
+  io:fwrite("~p~n",[Ptr_State#state.typecheck]),
+  {ok,Off_State,Off_St} = generate(Offset,Ptr_State#state{lvcnt=Lv_Cnt+1}),
+  {Arr,Type} = maps:get({x,Lv_Cnt},Ptr_State#state.typecheck),
+  Size = lists:foldl(fun ({_,A},B) -> A*B end,1,tl(Arr)),
+  Arr_St = Ptr_St++Off_St++[{move,{i,Size},{x,Lv_Cnt+2}},
+                            {'*',[{x,Lv_Cnt+1},{x,Lv_Cnt+2}],{x,Lv_Cnt+1}},
+                            {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
+  case Arr of
+    [_] ->
+      N_Types = maps:put({x,Lv_Cnt},{tl(Arr),Type},Ptr_State#state.typecheck),
+      Rtn_St = Arr_St ++ [{load,{x,Lv_Cnt},{x,Lv_Cnt}}],
+      {ok,copy_lvcnt(Off_State,Ptr_State#state{typecheck=N_Types}),Rtn_St};
+    _ ->
+      {P,T,S} = Type,
+      N_Types = maps:put({x,Lv_Cnt},{tl(Arr),{P,T,S}},Ptr_State#state.typecheck),
+      {ok,copy_lvcnt(Off_State,Ptr_State#state{typecheck=N_Types}),Arr_St}
+  end;
 
 %% Process a function call by storing the current register state on the stack,
 % storing the arguments to the function on the stack,
 % calling the function, then restoring the register state.
-%% TODO: N/A
-%        Debug arg processing order; Potentially it is in the wrong order.
 generate({{identifier,Ln,Ident},{apply,Args}}, State) ->
   {ok,Arg_State,Arg_St} = lists:foldl(fun
     (Arg,{ok,Acc_State,Acc_St}) ->
@@ -150,24 +168,15 @@ generate({sizeof,Expr},State) ->
   case get_type(Expr,State) of
     {ok,{0,_,S}} ->
       Types = State#state.typecheck,
-      N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_INT},Types),
+      N_Types = maps:put({x,Lv_Cnt},{[],{0,i,?SIZEOF_INT}},Types),
       {ok,State#state{typecheck=N_Types},[{move,{i,S div 8},{x,Lv_Cnt}}]};
     {ok,_} -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,Lv_Cnt}}]};
     _ ->
       {ok,Expr_State,Expr_St} = generate(Expr, State),
-      Size = case lists:last(Expr_St) of
-        {move,{y,Rv},{x,Lv}} ->
-          maps:get({y,Rv},Expr_State#state.sizeof,undefined);
-        {move,{g,Ident},{x,Lv}} ->
-          maps:get({g,Ident},Expr_State#state.sizeof,undefined);
-        _ ->
-          case maps:get({x,Lv_Cnt},Expr_State#state.typecheck,{0,n,0}) of
-            {0,_,S} -> S;
-            R -> ?SIZEOF_POINTER
-          end
-        end,
+      {Arr,Type} = maps:get({x,Lv_Cnt},Expr_State#state.typecheck,{[],{0,n,0}}),
+      Size = lists:foldl(fun (A,V) -> A * V end,sizeof(Type,State),Arr),
       Types = State#state.typecheck,
-      N_Types = maps:put({x,Lv_Cnt},{0,i,?SIZEOF_INT},Types),
+      N_Types = maps:put({x,Lv_Cnt},{[],{0,i,?SIZEOF_INT}},Types),
       {ok,State#state{typecheck=N_Types},[{move,{i,Size div 8},{x,Lv_Cnt}}]}
   end;
 
@@ -306,17 +315,23 @@ generate({{'&',Ln},Raw_St}, State) ->
 generate({{'*',Ln},Raw_St},State) ->
   {ok, Ptr_State, Ptr_St} = generate(Raw_St, State),
   Active_Reg = {x,State#state.lvcnt},
-  {N,T,S} = maps:get(Active_Reg,Ptr_State#state.typecheck,undefined),
-  New_Types = maps:put(Active_Reg,{N-1,T,S},Ptr_State#state.typecheck),
-  N_State = Ptr_State#state{typecheck=New_Types},
-  case lists:last(Ptr_St) of
-    {move,Src,Dest} ->
-      Next_St = lists:droplast(Ptr_St) ++ [{load,Src,Dest}],
-      {ok,copy_lvcnt(State,N_State),Next_St};
-    {_,_,Dest} ->
-      Next_St = Ptr_St ++ [{load,Dest,Dest}],
-      {ok,copy_lvcnt(State,N_State),Next_St};
-    Other -> error({Other,{line,Ln}})
+  case maps:get(Active_Reg,Ptr_State#state.typecheck,undefined) of
+    {[],{N,T,S}} ->
+      New_Types = maps:put(Active_Reg,{[],{N-1,T,S}},Ptr_State#state.typecheck),
+      N_State = Ptr_State#state{typecheck=New_Types},
+      case lists:last(Ptr_St) of
+        {move,Src,Dest} ->
+          Next_St = lists:droplast(Ptr_St) ++ [{load,Src,Dest}],
+          {ok,copy_lvcnt(State,N_State),Next_St};
+        {_,_,Dest} ->
+          Next_St = Ptr_St ++ [{load,Dest,Dest}],
+          {ok,copy_lvcnt(State,N_State),Next_St};
+        Other -> error({Other,{line,Ln}})
+      end;
+    {[Hd|Arr],Type} ->
+      New_Types = maps:put(Active_Reg,{[Arr],Type},Ptr_State#state.typecheck),
+      N_State = Ptr_State#state{typecheck=New_Types},
+      {ok,copy_lvcnt(State,N_State),Ptr_St}
   end;
 
 generate({void,_},State) ->
@@ -355,10 +370,11 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,Args}], State) when is_list(Args) ->
 
 %% Global Variables with an assignment
 get_decl_specs({N,Raw_T,Raw_S},[{Raw_Ident,{'=',_},Raw_St}],State) when State#state.scope =:= 0 ->
-  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident,State),
-  Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
+  {ok, Ident, Ptr_Depth, Raw_Arr} = get_ident_specs(Raw_Ident,State),
+  Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+  Type = {N+Ptr_Depth,Raw_T,Raw_S},
   {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State, {g,Ident},Raw_St),
-  New_Var = maps:put(Ident,{Type,{g,Ident}},Mem_State#state.var),
+  New_Var = maps:put(Ident,{{Arr,Type},{g,Ident}},Mem_State#state.var),
   New_Types = maps:put({g,Ident},Type,Mem_State#state.typecheck),
   New_State = (copy_lvcnt(State,Mem_State))#state{typecheck=New_Types,var=New_Var},
   {ok,New_State,[{global,Type,Ident,Mem_St}]};
@@ -367,12 +383,13 @@ get_decl_specs({N,Raw_T,Raw_S},[{Raw_Ident,{'=',_},Raw_St}],State) when State#st
 %  for them on the stack, processing the initialisation value and storing
 %  the initialisation value in the newly allocated stack slot.
 get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
-  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
-  Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
+  {ok, Ident, Ptr_Depth, Raw_Arr} = get_ident_specs(Raw_Ident, State),
+  Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+  Type = {N+Ptr_Depth,Raw_T,Raw_S},
   Rv_Cnt = State#state.rvcnt,
   {ok, Mem_State, Mem_St} = allocate_mem(Type,Arr,State,{y,Rv_Cnt},Raw_St),
   Active_Reg = {x,State#state.lvcnt},
-  New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
+  New_Var = maps:put(Ident,{{Arr,Type},{y,Rv_Cnt}},Mem_State#state.var),
   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
   Next_St = case {Arr,maps:get(Active_Reg,Next_State#state.typecheck,undefined)} of
@@ -385,8 +402,9 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
 
 %% Global variables which are not assigned
 get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) when State#state.scope =:= 0 ->
-  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
-  Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
+  {ok, Ident, Ptr_Depth, Raw_Arr} = get_ident_specs(Raw_Ident, State),
+  Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+  Type = {Arr,{N+Ptr_Depth,Raw_T,Raw_S}},
   {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State, {g,Ident},{int_l,0,0,[]}),
   New_Var = maps:put(Ident,{Type,{g,Ident}},Mem_State#state.var),
   New_Types = maps:put({g,Ident},Type,Mem_State#state.typecheck),
@@ -396,11 +414,12 @@ get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) when State#state.scope =:= 0
 %% Declarations without an initialisation are processed by allocating memory
 %  for them on the stack and then updating the state to indicate the new stack size.
 get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) ->
-  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
-  Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
+  {ok, Ident, Ptr_Depth, Raw_Arr} = get_ident_specs(Raw_Ident, State),
+  Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+  Type = {Arr,{N+Ptr_Depth,Raw_T,Raw_S}},
   Rv_Cnt = State#state.rvcnt,
   {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State,{y,Rv_Cnt},{int_l,0,0,[]}),
-  New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
+  New_Var = maps:put(Ident,{{Arr,Type},{y,Rv_Cnt}},Mem_State#state.var),
   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
   {ok,Next_State,Mem_St};
@@ -451,9 +470,7 @@ allocate_mem(Type,[],State,Dest,Init) ->
 
 allocate_mem(Type,Arr,State,{y,N},Init) ->
   Heap_St = lists:flatten(gen_heap(Type,Arr,State,Init)),
-  Size = lists:foldr(fun
-    (V,Acc) -> Acc*element(2,get_constant(V,State))
-  end,sizeof(Type,State),Arr),
+  Size = lists:foldr(fun ({_,V},Acc) -> Acc*V end,sizeof(Type,State),Arr),
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:merge(#{{x,Lv_Cnt}=>Type,{y,N}=>Type},State#state.typecheck),
   N_Sizes = maps:put({y,N},Size,State#state.sizeof),
@@ -462,44 +479,17 @@ allocate_mem(Type,Arr,State,{y,N},Init) ->
 
 allocate_mem(Type,Arr,State,{g,Ident},Init) ->
   Heap_St = gen_global_heap(Type,Arr,State,Init),
-  Size = lists:foldr(fun
-    (V,Acc) -> Acc*element(2,get_constant(V,State))
-  end,sizeof(Type,State),Arr),
+  Size = lists:foldr(fun ({_,V},Acc) -> Acc*V end,sizeof(Type,State),Arr),
   N_Sizes = maps:put({g,Ident},Size,State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes},
   {ok,N_State,Heap_St}.
-
-% This is absolutely hideous
-% but I don't think multi-dimensional arrays will come up too much
-%% Note: I had pointers too deep for global arrays so potentially this may need editing too
-% gen_heap(Type,[],State,Init) ->
-%   {ok,_,St} = generate(Init,State),
-%   St;
-% gen_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->
-%   {_,N} = get_constant(Const,State),
-%   Lv_Cnt = State#state.lvcnt,
-%   Size = sizeof({P,T,S},State),
-%   [{test_heap,Size*N,{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{P,T,S}} |
-%    [[{move,{i,Ptr},{x,Lv_Cnt+1}},
-%      {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt+1}} |
-%      gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2},Init)] ++
-%     [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)]];
-% gen_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
-%   {_,N} = get_constant(Const,State),
-%   Lv_Cnt = State#state.lvcnt,
-%   Size = sizeof({P,T,S},State),
-%   [{test_heap,Size*N,{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{P,T,S}} |
-%    [[{move,{i,Ptr},{x,Lv_Cnt+1}},
-%      {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt+1}} |
-%      gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2},{int_l,0,0,[]})] ++
-%     [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || Ptr <-lists:seq(0,N-1)]].
 
 gen_heap(Type,[],State,Init) ->
   {ok,_,St} = generate(Init,State),
   St;
 
 gen_heap({P,T,S},[Const],State,Inits) when is_list(Inits) ->
-  {_,N} = get_constant(Const,State),
+  {_,N} = Const,
   Lv_Cnt = State#state.lvcnt,
   Size = sizeof({P,T,S},State),
   [{test_heap,Size*N} |
@@ -508,12 +498,12 @@ gen_heap({P,T,S},[Const],State,Inits) when is_list(Inits) ->
      gen_heap({P-1,T,S},[],State#state{lvcnt=Lv_Cnt+1},Init)] ++
     [{store,{x,Lv_Cnt+1},{x,Lv_Cnt}}] || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)]];
 gen_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->
-  {_,N} = get_constant(Const,State),
+  {_,N} = Const,State,
   Lv_Cnt = State#state.lvcnt,
   Size = sizeof({P,T,S},State),
    [gen_heap({P-1,T,S},Arr,State,Init) || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)];
 gen_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
-  {_,N} = get_constant(Const,State),
+  {_,N} = Const,
   Lv_Cnt = State#state.lvcnt,
   Size = sizeof({P,T,S},State),
   [{test_heap,Size*N} |
@@ -524,7 +514,7 @@ gen_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
 
 gen_global_heap(Type,[],State,Init) -> {data,Type,get_constant(Init,State)};
 gen_global_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->
-  {_,N} = get_constant(Const,State),
+  {_,N} = Const,
   Data = [gen_global_heap({P-1,T,S},Arr,State,Init) || {_,Init} <- lists:zip(lists:seq(0,N-1),Inits)],
   {local,Data};
 gen_global_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
@@ -563,18 +553,28 @@ deallocate_mem(State_1,State_2) ->
 %  active register. The destination is evaluated as to whether it is a variable or
 %  a memory location and then the appropriate move/store instructions are returned.
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
-  {ok,Ident,Ptr_Depth,Arr} = get_ident_specs(Raw_Ident, State),
-  Active_Reg = {x,State#state.lvcnt},
+  {ok,Ident,Ptr_Depth,Raw_Arr} = get_ident_specs(Raw_Ident, State),
+  % TODO: Make this non_constant
+  Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+  Lv_Cnt = State#state.lvcnt,
+  Active_Reg = {x,Lv_Cnt},
   {ok,{Rp,Rt,Rs},Ptr} = case maps:get(Ident,State#state.var,undefined) of
     {T,Ptr_Loc} -> {ok,T,Ptr_Loc};
     Other -> {error, {Other,{undeclared,Ident}}}
   end,
-  {ok,Loc,Raw_Arr_St} = gen_array_offset(Ptr,Arr,State#state{lvcnt=State#state.lvcnt+1}),
   Arr_St = if
-    Raw_Arr_St =:= [] -> [];
-    true -> lists:droplast(Raw_Arr_St)
+    Arr =:= [] -> [];
+    true ->
+      io:fwrite("~p~n",[Ptr]),
+      {Arr_Depth,Type} = maps:get(Ptr,State#state.typecheck),
+      Size = sizeof(Type,State),
+      Offset = lists:foldl(fun
+        (A,{B,C}) -> {B+A*lists:foldl(fun (K,V) -> K*V end,1,C),tl(C)}
+      end, {0,Arr_Depth}, Arr),
+      Reg_Above = {x,Lv_Cnt+1},
+      [{address,Ptr,Active_Reg},{move,{i,Offset},Reg_Above},{'+',[Active_Reg,Reg_Above],Active_Reg}]
   end,
-  {ok,Ptr_Type,Ptr_St} = get_ptr({Rp-length(Arr),Rt,Rs},Ptr_Depth,Loc,State#state{lvcnt=State#state.lvcnt+1}),
+  {ok,Ptr_Type,Ptr_St} = get_ptr({Rp-length(Arr),Rt,Rs},Ptr_Depth,Active_Reg,State#state{lvcnt=Lv_Cnt+1}),
   Lv_Cnt = State#state.lvcnt,
   {ok,Assign_State,Assign_St} = generate(Raw_St,State),
   St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
@@ -618,18 +618,6 @@ get_ptr({N,T,S},Ptr_Depth,Ptr,State) ->
 
 get_ptr_load_st(1,Reg,Ptr) -> [];
 get_ptr_load_st(N,Reg,Ptr) -> [{load,Ptr,Reg}|get_ptr_load_st(N-1,Reg,Reg)].
-
-gen_array_offset({x,N},[Hd|Arr],State) ->
-  {ok,_,Offset_St} = generate(Hd,State#state{lvcnt=State#state.lvcnt+1}),
-  Move_St = [{'+',[{x,N},{x,N+1}],{x,N}},{load,{x,N},{x,N}}],
-  {ok,Loc,Arr_St} = gen_array_offset({x,N},Arr,State),
-  {ok,Loc,Offset_St++Move_St++Arr_St};
-gen_array_offset(Src,[Hd|Arr],State) ->
-  N = State#state.lvcnt,
-  {ok,Loc,St} = gen_array_offset({x,N},[Hd|Arr],State),
-  {ok,Loc,[{move,Src,{x,N}}|St]};
-gen_array_offset(Src,[],_State) ->
-  {ok,Src,[]}.
 
 %% Delegated function for processing built-in functions.
 %% A special case for operations which can be done on pointers
