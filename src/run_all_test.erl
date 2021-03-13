@@ -8,9 +8,9 @@
 c_test([],_,_) -> 0;
 c_test([File|Tests],Gcc,Qemu) ->
   process_flag(trap_exit, true),
+  io:fwrite(standard_error,"~n~s: ",[File]),
   try c_compiler:main(["-S", "-o", ".test/test.s", File]) of
     Result ->
-      io:fwrite(standard_error,"~s: ",[File]),
       open_port({spawn_executable, Gcc},
                 [stderr_to_stdout,
                  exit_status,
@@ -37,7 +37,7 @@ c_test([File|Tests],Gcc,Qemu) ->
       end
   catch
     _:Err ->
-      io:fwrite(standard_error,"~s: \e[1;31mfail\e[0;37m~n",[File]),
+      io:fwrite(standard_error,"\e[1;31mfail\e[0;37m~n",[]),
       io:fwrite(standard_error,"Reason:~n~p~n",[Err]),
       0
   end + c_test(Tests,Gcc,Qemu).
@@ -60,4 +60,4 @@ run() ->
     Qemu_Mips -> Qemu_Mips
   end,
   Success = c_test(Tests,Gcc,Qemu),
-  io:fwrite(standard_error,"~B out of ~B tests compile (~f%)~n",[Success,length(Tests),Success/length(Tests)*100]).
+  io:fwrite(standard_error,"~B out of ~B tests passed (~f%)~n",[Success,length(Tests),Success/length(Tests)*100]).

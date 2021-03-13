@@ -20,7 +20,18 @@ generate([], State) -> {ok, State, []};
 generate([Hd|Tl], State) ->
   {ok, Hd_State, Hd_St} = generate(Hd,State),
   {ok, Tl_State, Tl_St} = generate(Tl,Hd_State),
-  {ok,Tl_State,Hd_St++Tl_St};
+  %% EDITED: was Tl_State, now: copy_lbcnt(Tl_State,State)
+  Last = if length(Tl_St) > 0 -> lists:last(Tl_St);
+            true -> nil end,
+  St = if
+    Tl_State#state.rvcnt > State#state.rvcnt andalso Last =/= return ->
+      Hd_St++Tl_St++[{gc,State#state.rvcnt}];
+    true -> Hd_St++Tl_St
+  end,
+  N_State = Tl_State#state{typecheck = State#state.typecheck,
+                           var=State#state.var,
+                           sizeof=State#state.sizeof},
+  {ok,N_State,St};
 
 %% Process a declaration of a function by adding specification about it to the state &
 %  processing the branches of the function node (arguments & statement list)
@@ -310,6 +321,9 @@ generate({{'*',Ln},Raw_St},State) ->
 
 generate({void,_},State) ->
   {ok,State,[]};
+%% Empty statement in for loop
+generate({[]},State) ->
+  {ok,State,[]};
 
 %% Any other nodes of the AST are currently unsupported.
 %  Currently we raise an error, dumping the unsupported node as well as the current state.
@@ -323,7 +337,7 @@ generate({void,_},State) ->
 %% TODO: #5
 %        We need to support array declarations and accesses,
 %        which will be done using the `[]` operators and the `offset` token.
-generate(Other, State) -> error({Other,State}).
+generate(Other, State) -> error({no_ir,Other}).
 
 %% Delegated function for declarations.
 %% Function prototypes
@@ -356,7 +370,7 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Raw_Ident, State),
   Type = {N+Ptr_Depth+length(Arr),Raw_T,Raw_S},
   Rv_Cnt = State#state.rvcnt,
-  {ok, Mem_State, Mem_St} = allocate_mem(Type, Arr, State, {y,Rv_Cnt},Raw_St),
+  {ok, Mem_State, Mem_St} = allocate_mem(Type,Arr,State,{y,Rv_Cnt},Raw_St),
   Active_Reg = {x,State#state.lvcnt},
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
@@ -455,27 +469,28 @@ allocate_mem(Type,Arr,State,{g,Ident},Init) ->
 
 % This is absolutely hideous
 % but I don't think multi-dimensional arrays will come up too much
-gen_heap(Type,[],State,Init) ->
-  {ok,_,St} = generate(Init,State),
-  St;
-gen_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->
-  {_,N} = get_constant(Const,State),
-  Lv_Cnt = State#state.lvcnt,
-  Size = sizeof({P,T,S},State),
-  [{test_heap,Size*N,{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{P,T,S}} |
-   [[{move,{i,Ptr},{x,Lv_Cnt+1}},
-     {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt+1}} |
-     gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2},Init)] ++
-    [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)]];
-gen_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
-  {_,N} = get_constant(Const,State),
-  Lv_Cnt = State#state.lvcnt,
-  Size = sizeof({P,T,S},State),
-  [{test_heap,Size*N,{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{P,T,S}} |
-   [[{move,{i,Ptr},{x,Lv_Cnt+1}},
-     {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt+1}} |
-     gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2},{int_l,0,0,[]})] ++
-    [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || Ptr <-lists:seq(0,N-1)]].
+%% Note: I had pointers too deep for global arrays so potentially this may need editing too
+% gen_heap(Type,[],State,Init) ->
+%   {ok,_,St} = generate(Init,State),
+%   St;
+% gen_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->
+%   {_,N} = get_constant(Const,State),
+%   Lv_Cnt = State#state.lvcnt,
+%   Size = sizeof({P,T,S},State),
+%   [{test_heap,Size*N,{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{P,T,S}} |
+%    [[{move,{i,Ptr},{x,Lv_Cnt+1}},
+%      {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt+1}} |
+%      gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2},Init)] ++
+%     [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)]];
+% gen_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
+%   {_,N} = get_constant(Const,State),
+%   Lv_Cnt = State#state.lvcnt,
+%   Size = sizeof({P,T,S},State),
+%   [{test_heap,Size*N,{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{P,T,S}} |
+%    [[{move,{i,Ptr},{x,Lv_Cnt+1}},
+%      {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt+1}} |
+%      gen_heap({P-1,T,S},Arr,State#state{lvcnt=Lv_Cnt+2},{int_l,0,0,[]})] ++
+%     [{store,{x,Lv_Cnt+2},{x,Lv_Cnt+1}}]  || Ptr <-lists:seq(0,N-1)]].
 
 gen_global_heap(Type,[],State,Init) -> {data,Type,get_constant(Init,State)};
 gen_global_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->

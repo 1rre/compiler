@@ -13,6 +13,7 @@ get_args(["-o",File|Rest]) -> [{out,File}|get_args(Rest)];
 get_args(["-d"|Rest]) -> [debug|get_args(Rest)];
 get_args(["-ir"|Rest]) -> [ir|get_args(Rest)];
 get_args(["-vm"|Rest]) -> [vm|get_args(Rest)];
+get_args(["-ast"|Rest]) -> [ast|get_args(Rest)];
 get_args([Arg|Rest]) ->
   case filelib:is_file(Arg) of
     true -> [{in,Arg}|get_args(Rest)];
@@ -31,6 +32,15 @@ compile(File,_,[ir]) ->
   io:fwrite("~p~n",[Statement]),
   {ok, Statement};
 
+compile(File,_,[ast]) ->
+  {ok, Io_Stream} = file:open(File, [read]),
+  {ok, Input} = read_file(Io_Stream),
+  {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
+  {Scan, _Rest} = type_enum:scan(Tokens),
+  {ok, Result} = parser:parse(Scan),
+  io:fwrite("~p~n",[Result]),
+  {ok, Result};
+
 compile(File, Args, [debug,vm]) ->
   halt(run_vm(File,Args,[debug]));
 
@@ -46,6 +56,18 @@ compile(File,_,[asm,{out,Out_File}]) ->
   {ok, _Context, Statement} = ir:generate(Result),
   {ok, Mips_Code} = mips:generate(Statement),
   mips_io:fwrite(Mips_Code,Out_File),
+  {ok, Mips_Code};
+
+compile(File,_,[asm,debug]) ->
+  {ok, Io_Stream} = file:open(File, [read]),
+  {ok, Input} = read_file(Io_Stream),
+  {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
+  {Scan, _Rest} = type_enum:scan(Tokens),
+  {ok, Result} = parser:parse(Scan),
+  {ok, _Context, Statement} = ir:generate(Result),
+  {ok, Mips_Code} = mips:generate(Statement),
+  io:fwrite("~p~n~n",[Mips_Code]),
+  mips_io:fwrite(Mips_Code,standard_io),
   {ok, Mips_Code};
 
 compile(File,_,[asm]) ->

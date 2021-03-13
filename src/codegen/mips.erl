@@ -25,7 +25,7 @@ generate(Ir) ->
       {ok,Args_Context} = gen_arg_types(Args,Context,0),
       Scope_Asm = gen_scoped(St,Args_Context),
       Asm = Scope_Asm,
-      {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Text]++[{'.end',Name}|Asm]};
+      {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Text]++Asm++[{'.end',Name}]};
     ({global,Type,Name,Frame},{Data,Text}) ->
       % .bgnb Name
       Asm = gen_global(Frame,Name),
@@ -62,18 +62,24 @@ gen_scoped([{allocate,Size}|Rest],Context) ->
 %% Stack Resize Down
 % I know this isn't technically necessary for C
 % but it's built into the IR now and it'd be difficult to change
-gen_scoped([{gc,0}|Rest],Context) ->
-  N_Types = maps:filter(fun
-    ({y,_},_) -> false;
+gen_scoped([{gc,N}|Rest],Context) ->
+  Types = maps:filter(fun
+    ({y,X},_) when X >= N -> false;
     (_,_) -> true
   end,Context#context.types),
-  N_Context = Context#context{sp=0,s_reg=#{},stack_size=0,types=N_Types},
-  [{addiu,{i,29},{i,29},Context#context.sp}|gen_scoped(Rest,N_Context)];
+  S_Reg = maps:filter(fun
+    ({y,X},_) when X >= N -> false;
+    (_,_) -> true
+  end,Context#context.s_reg),
+  Sp = maps:get({y,N},Context#context.s_reg,0),
+  Diff = Context#context.sp - maps:get({y,N},Context#context.s_reg,0),
+  N_Context = Context#context{sp=Sp,s_reg=S_Reg,stack_size=N,types=Types},
+  [{addiu,{i,29},{i,29},Diff}|gen_scoped(Rest,N_Context)];
 
 %% Return
 %% TODO: Implement return properly with SP movement etc.
 gen_scoped([return|Rest],Context) ->
-  [{jr,{i,31}},nop|gen_scoped(Rest,Context)];
+  [{move,{i,29},{i,30}},{jr,{i,31}},nop|gen_scoped(Rest,Context)];
 
 %% Move an int literal to a register
 gen_scoped([{move,{i,Val},{x,N}}|Rest],Context) when 16#7FFFFFFF >= Val
@@ -108,7 +114,7 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   end,
   N_Types = maps:put({y,Nd},{Pd,Td,Sd},Context#context.types),
   N_Context = Context#context{types=N_Types},
-  [{Instr,Src,{sp,Dest}}|gen_scoped(Rest,N_Context)];
+  [{Instr,Src,{sp,Dest-Context#context.sp}}|gen_scoped(Rest,N_Context)];
 
 
 gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
@@ -129,11 +135,11 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
     {16,Reg} -> lh;
     {8,Reg} -> lb
   end,
-  [{Instr,Dest,{sp,Src}}|gen_scoped(Rest,Reg_Context)];
+  [{Instr,Dest,{sp,Src-Context#context.sp}}|gen_scoped(Rest,Reg_Context)];
 
 
 gen_scoped([],Context) -> [];
-gen_scoped([Other|_],Context) -> error({not_implemented,Other}).
+gen_scoped([Other|_],Context) -> error({no_mips,Other}).
 
 % Reg for a 64 bit object
 get_reg(Reg,{0,_,64},Context) ->
@@ -179,14 +185,12 @@ get_reg(Reg,Type,Context) ->
   end.
 
 gen_global(Frame,Name) ->
-  Frame_Asm = gen_global(Frame,Name,[1]),
+  Frame_Asm = gen_global(Frame,Name,[]),
   case Frame_Asm of
     [{'.word',_}|_] ->
       [{'.globl',Name},{Name,[]}|Frame_Asm];
     _ ->
-      [{'.globl',Name},{'.bgnb',Name}|Frame_Asm] ++
-      gen_global_ptr(Frame,Name,[1]) ++
-      [{Name,[]},{'.word',{Name,[1]}},'.endb']
+    [{'.globl',Name},{'.bgnb',Name}|gen_global_ptr(Frame,Name,[])] ++ Frame_Asm ++ ['.endb']
   end.
 
 gen_global({local,Frame},Name,Depth) ->
@@ -227,9 +231,7 @@ gen_data({_,_,_},{i,Val}) ->
 
 gen_global_ptr({local,Frame},Name,Depth) ->
   Local = case hd(Frame) of
-    {local,_} ->
-      Words = [{'.word',{Name,[N|Depth]}} || N <- lists:seq(1,length(Frame))],
-      [{Name,Depth}|Words];
+    {local,_} -> [{Name,Depth}];
     _ -> []
   end,
   Indices = lists:zip(Frame,lists:seq(1,length(Frame))),

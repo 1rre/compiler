@@ -7,7 +7,7 @@
 -define(PRINT_LINE,io:fwrite(Opts#opts.io,"~*s~n",[Opts#opts.indent+length(Output),Output])).
 
 fwrite(Program,File) ->
-  {ok,Iostream} = case file of
+  {ok,Iostream} = case File of
     standard_io -> {ok,standard_io};
     _ -> file:open(File,[write])
   end,
@@ -35,8 +35,13 @@ directive(Directive,Opts) ->
 statement({A,B},Opts) when is_list(B) ->
   Output = lists:flatten([io_lib:format("$~B",[N]) || N <- B]) ++ io_lib:format("~s:",[A]),
   ?PRINT_LINE,
-  {ok,Opts#opts{indent=Opts#opts.indent+length(Output)}};
+  {ok,Opts#opts{indent=Opts#opts.indent}};%+length(Output)}};
 %% TODO: Other types of statments with indent
+statement({'.end',Name},Prev_Opts) ->
+  Opts = Prev_Opts#opts{indent=0},
+  Output = io_lib:format("~s ~s",['.end',Name]),
+  ?PRINT_LINE,
+  {ok,Opts};
 statement({A,B},Opts) ->
   Output = part(A)++[$ |part(B)],
   ?PRINT_LINE,
