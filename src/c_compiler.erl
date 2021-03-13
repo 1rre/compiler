@@ -44,11 +44,20 @@ compile(File,_,[asm,{out,Out_File}]) ->
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
   {ok, _Context, Statement} = ir:generate(Result),
-  {ok, Mips_Code} = mips:generate(Statement,{file,Out_File}),
+  {ok, Mips_Code} = mips:generate(Statement),
+  mips_io:fwrite(Mips_Code,Out_File),
   {ok, Mips_Code};
 
 compile(File,_,[asm]) ->
-  compile(File,[],[asm,{out,".test/test.s"}]);
+  {ok, Io_Stream} = file:open(File, [read]),
+  {ok, Input} = read_file(Io_Stream),
+  {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
+  {Scan, _Rest} = type_enum:scan(Tokens),
+  {ok, Result} = parser:parse(Scan),
+  {ok, _Context, Statement} = ir:generate(Result),
+  {ok, Mips_Code} = mips:generate(Statement),
+  mips_io:fwrite(Mips_Code,standard_io),
+  {ok,Mips_Code};
 
 compile(File,_,[]) ->
   {ok, Io_Stream} = file:open(File, [read]),

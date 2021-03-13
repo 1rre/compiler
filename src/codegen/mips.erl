@@ -1,17 +1,18 @@
 -module(mips).
--export([generate/2]).
+-export([generate/1]).
 
 -include("arch_type_consts.hrl").
 
--record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},i_reg,f_reg,labels=[],stack_size=0}).
+-record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},i_reg,f_reg,labels=[],stack_size=0,fp=0}).
 
-generate(Ir,{file,_File}) ->
-  Reg_Pref = ['$2','$3','$8','$9','$10','$11','$12','$13','$14','$15','$24','$25',
-              {s,'$16'},{s,'$17'},{s,'$18'},{s,'$19'},{s,'$20'},{s,'$21'},{s,'$22'},{s,'$23'}],
-
-  Float_Reg = ['$f0','$f1','$f2','$f3','$f4','$f5','$f6','$f7','$f8','$f9','$f10','$f11','$f12',
-               '$f13','$f14','$f15','$f16','$f17','$f18','$f19','$f20','$f21','$f22','$f23','$f24',
-               '$f25','$f26','$f27','$f28','$f29','$f30','$f31'],
+generate(Ir) ->
+  % Use these for ints & pointers if possible
+  Reg_Pref = [{i,2},{i,3},{i,8},{i,9},{i,10},{i,11},{i,12},{i,13},{i,14},{i,15},{i,24},{i,25},
+              {s,16},{s,17},{s,18},{s,19},{s,20},{s,20},{s,21},{s,22},{s,23}],
+  % Use these for floats if possible
+  Float_Reg = [{f,0},{f,1},{f,2},{f,3},{f,4},{f,5},{f,6},{f,7},{f,8},{f,9},{f,10},{f,11},{f,12},
+               {f,13},{f,14},{f,15},{f,16},{f,17},{f,18},{f,19},{f,20},{f,21},{f,22},{f,23},{f,24},
+               {f,25},{f,26},{f,27},{f,28},{f,29},{f,30},{f,31}],
   Context = lists:foldl(fun
     ({function,Type,Name,Args,_},Cxt) ->
       Cxt#context{fn=maps:put(Name,{Type,Args},Cxt#context.fn)};
@@ -22,9 +23,9 @@ generate(Ir,{file,_File}) ->
   {Data,Text} = lists:foldl(fun
     ({function,Type,Name,Args,St},{Data,Text}) ->
       {ok,Args_Context} = gen_arg_types(Args,Context,0),
-      {ok,Scope_Asm,Scope_Context} = gen_scoped(St,Args_Context),
+      Scope_Asm = gen_scoped(St,Args_Context),
       Asm = Scope_Asm,
-      {Data,Text++Asm};
+      {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Text]++[{'.end',Name}|Asm]};
     ({global,Type,Name,Frame},{Data,Text}) ->
       % .bgnb Name
       Asm = gen_global(Frame,Name),
@@ -32,18 +33,19 @@ generate(Ir,{file,_File}) ->
       %% Reversed order such that functions
       {Data++Asm,Text}
   end,{[],[]},lists:sort(Ir)),
-  io:fwrite("~p~n~n~p~n",[Data,Text]),
-  {ok,{['.data'|Data],['.text'|Text]}}.
+  {ok,['.data'|Data]++['.text'|Text]}.
 
 
 %% TODO: get register positions for call
 gen_arg_types([Hd|Args],Context,N) ->
   Types = maps:put({z,N},Hd,Context#context.types),
-  gen_arg_types(Args,Context#context{types=Types},N+1);
-gen_arg_types([],Context,_) -> {ok,Context}.
+  gen_arg_types(Args,Context#context{types=Types,sp=Context#context.sp+sizeof(Hd)},N+1);
+% Frame pointer is offset from 0 in the context we return
+% as we count the SP from the start of the arguments
+gen_arg_types([],Context,_) -> {ok,Context#context{fp=-Context#context.sp}}.
 
 
-%% Stack Resize
+%% Stack Resize Up
 % I know this isn't technically necessary for C
 % but it's built into the IR now and it'd be difficult to change
 gen_scoped([{allocate,Size}|Rest],Context) ->
@@ -52,48 +54,128 @@ gen_scoped([{allocate,Size}|Rest],Context) ->
   N_S_Reg = maps:put({y,N},Sp,Context#context.s_reg),
   N_Types = maps:put({y,N},{0,n,Size},Context#context.types),
   N_Context = Context#context{s_reg=N_S_Reg,
-                              sp=Sp-(Size div 8),
+                              sp=Sp+(Size div 8),
                               stack_size=N+1,
                               types=N_Types},
-  [{addiu,'$sp','$sp',-(Size div 8)}|gen_scoped(Rest,N_Context)];
+  [{addiu,{i,29},{i,29},-(Size div 8)}|gen_scoped(Rest,N_Context)];
 
-%% Moving a 32 bit (maximum) constant to a register
+%% Stack Resize Down
+% I know this isn't technically necessary for C
+% but it's built into the IR now and it'd be difficult to change
+gen_scoped([{gc,0}|Rest],Context) ->
+  N_Types = maps:filter(fun
+    ({y,_},_) -> false;
+    (_,_) -> true
+  end,Context#context.types),
+  N_Context = Context#context{sp=0,s_reg=#{},stack_size=0,types=N_Types},
+  [{addiu,{i,29},{i,29},Context#context.sp}|gen_scoped(Rest,N_Context)];
+
+%% Return
+%% TODO: Implement return properly with SP movement etc.
+gen_scoped([return|Rest],Context) ->
+  [{jr,{i,31}},nop|gen_scoped(Rest,Context)];
+
+%% Move an int literal to a register
 gen_scoped([{move,{i,Val},{x,N}}|Rest],Context) when 16#7FFFFFFF >= Val
                                                 andalso Val >= -16#8000000 ->
   {ok,Reg,Reg_Context} = get_reg({x,N},{0,i,32},Context),
-  [{li,Reg,Val}|gen_scoped(Rest,Context)];
+  [{li,Reg,Val}|gen_scoped(Rest,Reg_Context)];
+
+%% Move a long literal to a register
+gen_scoped([{move,{i,Val},{x,N}}|Rest],Context) ->
+  error({not_impl,long});
+
+gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
+  Src = maps:get({x,Ns},Context#context.reg,{i,0}),
+  % If for whatever reason the reg hasn't been declared, warn the user?
+  if Src =:= {i,0} ->
+       io:fwrite(standard_error,"~p not assigned to a register, using $0~n",[{x,Nd}]);
+     true -> ok end,
+  Dest = maps:get({y,Nd},Context#context.s_reg,Context#context.sp),
+  {Ps,Ts,Ss} = maps:get({x,Ns},Context#context.types,{0,n,32}),
+  {Pd,Td,Sd} = maps:get({y,Nd},Context#context.types,{Ps,Ts,Ss}),
+  Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
+       io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
+       Sd;
+     true -> Ss end,
+  Instr = case {Size,Src} of
+    {32,{f,N}} -> 's.s';
+    {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 's.d';
+    {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
+    {32,Reg} -> sw;
+    {16,Reg} -> sh;
+    {8,Reg} -> sb
+  end,
+  N_Types = maps:put({y,Nd},{Pd,Td,Sd},Context#context.types),
+  N_Context = Context#context{types=N_Types},
+  [{Instr,Src,{sp,Dest}}|gen_scoped(Rest,N_Context)];
+
+
+gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
+  Src = maps:get({y,Ns},Context#context.s_reg,Context#context.sp),
+  % If for whatever reason the reg hasn't been declared, warn the user?
+  if Src =:= {i,0} ->
+       io:fwrite(standard_error,"~p not assigned to a register, using $0~n",[{x,Nd}]);
+     true -> ok end,
+  {Ps,Ts,Ss} = maps:get({y,Ns},Context#context.types,{0,n,32}),
+  {ok,Dest,Reg_Context} = get_reg({x,Nd},{Ps,Ts,Ss},Context),
+  Size = if Ps =:= 0 -> Ss;
+            true -> 32 end,
+  Instr = case {Size,Src} of
+    {32,{f,N}} -> 'l.s';
+    {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 'l.d';
+    {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
+    {32,Reg} -> lw;
+    {16,Reg} -> lh;
+    {8,Reg} -> lb
+  end,
+  [{Instr,Dest,{sp,Src}}|gen_scoped(Rest,Reg_Context)];
 
 
 gen_scoped([],Context) -> [];
 gen_scoped([Other|_],Context) -> error({not_implemented,Other}).
 
+% Reg for a 64 bit object
 get_reg(Reg,{0,_,64},Context) ->
-  error({not_impl,long});
+  error({not_impl,long_double});
+% Reg for a 32 bit float
 get_reg(Reg,{0,f,32},Context) ->
+  N_Types = maps:put(Reg,{0,f,32},Context#context.types),
   % Check if the register has been previously assigned
-  case {maps:get(Reg,Context#context.types,nil),Context#context.f_reg} of
-    % It has not
-    {nil,[Dest|Rest]} ->
-      N_Types = maps:put(Reg,{0,f,32},Context#context.types),
+  case {maps:get(Reg,Context#context.reg,nil),Context#context.i_reg} of
+    {{s,Saved},[Dest|Rest]} ->
+      error(saved_reg);
+    {{f,N},_} ->
+      {ok,{f,N},Context#context{types=N_Types}};
+    {[R1,R2],[Dest|Rest]} ->
+      F_Reg = [{f,N} || {f,N} <- [R1,R2]] ++ Rest,
+      I_Reg = [R || R <- [R1,R2], (element(1,R) =/= f)],
+      N_Reg = maps:put(Dest,Context#context.reg),
+      {ok,Dest,Context#context{f_reg=F_Reg,i_reg=I_Reg,reg=N_Reg,types=N_Types}};
+    {Old_Reg,[Dest|Rest]} ->
+      I_Reg = [Old_Reg | Context#context.i_reg],
       N_Reg = maps:put(Reg,Dest,Context#context.reg),
-      {ok,Dest,Context#context{f_reg=Rest,reg=N_Reg,types=N_Types}};
-    % It has and is already a float
-    {{0,f,32},_} ->
-      Dest = maps:get(Reg,Context#context.reg),
-      {ok,Dest,Context};
-    %% TODO: Implement other float registers
-    _ -> error
+      {ok,Dest,Context#context{f_reg=Rest,reg=N_Reg,i_reg=I_Reg,types=N_Types}};
+    Other -> error(Other)
   end;
+% Reg for something else (32 bits)
 get_reg(Reg,Type,Context) ->
-  case {maps:get(Reg,Context#context.types,nil),Context#context.i_reg} of
-    {{0,f,32},_} ->
-      error(float_reg_to_int);
-    {{0,_,64},_} ->
-      error(resize_reg);
-    {_,[Dest|Rest]} ->
-      N_Types = maps:put(Reg,Type,Context#context.types),
+  N_Types = maps:put(Reg,Type,Context#context.types),
+  case {maps:get(Reg,Context#context.reg,nil),Context#context.i_reg} of
+    {{s,Saved},[Dest|Rest]} ->
+      error(saved_reg);
+    {{i,N},_} ->
+      {ok,{i,N},Context#context{types=N_Types}};
+    {[R1,R2],[Dest|Rest]} ->
+      F_Reg = [{f,N} || {f,N} <- [R1,R2]],
+      I_Reg = [R || R <- [R1,R2], not is_tuple(R) or element(1,R) =:= s] ++ Rest,
+      N_Reg = maps:put(Dest,Context#context.reg),
+      {ok,Dest,Context#context{f_reg=F_Reg,i_reg=I_Reg,reg=N_Reg,types=N_Types}};
+    {Old_Reg,[Dest|Rest]} ->
+      F_Reg = [Old_Reg | Context#context.f_reg],
       N_Reg = maps:put(Reg,Dest,Context#context.reg),
-      {ok,Dest,Context#context{i_reg=Rest,reg=N_Reg,types=N_Types}}
+      {ok,Dest,Context#context{f_reg=F_Reg,reg=N_Reg,i_reg=Rest}};
+    Other -> error(Other)
   end.
 
 gen_global(Frame,Name) ->
@@ -154,3 +236,7 @@ gen_global_ptr({local,Frame},Name,Depth) ->
   lists:flatten([gen_global_ptr(Sub_Frame,Name,[N|Depth]) || {Sub_Frame,N} <- Indices] ++ Local);
 
 gen_global_ptr(_,_,_) -> [].
+
+sizeof({0,_,S}) -> S;
+sizeof({_,_,_}) -> ?SIZEOF_POINTER;
+sizeof(Type) -> error({type,Type}).
