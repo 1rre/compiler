@@ -376,8 +376,10 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
   Next_St = case {Arr,maps:get(Active_Reg,Next_State#state.typecheck,undefined)} of
-    Type -> Mem_St ++ [{move,Active_Reg,{y,Rv_Cnt}}];
-    _ -> Mem_St ++ [{cast,Active_Reg,Type},{move,Active_Reg,{y,Rv_Cnt}}]
+    {[],Type} -> Mem_St ++ [{move,Active_Reg,{y,Rv_Cnt}}];
+    {[],_} -> Mem_St ++ [{cast,Active_Reg,Type},{move,Active_Reg,{y,Rv_Cnt}}];
+    {_,Type} -> Mem_St;
+    {_,_} -> Mem_St ++ [{cast,{y,Rv_Cnt},Type}]
   end,
   {ok, Next_State, Next_St};
 
@@ -456,7 +458,7 @@ allocate_mem(Type,Arr,State,{y,N},Init) ->
   N_Types = maps:merge(#{{x,Lv_Cnt}=>Type,{y,N}=>Type},State#state.typecheck),
   N_Sizes = maps:put({y,N},Size,State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes,typecheck=N_Types},
-  {ok,N_State,[{allocate,0},{address,{y,N},{x,Lv_Cnt}},|Heap_St]};
+  {ok,N_State,[{allocate,0},{address,{y,N},{x,Lv_Cnt}},{move,{i,1},{x,Lv_Cnt+1}},{'-',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}},{cast,{y,N},Type}|Heap_St]};
 
 allocate_mem(Type,Arr,State,{g,Ident},Init) ->
   Heap_St = gen_global_heap(Type,Arr,State,Init),
@@ -509,8 +511,7 @@ gen_heap({P,T,S},[Const|Arr],State,Inits) when is_list(Inits) ->
   {_,N} = get_constant(Const,State),
   Lv_Cnt = State#state.lvcnt,
   Size = sizeof({P,T,S},State),
-   [[{move,{i,Ptr},{x,Lv_Cnt+1}} | gen_heap({P-1,T,S},Arr,State,Init)]
-    || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)];
+   [gen_heap({P-1,T,S},Arr,State,Init) || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)];
 gen_heap({P,T,S},[Const|Arr],State,{int_l,0,0,[]}) ->
   {_,N} = get_constant(Const,State),
   Lv_Cnt = State#state.lvcnt,
