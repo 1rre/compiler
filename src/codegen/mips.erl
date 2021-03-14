@@ -265,8 +265,12 @@ gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
   T2 = maps:get(Src_2,Context#context.types),
   case {T1,T2} of
     % Same non-pointer type
-    {{0,N,T},{0,N,T}} ->
-      {ok,Res,Res_Context} = gen_op(Op,N,T,Src_1,Src_2,Dest,Context),
+    {{0,T,S},{0,T,S}} ->
+      {ok,Res,Res_Context} = gen_op(Op,T,S,Src_1,Src_2,Dest,Context),
+      Res++gen_scoped(Rest,Res_Context);
+    % Adding unsigned to signed (useful for unsigned + constant?)
+    {{0,T1,S},{0,T2,S}} when ((T1 =:= i) or (T1 =:= u)) andalso ((T2 =:= i) or (T2 =:= u)) ->
+      {ok,Res,Res_Context} = gen_op(Op,i,S,Src_1,Src_2,Dest,Context),
       Res++gen_scoped(Rest,Res_Context);
     %% TODO: Pointers
     {T1,T2} -> error({cast,{T1,T2}})

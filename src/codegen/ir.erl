@@ -42,7 +42,8 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(
   {ok, Ident, _Ptr_Ident, Arr} = get_ident_specs(Raw_Ident,State),
   if Arr =/= [] -> error({return_type,array});
   true -> ok end,
-  {ok, Arg_State, Arg_St} = generate(Raw_Args, State#state{scope=1}),
+  % Reverse because the stack be like that sometimes
+  {ok, Arg_State, Arg_St} = generate(lists:reverse(Raw_Args), State#state{scope=1}),
   Arg_Types = [Arg_T || {{_Arr,Arg_T},{y,_}} <- maps:values(Arg_State#state.var)],
   Arity = case Raw_Args of
     [[{void,_}]] -> 0;
@@ -51,6 +52,7 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(
   Alloc_St = lists:flatten([[{allocate,size_var({y,N},Arg_State)},
                              {move,{z,Arity-N-1},{y,N}}] || N <- lists:seq(0,Arity-1)]),
   New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
+  io:fwrite("~p~n",[Arg_State#state.var]),
   {ok, N_State, N_St} = generate(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = case lists:last(N_St) of
     return ->
