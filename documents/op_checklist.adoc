@@ -38,9 +38,9 @@
 .Ints
 * [X] Logical and
 * [X] Logical or
-* [ ] Bitwise and
-* [ ] Bitwise or
-* [ ] Bitwise xor
+* [X] Bitwise and
+* [X] Bitwise or
+* [X] Bitwise xor
 * [ ] Equal to
 * [ ] Not equal to
 * [ ] Greater than

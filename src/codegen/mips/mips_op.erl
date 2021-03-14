@@ -151,16 +151,18 @@ gen_op('+',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
   {ok,[{add,Dest,Src_1,Src_2}],Dest_Context};
 
 gen_op('+',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
+  simple_op(addu,{0,u,Size},Reg_1,Reg_2,Reg_3,Context);
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,u,Size},Context),
   {ok,[{addu,Dest,Src_1,Src_2}],Dest_Context};
 
 gen_op('-',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,Size},Context),
-  {ok,[{sub,Dest,Src_1,Src_2}],Dest_Context};
+  simple_op(sub,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
+  % Src_1 = maps:get(Reg_1,Context#context.reg),
+  % Src_2 = maps:get(Reg_2,Context#context.reg),
+  % {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,Size},Context),
+  % {ok,[{sub,Dest,Src_1,Src_2}],Dest_Context};
 
 gen_op('-',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
@@ -168,6 +170,10 @@ gen_op('-',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,u,Size},Context),
   {ok,[{neg,Dest,Src_2},{addu,Dest,Src_1,Dest}],Dest_Context};
 
-
+simple_op(Op,Type,Reg_1,Reg_2,Reg_3,Context) ->
+  Src_1 = maps:get(Reg_1,Context#context.reg),
+  Src_2 = maps:get(Reg_2,Context#context.reg),
+  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,Type,Context),
+  {ok,[{op,Dest,Src_1,Src_2}],Dest_Context}.
 
 gen_op(Op,_,_,_,_,_,_) -> error({no_mips,Op}).
