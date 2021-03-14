@@ -52,7 +52,6 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(
   Alloc_St = lists:flatten([[{allocate,size_var({y,N},Arg_State)},
                              {move,{z,Arity-N-1},{y,N}}] || N <- lists:seq(0,Arity-1)]),
   New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
-  io:fwrite("~p~n",[Arg_State#state.var]),
   {ok, N_State, N_St} = generate(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = case lists:last(N_St) of
     return ->
@@ -294,8 +293,14 @@ generate({{for,_},{Init,Predicate,Update},Loop}, State) ->
   {ok,Next_State,Next_St};
 
 generate({string_l,Ln,Str},State) ->
-  St = [{int_l,Ln,N,[c]} || N <- Str]++[{int_l,Ln,0,[c]}],
-  generate(St,State);
+  St = [[{int_l,Ln,N,[c]}] || N <- Str]++[{int_l,Ln,0,[c]}],
+  Rv_Cnt = State#state.rvcnt,
+  Heap_St = [{allocate,32},{cast,{y,Rv_Cnt},{1,u,8}}|gen_heap({[{i,length(St)}],{0,u,8}},State,St)],
+  N_Types = maps:put({y,Rv_Cnt},{1,u,8},State#state.typecheck),
+  N_Var = maps:put(Str,{{[{i,length(St)}],{0,u,8}},{y,Rv_Cnt}},State#state.var),
+  Lv_Cnt = State#state.lvcnt,
+  {ok,State#state{rvcnt=Rv_Cnt+1,typecheck=N_Types,var=N_Var},
+   Heap_St++[{address,{y,Rv_Cnt},{x,Lv_Cnt}}]};
 
 %% Process an arity 2 built-in function (such as add or bitwise and)
 %  by calculating whether processing the 1st or 2nd operand first would be less register
