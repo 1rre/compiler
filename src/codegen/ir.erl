@@ -104,7 +104,9 @@ generate({identifier,Ln,Ident}, State) ->
       {ok,State#state{typecheck=N_Types},[{move,X,{x,Lv_Cnt}}]};
     {{Arr,{P,T,S}},X} ->
       Lv_Cnt = State#state.lvcnt,
-      N_Types = maps:put({x,Lv_Cnt},{Arr,{P+length(Arr),T,S}},State#state.typecheck),
+      % Not sure if P should be P+length(Arr) or P+1 or something??
+      % So that we can reference it as a pointer?
+      N_Types = maps:put({x,Lv_Cnt},{Arr,{P,T,S}},State#state.typecheck),
       {ok,State#state{typecheck=N_Types},[{address,X,{x,Lv_Cnt}}]};
     Other -> error({Other,Ident,{line,Ln},{state,State}})
   end;

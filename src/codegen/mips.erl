@@ -22,7 +22,8 @@ generate(Ir) ->
 
   {Data,Text} = lists:foldl(fun
     ({function,Type,Name,Args,St},{Data,Text}) ->
-      {ok,Args_Context} = gen_arg_types(Args,Context,0),
+      {ok,Args_Context} = gen_arg_types(Args,Context,0,false,0),
+      io:fwrite("~p~n",[Args_Context#context.reg]),
       Scope_Asm = gen_scoped(St,Args_Context),
       Asm = Scope_Asm,
       {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Text]++Asm++[{'.end',Name}]};
@@ -37,12 +38,44 @@ generate(Ir) ->
 
 
 %% TODO: get register positions for call
-gen_arg_types([Hd|Args],Context,N) ->
+gen_arg_types([{0,f,32}|Args],Context,0,false,0) ->
+  Types = maps:put({z,0},{0,f,32},Context#context.types),
+  Reg = maps:put({z,0},{f,12},Context#context.reg),
+  gen_arg_types(Args,Context#context{types=Types,reg=Reg},1,false,32);
+
+gen_arg_types([{0,f,32}|Args],Context,N,false,Bits) when 64 >= Bits ->
+  Types = maps:put({z,N},{0,f,32},Context#context.types),
+  Reg = maps:put({z,0},{f,14},Context#context.reg),
+  gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,false,Bits+32);
+
+gen_arg_types([{0,f,64}|Args],Context,0,false,0) ->
+  Types = maps:put({z,0},{0,f,64},Context#context.types),
+  Reg = maps:put({z,0},[{f,12},{f,13}],Context#context.reg),
+  gen_arg_types(Args,Context#context{types=Types,reg=Reg},1,false,64);
+
+gen_arg_types([{0,f,64}|Args],Context,N,false,Bits) when 64 >= Bits ->
+  Types = maps:put({z,N},{0,f,N},Context#context.types),
+  Reg = maps:put({z,0},[{f,14},{f,15}],Context#context.reg),
+  gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,false,Bits+64);
+
+gen_arg_types([{0,T,64}|Args],Context,N,_,Bits) when 64 >= Bits andalso 2 >= N ->
+  Types = maps:put({z,N},{0,T,64},Context#context.types),
+  Reg = maps:put({z,0},[{i,6},{i,7}],Context#context.reg),
+  gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,true,Bits+64);
+
+gen_arg_types([Hd|Args],Context,N,_,Bits) when 96 >= Bits andalso 3 >= N ->
   Types = maps:put({z,N},Hd,Context#context.types),
-  gen_arg_types(Args,Context#context{types=Types,sp=Context#context.sp+sizeof(Hd)},N+1);
+  Reg = maps:put({z,N},[{i,4+Bits div 32}],Context#context.reg),
+  gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,true,Bits+32);
+
+gen_arg_types([Hd|Args],Context,N,Int_Reg,Bits) ->
+  Types = maps:put({z,N},Hd,Context#context.types),
+  gen_arg_types(Args,Context#context{types=Types},N+1,Int_Reg,Bits+sizeof(Hd));
+
 % Frame pointer is offset from 0 in the context we return
 % as we count the SP from the start of the arguments
-gen_arg_types([],Context,_) -> {ok,Context#context{fp=-Context#context.sp}}.
+% - or + here?
+gen_arg_types([],Context,_,_,Bits) -> {ok,Context#context{sp=-Bits div 8}}.
 
 
 %% Stack Resize Up
@@ -117,7 +150,35 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   %% TODO: Find out what way around SP should be
   [{Instr,Src,{sp,Dest-Context#context.sp}}|gen_scoped(Rest,N_Context)];
 
+% Arguments
+gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
+  case maps:get({z,Ns},Context#context.reg,nil) of
+    nil ->
+      Types = maps:put({y,Nd},maps:get({z,Ns},Context#context.types),Context#context.types),
+      gen_scoped(Rest,Context#context{types=Types});
+    Src ->
+      Dest = maps:get({y,Nd},Context#context.s_reg,Context#context.sp),
+      {Ps,Ts,Ss} = maps:get({z,Ns},Context#context.types,{0,n,32}),
+      {Pd,Td,Sd} = maps:get({y,Nd},Context#context.types,{Ps,Ts,Ss}),
+      Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
+           io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
+           Sd;
+         true -> Ss end,
+      Instr = case {Size,Src} of
+        {32,{f,N}} -> 's.s';
+        {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 's.d';
+        {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
+        {32,Reg} -> sw;
+        {16,Reg} -> sh;
+        {8,Reg} -> sb
+      end,
+      N_Types = maps:put({y,Nd},{Pd,Td,Sd},Context#context.types),
+      N_Context = Context#context{types=N_Types},
+      %% TODO: Find out what way around SP should be
+      [{Instr,Src,{sp,Dest-Context#context.sp}}|gen_scoped(Rest,N_Context)]
+  end;
 
+% Get from stack
 gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
   Src = maps:get({y,Ns},Context#context.s_reg,Context#context.sp),
   % If for whatever reason the reg hasn't been declared, warn the user?
@@ -139,12 +200,19 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
   %% TODO: Find out what way around SP should be
   [{Instr,Dest,{sp,Src-Context#context.sp}}|gen_scoped(Rest,Reg_Context)];
 
+
+
 gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
-  io:fwrite("~p~n",[Context#context.types]),
-  io:fwrite("Src 1~n~p~n",[Src_1]),
-  io:fwrite("Src 2~n~p~n",[Src_2]),
-  io:fwrite("Dest~n~p~n",[Dest]),
-  error({no_mips,Op});
+  T1 = maps:get(Src_1,Context#context.types),
+  T2 = maps:get(Src_2,Context#context.types),
+  case {T1,T2} of
+    % Same non-pointer type
+    {{0,N,T},{0,N,T}} ->
+      {ok,Res,Res_Context} = gen_op(Op,N,T,Src_1,Src_2,Dest,Context),
+      [Res|gen_scoped(Rest,Res_Context)];
+    %% TODO: Pointers
+    {T1,T2} -> error({cast,{T1,T2}})
+  end;
 
 
 gen_scoped([],Context) -> [];
@@ -192,6 +260,11 @@ get_reg(Reg,Type,Context) ->
       {ok,Dest,Context#context{f_reg=F_Reg,reg=N_Reg,i_reg=Rest}};
     Other -> error(Other)
   end.
+
+
+%% Putting boilerplate for built in functions in a separate file because it clutters this file
+gen_op(A,B,C,D,E,F,G) -> mips_op:gen_op(A,B,C,D,E,F,G).
+
 
 gen_global(Frame,Name) ->
   Frame_Asm = gen_global(Frame,Name,[]),

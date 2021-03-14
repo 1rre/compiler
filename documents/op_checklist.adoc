@@ -1,0 +1,47 @@
+== BIFs generated (at least partially - no casting at first):
+
+.Floats
+* Float add:
+** [ ] Single
+** [ ] Double
+* Float sub:
+** [ ] Single
+** [ ] Double
+* Float mul:
+** [ ] Single
+** [ ] Double
+* Float div:
+** [ ] Single
+** [ ] Double
+* Float eq:
+** [ ] Single
+** [ ] Double
+* Negate::
+** [ ] Single
+** [ ] Double
+
+.Ints
+* [ ] Logical and
+* [ ] Logical or
+* [ ] Bitwise and
+* [ ] Bitwise or
+* [ ] Bitwise xor
+* [ ] Equal to
+* [ ] Not equal to
+* [ ] Greater than
+* [ ] Less than
+* [ ] Greater or equal to
+* [ ] Less or equal to
+* [ ] Add
+* [ ] Sub
+* [ ] Mul
+* [ ] Div
+* [ ] Rem
+* [ ] Others?
+
+
+.Pointers
+TODO: Pointer op checklist
+
+.Arrays
+TODO: Array op checklist
