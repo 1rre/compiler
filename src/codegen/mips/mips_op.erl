@@ -5,82 +5,24 @@
 
 %% Putting boilerplate for built in functions here because it clutters the mips file
 
-gen_op('+',f,32,Reg_1,Reg_2,Reg_3,Context) ->
+simple_int_op(Op,Type,Reg_1,Reg_2,Reg_3,Context) ->
+  Src_1 = maps:get(Reg_1,Context#context.reg),
+  Src_2 = maps:get(Reg_2,Context#context.reg),
+  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,Type,Context),
+  {ok,[{op,Dest,Src_1,Src_2}],Dest_Context}.
+
+
+simple_float_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,32},Context),
   case {Src_1,Src_2,Dest} of
-    {{f,_},{f,_},{f,_}} -> {ok,{'add.s',Dest,Src_1,Src_2},Dest_Context};
-    _ -> error({float_add,{Src_1,Src_2,Dest}})
-  end;
+    {{f,_},{f,_},{f,_}} -> {ok,{Op,Dest,Src_1,Src_2},Dest_Context};
+    _ -> error({not_float,{Src_1,Src_2,Dest}})
+  end.
 
-gen_op('+',f,64,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,64},Context),
-  case {Src_1,Src_2,Dest} of
-    % Make sure all registers are consecutive double registers
-    {[{f,R11},{f,R12}],[{f,R21},{f,R22}],[{f,R31},{f,R32}]} when R11 == R12+1
-                                                            andalso R21 == R22+1
-                                                            andalso R31 == R32+1 ->
-      {ok,{'add.d',R31,R11,R21},Dest_Context};
-    _ -> error({float_add,{Src_1,Src_2,Dest}})
-  end;
 
-gen_op('-',f,32,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,32},Context),
-  case {Src_1,Src_2,Dest} of
-    {{f,_},{f,_},{f,_}} -> {ok,{'sub.s',Dest,Src_1,Src_2},Dest_Context};
-    _ -> error({float_sub,{Src_1,Src_2,Dest}})
-  end;
-
-gen_op('-',f,64,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,64},Context),
-  case {Src_1,Src_2,Dest} of
-    % Make sure all registers are consecutive double registers
-    {[{f,R11},{f,R12}],[{f,R21},{f,R22}],[{f,R31},{f,R32}]} when R11 == R12+1
-                                                            andalso R21 == R22+1
-                                                            andalso R31 == R32+1 ->
-      {ok,{'sub.d',R31,R11,R21},Dest_Context};
-    _ -> error({float_sub,{Src_1,Src_2,Dest}})
-  end;
-
-gen_op('*',f,32,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,32},Context),
-  case {Src_1,Src_2,Dest} of
-    {{f,_},{f,_},{f,_}} -> {ok,{'mul.s',Dest,Src_1,Src_2},Dest_Context};
-    _ -> error({float_mul,{Src_1,Src_2,Dest}})
-  end;
-
-gen_op('*',f,64,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,64},Context),
-  case {Src_1,Src_2,Dest} of
-    % Make sure all registers are consecutive double registers
-    {[{f,R11},{f,R12}],[{f,R21},{f,R22}],[{f,R31},{f,R32}]} when R11 == R12+1
-                                                            andalso R21 == R22+1
-                                                            andalso R31 == R32+1 ->
-      {ok,{'mul.d',R31,R11,R21},Dest_Context};
-    _ -> error({float_mul,{Src_1,Src_2,Dest}})
-  end;
-
-gen_op('/',f,32,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,32},Context),
-  case {Src_1,Src_2,Dest} of
-    {{f,_},{f,_},{f,_}} -> {ok,{'div.s',Dest,Src_1,Src_2},Dest_Context};
-    _ -> error({float_div,{Src_1,Src_2,Dest}})
-  end;
-
-gen_op('/',f,64,Reg_1,Reg_2,Reg_3,Context) ->
+simple_double_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,64},Context),
@@ -90,24 +32,47 @@ gen_op('/',f,64,Reg_1,Reg_2,Reg_3,Context) ->
     {[{f,R11},{f,R12}],[{f,R21},{f,R22}],[{f,R31},{f,R32}]} when R11 == R12+1
                                                             andalso R21 == R22+1
                                                             andalso R31 == R32+1 ->
-      {ok,{'div.d',R31,R11,R21},Dest_Context};
-    _ -> error({float_div,{Src_1,Src_2,Dest}})
-  end;
+      {ok,{Op,R31,R11,R21},Dest_Context};
+    _ -> error({nonconsecutive,{Src_1,Src_2,Dest}})
+end.
 
-%% Is the size bit neccessary?
-%  Or the int bit?
+
+gen_op('+',f,32,Reg_1,Reg_2,Reg_3,Context) ->
+  simple_float_op('add.s',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('+',f,64,Reg_1,Reg_2,Reg_3,Context) ->
+  simple_double_op('add.d',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('-',f,32,Reg_1,Reg_2,Reg_3,Context) ->
+  simple_float_op('sub.s',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('-',f,64,Reg_1,Reg_2,Reg_3,Context) ->
+  simple_double_op('sub.d',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('*',f,32,Reg_1,Reg_2,Reg_3,Context) ->
+  simple_float_op('mul.s',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('*',f,64,Reg_1,Reg_2,Reg_3,Context) ->
+  simple_double_op('mul.d',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('/',f,32,Reg_1,Reg_2,Reg_3,Context) ->
+  simple_float_op('div.s',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('/',f,64,Reg_1,Reg_2,Reg_3,Context) ->
+  simple_double_op('div.d',Reg_1,Reg_2,Reg_3,Context);
+
+% && is multi-instruction & uses dest as temp so we need to avoid overwriting an operand
 gen_op('&&',_,Size,Reg_1,Reg_2,Reg_3,Context) when 32 >= Size ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,32},Context),
+  % uses dest as temp
   case {Src_1,Src_2,Dest} of
-    {{f,_},_,_} -> error({'&&',float});
-    {_,{f,_},_} -> error({'&&',float});
-    {_,_,{f,_}} -> error({'&&',float});
     {_,A,A} -> {ok,[{sltiu,Dest,Src_2,1},{xori,Dest,Dest,1},{movz,Dest,{i,0},Src_1}],Dest_Context};
     _ -> {ok,[{sltiu,Dest,Src_1,1},{xori,Dest,Dest,1},{movz,Dest,{i,0},Src_2}],Dest_Context}
   end;
 
+% || is multi-instruction & so
 gen_op('||',_,Size,Reg_1,Reg_2,Reg_3,Context) when 32 >= Size ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
@@ -115,22 +80,13 @@ gen_op('||',_,Size,Reg_1,Reg_2,Reg_3,Context) when 32 >= Size ->
   {ok,[{'or',Dest,Src_1,Src_2},{sltu,Dest,{i,0},Dest}],Dest_Context};
 
 gen_op('|',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
-  {ok,[{'or',Dest,Src_1,Src_2}],Dest_Context};
+  simple_int_op('or',{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('&',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
-  {ok,[{'and',Dest,Src_1,Src_2}],Dest_Context};
+  simple_int_op('and',{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('^',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
-  {ok,[{'xor',Dest,Src_1,Src_2}],Dest_Context};
+  simple_int_op('xor',{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('==',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
@@ -145,24 +101,13 @@ gen_op('!=',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
   {ok,[{'xor',Dest,Src_1,Src_2},{sltu,Dest,{i,0},Dest}],Dest_Context};
 
 gen_op('+',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,Size},Context),
-  {ok,[{add,Dest,Src_1,Src_2}],Dest_Context};
+  simple_int_op(add,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('+',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  simple_op(addu,{0,u,Size},Reg_1,Reg_2,Reg_3,Context);
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,u,Size},Context),
-  {ok,[{addu,Dest,Src_1,Src_2}],Dest_Context};
+  simple_int_op(addu,{0,u,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('-',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  simple_op(sub,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
-  % Src_1 = maps:get(Reg_1,Context#context.reg),
-  % Src_2 = maps:get(Reg_2,Context#context.reg),
-  % {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,Size},Context),
-  % {ok,[{sub,Dest,Src_1,Src_2}],Dest_Context};
+  simple_int_op(sub,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('-',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
@@ -170,10 +115,6 @@ gen_op('-',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,u,Size},Context),
   {ok,[{neg,Dest,Src_2},{addu,Dest,Src_1,Dest}],Dest_Context};
 
-simple_op(Op,Type,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,Type,Context),
-  {ok,[{op,Dest,Src_1,Src_2}],Dest_Context}.
+
 
 gen_op(Op,_,_,_,_,_,_) -> error({no_mips,Op}).
