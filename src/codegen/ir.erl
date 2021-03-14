@@ -408,6 +408,7 @@ get_decl_specs({N,Raw_T,Raw_S},[{Raw_Ident,{'=',_},Raw_St}],State) when State#st
 %  for them on the stack, processing the initialisation value and storing
 %  the initialisation value in the newly allocated stack slot.
 %% Apart from strings, for now I'm making them arrays lol
+% Is this still needed?
 get_decl_specs(Type, [{{{'*',_},{identifier,_,Ident}},{'=',_},{string_l,Ln,Str}}], State) ->
   St = [{int_l,Ln,N,[c]} || N <- Str]++[{int_l,Ln,0,[c]}],
   Raw_Ident = {{identifier,Ln,Ident},{array,{int_l,Ln,length(St),[]}}},
@@ -437,7 +438,7 @@ get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) when State#state.scope =:= 0
   {ok, Ident, Ptr_Depth, Raw_Arr} = get_ident_specs(Raw_Ident, State),
   Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
   Type = {Arr,{N+Ptr_Depth,Raw_T,Raw_S}},
-  {ok, Mem_State, Mem_St} = allocate_mem(Type, State, {g,Ident},{int_l,0,0,[]}),
+  {ok, Mem_State, Mem_St} = allocate_mem(Type, State, {g,Ident},[]),
   New_Var = maps:put(Ident,{Type,{g,Ident}},Mem_State#state.var),
   New_Types = maps:put({g,Ident},Type,Mem_State#state.typecheck),
   New_State = (copy_lvcnt(State,Mem_State))#state{typecheck=New_Types,var=New_Var},
@@ -450,7 +451,7 @@ get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) ->
   Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
   Type = {Arr,{N+Ptr_Depth,Raw_T,Raw_S}},
   Rv_Cnt = State#state.rvcnt,
-  {ok, Mem_State, Mem_St} = allocate_mem(Type, State,{y,Rv_Cnt},{int_l,0,0,[]}),
+  {ok, Mem_State, Mem_St} = allocate_mem(Type, State,{y,Rv_Cnt},[]),
   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
@@ -615,10 +616,11 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
       R2 = {x,Lv_Cnt+2},
       [{address,Ptr,Reg_Above},{move,{i,Offset},R2},{'+',[Reg_Above,R2],Reg_Above}]
   end,
-  {ok,Ptr_Type,Ptr_St} = get_ptr({Arr,{Rp,Rt,Rs}},Ptr_Depth,Active_Reg,State#state{lvcnt=Lv_Cnt+1}),
+  {ok,Ptr_Type,Ptr_St} = get_ptr({Arr,{Rp,Rt,Rs}},Ptr_Depth,Ptr,State#state{lvcnt=Lv_Cnt+1}),
   Lv_Cnt = State#state.lvcnt,
   {ok,Assign_State,Assign_St} = generate(Raw_St,State),
   St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
+  io:fwrite("~p~n",[Ptr_St]),
   case Arr_St++Ptr_St of
     [] ->
       End_St = if

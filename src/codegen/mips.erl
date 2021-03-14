@@ -193,6 +193,14 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
   %% TODO: Find out what way around SP should be
   [{Instr,Dest,{sp,Context#context.sp-Src}}|gen_scoped(Rest,Reg_Context)];
 
+% Get from stack
+gen_scoped([{address,{y,Ns},{x,Nd}}|Rest],Context) ->
+  Src = maps:get({y,Ns},Context#context.s_reg),
+  {Ps,Ts,Ss} = maps:get({y,Ns},Context#context.types,{0,i,32}),
+  {ok,Dest,Reg_Context} = get_reg({x,Nd},{Ps+1,Ts,Ss},Context),
+  % Do we need a sub statement here?
+  [{addiu,Dest,{i,29},Context#context.sp-Src}|gen_scoped(Rest,Reg_Context)];
+
 
 gen_scoped([{cast,{x,N},{0,T,S}}|Rest],Context) when (T =:= i) or (T =:= u) ->
   <<Bitmask:S>> = <<16#FFFFFFFF>>,
