@@ -2,27 +2,42 @@
 
 .Floats
 * Float add:
-** [ ] Single
-** [ ] Double
+** [X] Single
+** [X] Double
 * Float sub:
-** [ ] Single
-** [ ] Double
+** [X] Single
+** [X] Double
 * Float mul:
-** [ ] Single
-** [ ] Double
+** [X] Single
+** [X] Double
 * Float div:
-** [ ] Single
-** [ ] Double
+** [X] Single
+** [X] Double
 * Float eq:
 ** [ ] Single
 ** [ ] Double
-* Negate::
+* Float ne:
+** [ ] Single
+** [ ] Double
+* Float gt:
+** [ ] Single
+** [ ] Double
+* Float lt:
+** [ ] Single
+** [ ] Double
+* Float ge:
+** [ ] Single
+** [ ] Double
+* Float le:
+** [ ] Single
+** [ ] Double
+* Float negate:
 ** [ ] Single
 ** [ ] Double
 
 .Ints
-* [ ] Logical and
-* [ ] Logical or
+* [X] Logical and
+* [X] Logical or
 * [ ] Bitwise and
 * [ ] Bitwise or
 * [ ] Bitwise xor

@@ -14,18 +14,19 @@ c_test([File|Tests],Gcc,Qemu) ->
       open_port({spawn_executable, Gcc},
                 [stderr_to_stdout,
                  exit_status,
-                 {args, ["-mfp32", "-o", ".test/test.o", "-c", ".test/test.s"]}]),
+                 {args, ["-mfp32","-mhard-float","-o",".test/test.o","-c",".test/test.s"]}]),
       wait_exe(),
       Driver = filename:rootname(File) ++ "_driver.c",
       open_port({spawn_executable, Gcc},
                 [stderr_to_stdout,
                  exit_status,
-                 {args, ["-mfp32", "-static", "-o", "test/test.bin", ".test/test.o", Driver]}]),
+                 {args, ["-mfp32","-mhard-float","-static",
+                         "-o",".test/test.bin",".test/test.o",Driver]}]),
       wait_exe(),
       open_port({spawn_executable, Qemu},
                 [stderr_to_stdout,
                  exit_status,
-                 {args, ["test/test.bin"]}]),
+                 {args, [".test/test.bin"]}]),
       case wait_exe() of
         0 ->
           io:fwrite(standard_error,"\e[1;32mpass\e[0;37m~n",[]),
@@ -50,11 +51,13 @@ wait_exe() ->
 run() ->
   file:make_dir(".test"),
   Tests = filelib:wildcard("compiler_tests/*/*.c") -- filelib:wildcard("compiler_tests/*/*_driver.c"),
+  % Ideally use the musl version as that's faster to compile
   Gcc = case {os:find_executable("mips-linux-gnu-gcc"),os:find_executable("mips-linux-musl-gcc")} of
     {false,false} -> error({not_found,'mips-linux-gnu-gcc'});
-    {false,Gcc_Musl} -> Gcc_Musl;
-    {Gcc_Gnu,_} -> Gcc_Gnu
+    {Gcc_Gnu,false} -> Gcc_Gnu;
+    {_,Gcc_Musl} -> Gcc_Musl
   end,
+  io:fwrite("~p~n",[Gcc]),
   Qemu = case os:find_executable("qemu-mips") of
     false -> error({not_found,'qemu-mips'});
     Qemu_Mips -> Qemu_Mips

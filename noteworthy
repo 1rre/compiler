@@ -1,3 +1,46 @@
+compiler_tests/array/declare_global.c: fail
+Reason:
+{not_const,{i,8}}
+
+^ {i,8} is by definition constant (integer value 8)
+(ir.erl)
+
+
+compiler_tests/local_var/expression_initialiser.c: fail
+Reason:
+{badkey,{x,1}}
+
+^ {x,1} isn't getting put into the type map during mips generation
+(mips.erl)
+
+compiler_tests/array/index_constant.c: fail
+Reason:
+{badmatch,{ok,{[{i,8}],{0,i,32}},{y,0}}}
+
+^ It's not expecting "ok" to come with the type
+(ir.erl)
+
+compiler_tests/array/index_variable.c: fail
+Reason:
+{not_const,{identifier,6,i}}
+
+^ Currently an index is expected to be constant (#)
+(ir.erl)
+
+compiler_tests/float/add.c: fail
+Reason:
+{cast,{{0,f,32},{0,n,32}}}
+
+^ For some reason it thinks that a float operand is undefined (32 bit nil type)
+(mips.erl)
+
+compiler_tests/float/add_double.c: fail
+Reason:
+{not_impl,long_double}
+
+^ A double type is being resolved to "long double"
+(ir.erl)
+
 compiler_tests/float/add_mul.c: fail
 Reason:
 {{undefined_op_cast,'+'},
@@ -17,5 +60,30 @@ Reason:
  {bif,'*',[{identifier,3,y},{identifier,3,z}]},
  {identifier,3,x}}
 
-^ This is a type not being inserted properly, it should be {{[],{0,f,32}},{[],{0,f,32}}}
-Maybe due to return type of fn?
+ ^ A type is being stored in correctly after an op (most likely after a bif)
+ (ir.erl)
+
+compiler_tests/functions/call_mutual_recursive.c: fail
+Reason:
+{{undefined_op_cast,'+'},
+ {{[],{[],{0,i,32}}},{[],{[],{0,i,32}}}},
+ {state,2,1,0,
+        #{r1 => {{0,i,32},1},r2 => {{[],{0,i,32}},1}},
+        #{{y,0} => 32},
+        1,
+        #{n => {{[],{0,i,32}},{y,0}}},
+        #{},#{},#{},
+        #{{x,0} => {0,i,32},{x,1} => {[],{0,i,32}},{y,0} => {[],{0,i,32}}}},
+ {{identifier,8,r2},{apply,[{bif,'-',[{identifier,8,n},{int_l,8,1,[]}]}]}},
+ {{identifier,8,r2},{apply,[{bif,'-',[{identifier,8,n},{int_l,8,1,[]}]}]}}}
+
+ ^ the array is being applied to the type twice when it should just be once
+ (ir.erl)
+
+ compiler_tests/integer/logical_and.c: fail
+ Reason:
+ qemu-mips exited with code 1
+
+ ^ Logical and is not giving the correct result
+
+ 

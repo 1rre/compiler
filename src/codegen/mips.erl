@@ -1,5 +1,5 @@
 -module(mips).
--export([generate/1]).
+-export([generate/1,get_reg/3]).
 
 -include("arch_type_consts.hrl").
 
@@ -23,7 +23,6 @@ generate(Ir) ->
   {Data,Text} = lists:foldl(fun
     ({function,Type,Name,Args,St},{Data,Text}) ->
       {ok,Args_Context} = gen_arg_types(Args,Context,0,false,0),
-      io:fwrite("~p~n",[Args_Context#context.reg]),
       Scope_Asm = gen_scoped(St,Args_Context),
       Asm = Scope_Asm,
       {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Text]++Asm++[{'.end',Name}]};
@@ -65,7 +64,7 @@ gen_arg_types([{0,T,64}|Args],Context,N,_,Bits) when 64 >= Bits andalso 2 >= N -
 
 gen_arg_types([Hd|Args],Context,N,_,Bits) when 96 >= Bits andalso 3 >= N ->
   Types = maps:put({z,N},Hd,Context#context.types),
-  Reg = maps:put({z,N},[{i,4+Bits div 32}],Context#context.reg),
+  Reg = maps:put({z,N},{i,4+Bits div 32},Context#context.reg),
   gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,true,Bits+32);
 
 gen_arg_types([Hd|Args],Context,N,Int_Reg,Bits) ->
@@ -131,7 +130,7 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
        io:fwrite(standard_error,"~p not assigned to a register, using $0~n",[{x,Nd}]);
      true -> ok end,
   Dest = maps:get({y,Nd},Context#context.s_reg,Context#context.sp),
-  {Ps,Ts,Ss} = maps:get({x,Ns},Context#context.types,{0,n,32}),
+  {Ps,Ts,Ss} = maps:get({x,Ns},Context#context.types,{0,i,32}),
   {Pd,Td,Sd} = maps:get({y,Nd},Context#context.types,{Ps,Ts,Ss}),
   Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
        io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
@@ -148,7 +147,7 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   N_Types = maps:put({y,Nd},{Pd,Td,Sd},Context#context.types),
   N_Context = Context#context{types=N_Types},
   %% TODO: Find out what way around SP should be
-  [{Instr,Src,{sp,Dest-Context#context.sp}}|gen_scoped(Rest,N_Context)];
+  [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_scoped(Rest,N_Context)];
 
 % Arguments
 gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
@@ -158,7 +157,7 @@ gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
       gen_scoped(Rest,Context#context{types=Types});
     Src ->
       Dest = maps:get({y,Nd},Context#context.s_reg,Context#context.sp),
-      {Ps,Ts,Ss} = maps:get({z,Ns},Context#context.types,{0,n,32}),
+      {Ps,Ts,Ss} = maps:get({z,Ns},Context#context.types,{0,i,32}),
       {Pd,Td,Sd} = maps:get({y,Nd},Context#context.types,{Ps,Ts,Ss}),
       Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
            io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
@@ -175,17 +174,13 @@ gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
       N_Types = maps:put({y,Nd},{Pd,Td,Sd},Context#context.types),
       N_Context = Context#context{types=N_Types},
       %% TODO: Find out what way around SP should be
-      [{Instr,Src,{sp,Dest-Context#context.sp}}|gen_scoped(Rest,N_Context)]
+      [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_scoped(Rest,N_Context)]
   end;
 
 % Get from stack
 gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
   Src = maps:get({y,Ns},Context#context.s_reg,Context#context.sp),
-  % If for whatever reason the reg hasn't been declared, warn the user?
-  if Src =:= {i,0} ->
-       io:fwrite(standard_error,"~p not assigned to a register, using $0~n",[{x,Nd}]);
-     true -> ok end,
-  {Ps,Ts,Ss} = maps:get({y,Ns},Context#context.types,{0,n,32}),
+  {Ps,Ts,Ss} = maps:get({y,Ns},Context#context.types,{0,i,32}),
   {ok,Dest,Reg_Context} = get_reg({x,Nd},{Ps,Ts,Ss},Context),
   Size = if Ps =:= 0 -> Ss;
             true -> 32 end,
@@ -197,8 +192,9 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
     {16,Reg} -> lh;
     {8,Reg} -> lb
   end,
+  N_Types = maps:put({x,Nd},{Ps,Ts,Ss},Context#context.types),
   %% TODO: Find out what way around SP should be
-  [{Instr,Dest,{sp,Src-Context#context.sp}}|gen_scoped(Rest,Reg_Context)];
+  [{Instr,Dest,{sp,Context#context.sp-Src}}|gen_scoped(Rest,Reg_Context#context{types=N_Types})];
 
 
 
@@ -209,7 +205,7 @@ gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
     % Same non-pointer type
     {{0,N,T},{0,N,T}} ->
       {ok,Res,Res_Context} = gen_op(Op,N,T,Src_1,Src_2,Dest,Context),
-      [Res|gen_scoped(Rest,Res_Context)];
+      Res++gen_scoped(Rest,Res_Context);
     %% TODO: Pointers
     {T1,T2} -> error({cast,{T1,T2}})
   end;
