@@ -86,6 +86,7 @@ gen_op('/',f,64,Reg_1,Reg_2,Reg_3,Context) ->
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,64},Context),
   case {Src_1,Src_2,Dest} of
     % Make sure all registers are consecutive double registers
+    % They should be though...
     {[{f,R11},{f,R12}],[{f,R21},{f,R22}],[{f,R31},{f,R32}]} when R11 == R12+1
                                                             andalso R21 == R22+1
                                                             andalso R31 == R32+1 ->
@@ -111,14 +112,36 @@ gen_op('||',_,Size,Reg_1,Reg_2,Reg_3,Context) when 32 >= Size ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,32},Context),
-  case {Src_1,Src_2,Dest} of
-    {{f,_},_,_} -> error({'||',float});
-    {_,{f,_},_} -> error({'||',float});
-    {_,_,{f,_}} -> error({'||',float});
-    _ -> {ok,[{'or',Dest,Src_1,Src_2},{sltu,Dest,{i,0},Dest}],Dest_Context}
-  end;
+  {ok,[{'or',Dest,Src_1,Src_2},{sltu,Dest,{i,0},Dest}],Dest_Context};
 
+gen_op('|',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+  Src_1 = maps:get(Reg_1,Context#context.reg),
+  Src_2 = maps:get(Reg_2,Context#context.reg),
+  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
+  {ok,[{'or',Dest,Src_1,Src_2}],Dest_Context};
 
+gen_op('&',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+  Src_1 = maps:get(Reg_1,Context#context.reg),
+  Src_2 = maps:get(Reg_2,Context#context.reg),
+  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
+  {ok,[{'and',Dest,Src_1,Src_2}],Dest_Context};
 
+gen_op('^',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+  Src_1 = maps:get(Reg_1,Context#context.reg),
+  Src_2 = maps:get(Reg_2,Context#context.reg),
+  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
+  {ok,[{'xor',Dest,Src_1,Src_2}],Dest_Context};
+
+gen_op('==',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+  Src_1 = maps:get(Reg_1,Context#context.reg),
+  Src_2 = maps:get(Reg_2,Context#context.reg),
+  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
+  {ok,[{'xor',Dest,Src_1,Src_2},{sltiu,Dest,Dest,1}],Dest_Context};
+
+gen_op('!=',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+  Src_1 = maps:get(Reg_1,Context#context.reg),
+  Src_2 = maps:get(Reg_2,Context#context.reg),
+  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
+  {ok,[{'xor',Dest,Src_1,Src_2},{sltu,Dest,{i,0},Dest}],Dest_Context};
 
 gen_op(Op,_,_,_,_,_,_) -> error({no_mips,Op}).

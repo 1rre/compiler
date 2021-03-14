@@ -36,8 +36,8 @@ generate([Hd|Tl], State) ->
 
 %% Process a declaration of a function by adding specification about it to the state &
 %  processing the branches of the function node (arguments & statement list)
-%% TODO: Check if this supports pointers?
-generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) ->
+%% TODO: make this support pointers
+generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(Raw_Args) ->
   {ok, Type} = get_type(Raw_Type, State),
   {ok, Ident, _Ptr_Ident, Arr} = get_ident_specs(Raw_Ident,State),
   if Arr =/= [] -> error({return_type,array});
@@ -494,7 +494,6 @@ allocate_mem({[],Type},State,Dest,Init) ->
   {ok,N_State,{data,Type,get_constant(Init,State)}};
 
 allocate_mem(Type,State,{y,N},Init) ->
-  io:fwrite("~p~n",[Type]),
   Heap_St = lists:flatten(gen_heap(Type,State,Init)),
   Size = sizeof(Type,State),
   Lv_Cnt = State#state.lvcnt,
@@ -717,7 +716,6 @@ process_bif('-',Fst,Sec,State,Swap) ->
     {{[],{N,T,S_A}},{[],{0,i,S_B}}} -> {[],{N,T,S_A}}; %% TODO: Change size of B
     Types -> error({{undefined_op_cast,'-'},Types})
   end,
-  io:fwrite("~p~n",[R_Type]),
   Lv_Cnt = State#state.lvcnt,
   Statement = A_St ++ B_St ++ [{'-',[R1,R2],{x,Lv_Cnt}}],
   N_Types = maps:put({x,Lv_Cnt},R_Type,B_State#state.typecheck),

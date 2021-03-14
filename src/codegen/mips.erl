@@ -221,6 +221,25 @@ gen_scoped([{cast,{x,N},{0,u,S}}|Rest],Context) ->
       error({no_mips,cast,{{0,i,S},{Other}}})
   end;
 
+%% TODO: Do we need to do anything else here?
+gen_scoped([{cast,{y,N},T}|Rest],Context) ->
+  N_Types = maps:put({y,N},T,Context#context.types),
+  gen_scoped(Rest,Context#context{types=N_Types});
+
+gen_scoped([{cast,{x,N},{0,u,S}}|Rest],Context) ->
+  <<Bitmask:S>> = <<16#FFFFFFFF>>,
+  case maps:get({x,N},Context#context.types,{0,i,S}) of
+    {0,T,S} when (T =:= i) or (T =:= u) ->
+      N_Types = maps:put({x,N},{0,i,S},Context#context.types),
+      gen_scoped(Rest,Context);
+    %% Really we should check for float registers and changes of register here
+    {0,T,_} when (T =:= i) or (T =:= u) ->
+      {ok,Reg,Reg_Context} = get_reg({x,N},{0,i,S},Context),
+      [{andi,Reg,Reg,Bitmask}|gen_scoped(Rest,Reg_Context)];
+    Other ->
+      error({no_mips,cast,{{0,i,S},{Other}}})
+  end;
+
 
 gen_scoped([{cast,{x,N},{0,T,S}}|Rest],Context) ->
   error({no_mips,cast,{0,T,S}});
