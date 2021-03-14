@@ -103,7 +103,8 @@ gen_op('&&',_,Size,Reg_1,Reg_2,Reg_3,Context) when 32 >= Size ->
     {{f,_},_,_} -> error({'&&',float});
     {_,{f,_},_} -> error({'&&',float});
     {_,_,{f,_}} -> error({'&&',float});
-    _ -> {ok,[{sltiu,Dest,Src_1,1},{xori,Dest,Dest,1},{movz,{i,0},Src_2,Dest}],Dest_Context}
+    {_,A,A} -> {ok,[{sltiu,Dest,Src_2,1},{xori,Dest,Dest,1},{movz,Dest,{i,0},Src_1}],Dest_Context};
+    _ -> {ok,[{sltiu,Dest,Src_1,1},{xori,Dest,Dest,1},{movz,Dest,{i,0},Src_2}],Dest_Context}
   end;
 
 gen_op('||',_,Size,Reg_1,Reg_2,Reg_3,Context) when 32 >= Size ->

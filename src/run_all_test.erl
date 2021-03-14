@@ -57,7 +57,6 @@ run() ->
     {Gcc_Gnu,false} -> Gcc_Gnu;
     {_,Gcc_Musl} -> Gcc_Musl
   end,
-  io:fwrite("~p~n",[Gcc]),
   Qemu = case os:find_executable("qemu-mips") of
     false -> error({not_found,'qemu-mips'});
     Qemu_Mips -> Qemu_Mips

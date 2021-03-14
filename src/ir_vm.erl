@@ -213,8 +213,12 @@ run_st([{Op,[A,B],Dest}|Rest],Context,Ir) ->
   {ok,N_Context} = if
     (TA =:= f) or (TB =:= f) ->
       set_data({0,f,?SIZEOF_FLOAT},Dest,do_op(Op,A_Val,B_Val,PA,PB),Context);
+    PA =/= 0 ->
+      set_data({PA,i,SA},Dest,do_op(Op,A_Val,B_Val*SA,PA,PB),Context);
+    PB =/= 0 ->
+      set_data({PB,i,SB},Dest,do_op(Op,A_Val,B_Val*SB,PA,PB),Context);
     true ->
-      set_data({max(PA,PB),i,max(SA,SB)},Dest,do_op(Op,A_Val,B_Val,PA,PB),Context)
+      set_data({0,i,max(SA,SB)},Dest,do_op(Op,A_Val,B_Val,PA,PB),Context)
   end,
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);
@@ -294,7 +298,7 @@ set_data({P,_,Raw_Size},Address,Data,Context) when is_integer(Address) ->
   Size = if P =:= 0 -> Raw_Size; true -> ?SIZEOF_POINTER end,
   Stack = Context#context.stack,
   Fp = Context#context.fp,
-  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size ,
+  Offset = bit_size(Stack) - (?STACK_PTR - Address)*8 - Size,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size,Rest/bits>>,
   N_Context = Context#context{stack=N_Stack},
@@ -359,11 +363,11 @@ cast(Data,{_,_,_}) -> Data.
 
 
 do_op('+',A,B,0,0) -> A+B;
-do_op('+',A,B,_,0) -> A-(?SIZEOF_POINTER div 8)*B;
-do_op('+',A,B,0,_) -> B-(?SIZEOF_POINTER div 8)*A;
+do_op('+',A,B,_,0) -> A-B div 8;
+do_op('+',A,B,0,_) -> B-A div 8;
 do_op('-',A,B,0,0) -> A-B;
-do_op('-',A,B,_,0) -> A+(?SIZEOF_POINTER div 8)*B;
-do_op('-',A,B,0,_) -> (?SIZEOF_POINTER div 8)*A+B;
+do_op('-',A,B,_,0) -> A+B div 8;
+do_op('-',A,B,0,_) -> A div 8+B;
 do_op('*',A,B,0,0) -> A*B;
 do_op('%',A,B,0,0) -> A rem B;
 do_op('==',A,B,0,0) -> A==B;

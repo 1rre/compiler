@@ -84,11 +84,9 @@ gen_scoped([{allocate,Size}|Rest],Context) ->
   N = Context#context.stack_size,
   Sp = Context#context.sp,
   N_S_Reg = maps:put({y,N},Sp,Context#context.s_reg),
-  N_Types = maps:put({y,N},{0,n,Size},Context#context.types),
   N_Context = Context#context{s_reg=N_S_Reg,
                               sp=Sp+(Size div 8),
-                              stack_size=N+1,
-                              types=N_Types},
+                              stack_size=N+1},
   [{addiu,{i,29},{i,29},-(Size div 8)}|gen_scoped(Rest,N_Context)];
 
 %% Stack Resize Down
@@ -171,7 +169,7 @@ gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
         {16,Reg} -> sh;
         {8,Reg} -> sb
       end,
-      N_Types = maps:put({y,Nd},{Pd,Td,Sd},Context#context.types),
+      N_Types = maps:put({y,Nd},{Ps,Ts,Ss},Context#context.types),
       N_Context = Context#context{types=N_Types},
       %% TODO: Find out what way around SP should be
       [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_scoped(Rest,N_Context)]
@@ -192,9 +190,54 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
     {16,Reg} -> lh;
     {8,Reg} -> lb
   end,
-  N_Types = maps:put({x,Nd},{Ps,Ts,Ss},Context#context.types),
   %% TODO: Find out what way around SP should be
-  [{Instr,Dest,{sp,Context#context.sp-Src}}|gen_scoped(Rest,Reg_Context#context{types=N_Types})];
+  [{Instr,Dest,{sp,Context#context.sp-Src}}|gen_scoped(Rest,Reg_Context)];
+
+gen_scoped([{cast,{x,N},{0,i,S}}|Rest],Context) ->
+  <<Bitmask:S>> = <<16#FFFFFFFF>>,
+  case maps:get({x,N},Context#context.types,{0,i,S}) of
+    {0,T,S} when (T =:= i) or (T =:= u) ->
+      N_Types = maps:put({x,N},{0,T,S},Context#context.types),
+      gen_scoped(Rest,Context);
+    %% Really we should check for float registers and changes of register here
+    {0,T,_} when (T =:= i) or (T =:= u) ->
+      {ok,Reg,Reg_Context} = get_reg({x,N},{0,i,S},Context),
+      [{andi,Reg,Reg,Bitmask}|gen_scoped(Rest,Reg_Context)];
+    Other ->
+      error({no_mips,cast,{{0,i,S},{Other}}})
+  end;
+
+gen_scoped([{cast,{x,N},{0,u,S}}|Rest],Context) ->
+  <<Bitmask:S>> = <<16#FFFFFFFF>>,
+  case maps:get({x,N},Context#context.types,{0,i,S}) of
+    {0,T,S} when (T =:= i) or (T =:= u) ->
+      N_Types = maps:put({x,N},{0,i,S},Context#context.types),
+      gen_scoped(Rest,Context);
+    %% Really we should check for float registers and changes of register here
+    {0,T,_} when (T =:= i) or (T =:= u) ->
+      {ok,Reg,Reg_Context} = get_reg({x,N},{0,i,S},Context),
+      [{andi,Reg,Reg,Bitmask}|gen_scoped(Rest,Reg_Context)];
+    Other ->
+      error({no_mips,cast,{{0,i,S},{Other}}})
+  end;
+
+
+gen_scoped([{cast,{x,N},{0,T,S}}|Rest],Context) ->
+  error({no_mips,cast,{0,T,S}});
+
+gen_scoped([{cast,{x,N},Type}|Rest],Context) ->
+  case maps:get({x,N},Context#context.types,Type) of
+    Type ->
+      N_Types = maps:put({x,N},Type,Context#context.types),
+      gen_scoped(Rest,Context);
+    {0,T,S} ->
+      error({no_mips,cast,{Type,{0,T,S}}});
+    {N,T,S} ->
+      % Pointer to pointer needs no extra work?
+      N_Types = maps:put({x,N},Type,Context#context.types),
+      gen_scoped(Rest,Context)
+  end;
+
 
 
 
@@ -216,7 +259,7 @@ gen_scoped([Other|_],Context) -> error({no_mips,Other}).
 
 % Reg for a 64 bit object
 get_reg(Reg,{0,_,64},Context) ->
-  error({not_impl,long_double});
+  error({not_impl,double});
 % Reg for a 32 bit float
 get_reg(Reg,{0,f,32},Context) ->
   N_Types = maps:put(Reg,{0,f,32},Context#context.types),
@@ -253,7 +296,7 @@ get_reg(Reg,Type,Context) ->
     {Old_Reg,[Dest|Rest]} ->
       F_Reg = [Old_Reg | Context#context.f_reg],
       N_Reg = maps:put(Reg,Dest,Context#context.reg),
-      {ok,Dest,Context#context{f_reg=F_Reg,reg=N_Reg,i_reg=Rest}};
+      {ok,Dest,Context#context{f_reg=F_Reg,reg=N_Reg,i_reg=Rest,types=N_Types}};
     Other -> error(Other)
   end.
 
