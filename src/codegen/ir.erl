@@ -239,6 +239,10 @@ generate({{'if',_},Predicate,True,False}, State) ->
       {ok,Rtn_State,Rtn_St}
   end;
 
+generate({{switch,_},Raw_St,Cases},Context) ->
+  error({no_ir,switch});
+
+
 %% Process a while loop by processing each of the predicate and the loop body,
 %  having the PC jump to beyond the end of the loop if the predicate evaluates to zero
 %  and having an unconditional jump to before the predicate at the end of the loop.
@@ -775,8 +779,8 @@ get_type([{double,_}],_)          -> {ok,{0,f,?SIZEOF_DOUBLE}};
 get_type([{float,_}],_)           -> {ok,{0,f,?SIZEOF_FLOAT}};
 get_type([{long,_},{int,_}],_)    -> {ok,{0,i,?SIZEOF_LONG}};
 get_type([{long,_}],_)            -> {ok,{0,i,?SIZEOF_LONG}};
-get_type([{unsigned,_}],C)        -> {ok,{0,u,?SIZEOF_INT}};
-get_type([{signed,_}],C)          -> {ok,{0,i,?SIZEOF_INT}};
+get_type([{unsigned,_}],_)        -> {ok,{0,u,?SIZEOF_INT}};
+get_type([{signed,_}],_)          -> {ok,{0,i,?SIZEOF_INT}};
 get_type([{int,_}],_)             -> {ok,{0,i,?SIZEOF_INT}};
 get_type([{short,_},{int,_}],_)   -> {ok,{0,i,?SIZEOF_SHORT}};
 get_type([{short,_}],_)           -> {ok,{0,i,?SIZEOF_SHORT}};
@@ -794,7 +798,28 @@ get_type([{signed,_}|Type],C) ->
     {error,{unknown_type,T}} -> {error,{unknown_type,[signed|T]}};
     _ -> {error,{unknown_type,[signed|Type]}}
   end;
-get_type(Type,_)                  -> {error,{unknown_type, Type}}.
+
+% Struct with declaration of struct type
+get_type([{{struct,_},{identifier,_,Ident}, Struct_Specs}],Context) ->
+  error({no_ir,struct});
+
+% Predeclared struct
+get_type([{{struct,_},{identifier,_,Ident}}],Context) ->
+  error({no_ir,struct});
+
+% Enum with declaration of enum type
+get_type([{{enum,_},{identifier,_,Ident}, Enum_Specs}],Context) ->
+  error({no_ir,enum});
+
+% Predeclared enum
+get_type([{{enum,_},{identifier,_,Ident}}],Context) ->
+  error({no_ir,enum});
+
+% Typedef
+get_type([{typedef,_}|Types],Context) ->
+  error({no_ir,typedef});
+
+get_type(Type,_) -> error({unknown_type, Type}).
 
 %% Function to return the size of different types.
 %% TODO: #5

@@ -1,4 +1,0 @@
--ansi
--pedantic
--I/usr/lib/erlang/erts-11.1.8/include
--Iinclude
