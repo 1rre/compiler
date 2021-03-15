@@ -508,8 +508,11 @@ allocate_mem(Type,State,{y,N},Init) ->
   N_Types = maps:merge(#{{x,Lv_Cnt}=>Type,{y,N}=>Type},State#state.typecheck),
   N_Sizes = maps:put({y,N},Size,State#state.sizeof),
   N_State = State#state{sizeof=N_Sizes,typecheck=N_Types},
-  {ok,N_State,[{allocate,0},{cast,{y,N},element(2,Type)},{address,{y,N},{x,Lv_Cnt}},
-               {move,{i,1},{x,Lv_Cnt+1}},{'-',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}|Heap_St]};
+  case Heap_St of
+    [] -> {ok,N_State,[{allocate,Size},{cast,{y,N},element(2,Type)}]};
+    _ ->{ok,N_State,[{allocate,Size},{cast,{y,N},element(2,Type)},{address,{y,N},{x,Lv_Cnt}},
+                     {move,{i,1},{x,Lv_Cnt+1}},{'-',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}|Heap_St]}
+  end;
 
 allocate_mem(Type,State,{g,Ident},Init) ->
   Heap_St = gen_global_heap(Type,State,Init),
@@ -522,40 +525,45 @@ gen_heap({[],Type},State,Init) ->
   {ok,_,St} = generate(Init,State),
   St;
 
-gen_heap({[Const],{P,T,S}},State,Inits) when is_list(Inits) ->
+gen_heap({[Const],{P,T,S}},State,Inits) when length(Inits) > 0 ->
   {_,N} = Const,
   Lv_Cnt = State#state.lvcnt,
   Size = sizeof({P,T,S},State),
-  [{test_heap,Size*N} |
    [[{move,{i,1},{x,Lv_Cnt+1}},
      {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}} |
-     gen_heap({[],{P-1,T,S}},State#state{lvcnt=Lv_Cnt+1},Init)] ++
-    [{store,{x,Lv_Cnt+1},{x,Lv_Cnt}}] || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)]];
-gen_heap({[Const|Arr],{P,T,S}},State,Inits) when is_list(Inits) ->
+     % Changed from {P-1,T,S}
+     gen_heap({[],{P,T,S}},State#state{lvcnt=Lv_Cnt+1},Init)] ++
+    [{store,{x,Lv_Cnt+1},{x,Lv_Cnt}}] || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)];
+
+% Array doesn't need initialising or something idk
+gen_heap({[Const|Arr],{P,T,S}},State,[]) -> [];
+
+gen_heap({[Const|Arr],{P,T,S}},State,Inits) ->
+  io:fwrite("~p~n",["case 3"]),
   {_,N} = Const,State,
   Lv_Cnt = State#state.lvcnt,
   Size = sizeof({P,T,S},State),
-  [gen_heap({Arr,{P-1,T,S}},State,Init) || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)];
-gen_heap({[Const|Arr],{P,T,S}},State,{int_l,0,0,[]}) ->
+  [gen_heap({Arr,{P-1,T,S}},State,Init) || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)].
+
+
+% TODO: Make sure this doesn't interfere with actual array generation (this is for empty arrays)
+gen_global_heap({[],Type},State,[]) ->
+  {data,Type,{i,0}};
+
+gen_global_heap({[],Type},State,Init) ->
+  {data,Type,get_constant(Init,State)};
+
+gen_global_heap({[Const|Arr],{P,T,S}},State,[]) ->
   {_,N} = Const,
-  Lv_Cnt = State#state.lvcnt,
-  Size = sizeof({P,T,S},State),
-  [{test_heap,Size*N} |
-   [[{move,{i,1},{x,Lv_Cnt+1}},
-     {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}} |
-     gen_heap({Arr,{P-1,T,S}},State#state{lvcnt=Lv_Cnt+1},{int_l,0,0,[]})] ++
-    [{store,{x,Lv_Cnt+1},{x,Lv_Cnt}}] || Ptr <-lists:seq(0,N-1)]].
+  % Changed from {P-1,T,S}
+  Data = [gen_global_heap({Arr,{P,T,S}},State,[]) || _ <- lists:seq(1,N)],
+  {local,Data};
 
-
-gen_global_heap({[],Type},State,Init) -> {data,Type,get_constant(Init,State)};
 gen_global_heap({[Const|Arr],{P,T,S}},State,Inits) when is_list(Inits) ->
   {_,N} = Const,
   Indices = lists:zip(lists:seq(0,N-1),Inits),
-  Data = [gen_global_heap({Arr,{P-1,T,S}},State,Init) || {_,Init} <- Indices],
-  {local,Data};
-gen_global_heap({[Const|Arr],{P,T,S}},State,{int_l,0,0,[]}) ->
-  {_,N} = Const,
-  Data = [gen_global_heap({Arr,{P-1,T,S}},State,{int_l,0,0,[]}) || _ <- lists:seq(1,N)],
+  % Changed from {P-1,T,S}
+  Data = [gen_global_heap({Arr,{P,T,S}},State,Init) || {_,Init} <- Indices],
   {local,Data}.
 
 get_constant({int_l,_,N,_},_) ->
@@ -620,7 +628,6 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   Lv_Cnt = State#state.lvcnt,
   {ok,Assign_State,Assign_St} = generate(Raw_St,State),
   St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
-  io:fwrite("~p~n",[Ptr_St]),
   case Arr_St++Ptr_St of
     [] ->
       End_St = if

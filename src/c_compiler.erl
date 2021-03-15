@@ -70,6 +70,16 @@ compile(File,_,[asm,debug]) ->
   mips_io:fwrite(Mips_Code,standard_io),
   {ok, Mips_Code};
 
+compile(File,_,[asm,ir]) ->
+  {ok, Io_Stream} = file:open(File, [read]),
+  {ok, Input} = read_file(Io_Stream),
+  {ok,Tokens,_} = erl_scan:string(Input),
+  {ok,[Expr]} = erl_parse:parse_exprs(Tokens),
+  Statement = erl_parse:normalise(Expr),
+  {ok,Mips_Code} = mips:generate(Statement),
+  mips_io:fwrite(Mips_Code,standard_io),
+  {ok, Mips_Code};
+
 compile(File,_,[asm]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),

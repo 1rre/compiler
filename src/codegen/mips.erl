@@ -53,7 +53,7 @@ gen_arg_types([{0,f,64}|Args],Context,0,false,0) ->
   gen_arg_types(Args,Context#context{types=Types,reg=Reg},1,false,64);
 
 gen_arg_types([{0,f,64}|Args],Context,N,false,Bits) when 64 >= Bits ->
-  Types = maps:put({z,N},{0,f,N},Context#context.types),
+  Types = maps:put({z,N},{0,f,64},Context#context.types),
   Reg = maps:put({z,0},[{f,14},{f,15}],Context#context.reg),
   gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,false,Bits+64);
 
@@ -83,7 +83,7 @@ gen_arg_types([],Context,_,_,Bits) -> {ok,Context#context{sp=-Bits div 8}}.
 gen_scoped([{allocate,Size}|Rest],Context) ->
   N = Context#context.stack_size,
   Sp = Context#context.sp,
-  N_S_Reg = maps:put({y,N},Sp,Context#context.s_reg),
+  N_S_Reg = maps:put({y,N},Sp+(Size div 8),Context#context.s_reg),
   N_Context = Context#context{s_reg=N_S_Reg,
                               sp=Sp+(Size div 8),
                               stack_size=N+1},
@@ -187,8 +187,7 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
     {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 'l.d';
     {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
     {32,Reg} -> lw;
-    {16,Reg} -> lh;
-    {8,Reg} -> lb
+    {16,Reg} -> lh
   end,
   %% TODO: Find out what way around SP should be
   [{Instr,Dest,{sp,Context#context.sp-Src}}|gen_scoped(Rest,Reg_Context)];
