@@ -202,6 +202,46 @@ gen_scoped([{address,{y,Ns},{x,Nd}}|Rest],Context) ->
   [{addiu,Dest,{i,29},Context#context.sp-Src}|gen_scoped(Rest,Reg_Context)];
 
 
+% Get from stack
+gen_scoped([{load,{x,Ns},{x,Nd}}|Rest],Context) ->
+  {Ps,Ts,Ss} = maps:get({x,Ns},Context#context.types,{1,i,32}),
+  {ok,Src,Src_Context} = get_reg({x,Ns},{Ps,Ts,Ss},Context),
+  {ok,Dest,Reg_Context} = get_reg({x,Nd},{Ps-1,Ts,Ss},Src_Context),
+  Instr = case {Ss,Src} of
+    {32,{f,N}} -> 'l.s';
+    {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 'l.d';
+    {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
+    {32,Reg} -> lw;
+    {16,Reg} -> lh;
+    {8,Reg} -> lb
+  end,
+  [{Instr,Src,{0,Dest}}|gen_scoped(Rest,Reg_Context)];
+
+% Will this be ok?
+gen_scoped([{load,{y,Ns},{x,Nd}}|Rest],Context) ->
+  gen_scoped([{move,{y,Ns},{x,Nd}},{load,{x,Nd},{x,Nd}}|Rest],Context);
+
+
+gen_scoped([{store,{x,Ns},{x,Nd}}|Rest],Context) ->
+  {Ps,Ts,Ss} = maps:get({x,Ns},Context#context.types,{0,i,32}),
+  {ok,Src,Src_Context} = get_reg({x,Ns},{Ps,Ts,Ss},Context),
+  {Pd,Td,Sd} = maps:get({x,Nd},Context#context.types,{Ps+1,Ts,Ss}),
+  {ok,Dest,Reg_Context} = get_reg({x,Nd},{Pd,Td,Sd},Src_Context),
+  Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
+       io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
+       Sd;
+     true -> Ss end,
+  Instr = case {Size,Src} of
+    {32,{f,N}} -> 's.s';
+    {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 's.d';
+    {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
+    {32,Reg} -> sw;
+    {16,Reg} -> sh;
+    {8,Reg} -> sb
+  end,
+  [{Instr,Src,{0,Dest}}|gen_scoped(Rest,Reg_Context)];
+
+
 gen_scoped([{cast,{x,N},{0,T,S}}|Rest],Context) when (T =:= i) or (T =:= u) ->
   <<Bitmask:S>> = <<16#FFFFFFFF>>,
   case maps:get({x,N},Context#context.types,{0,i,S}) of

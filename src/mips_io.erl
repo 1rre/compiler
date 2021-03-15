@@ -66,6 +66,11 @@ part({f,B}) when is_integer(B) ->
 % General register
 part({R,B}) when is_integer(B) and ((R =:= i) or (R =:= s)) ->
   io_lib:format("$~B",[B]);
+% Offset & register
+part({Offset,{R,B}}) when is_integer(Offset) ->
+  Reg = part({R,B}),
+  % Idk why this space is needed here but it hates not having it
+  io_lib:format("~B(~s) ",[Offset,Reg]);
 % Int literal
 part(A) when is_integer(A) ->
   io_lib:format("~B",[A]);
