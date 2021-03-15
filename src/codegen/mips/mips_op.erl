@@ -9,7 +9,7 @@ simple_int_op(Op,Type,Reg_1,Reg_2,Reg_3,Context) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,Type,Context),
-  {ok,[{op,Dest,Src_1,Src_2}],Dest_Context}.
+  {ok,[{Op,Dest,Src_1,Src_2}],Dest_Context}.
 
 
 simple_float_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
