@@ -84,7 +84,6 @@ run_st([{gc,0}|Rest],Context,Ir) ->
   Fp = Context#context.fp,
   Stack = Context#context.stack,
   Offset = (byte_size(Stack) - ?STACK_PTR + Fp) * 8,
-  io:fwrite("~p~n",[Offset]),
   <<_:Offset,N_Stack/bits>> = Stack,
   N_S_Reg = [],
   N_Context = Context#context{stack=N_Stack,s_reg=N_S_Reg},
@@ -95,7 +94,6 @@ run_st([{gc,N}|Rest],Context,Ir) when N >= length(Context#context.s_reg) ->
   run_st(Rest,Context,Ir);
 run_st([{gc,N}|Rest],Context,Ir) ->
   S_Reg = Context#context.s_reg,
-  io:fwrite("Len: ~p~nN: ~p~n",[S_Reg,N]),
   Address = lists:nth(length(S_Reg)-N+1,S_Reg),
   Stack = Context#context.stack,
   Fp = Context#context.fp,

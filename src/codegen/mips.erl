@@ -13,17 +13,17 @@ generate(Ir) ->
   Float_Reg = [{f,0},{f,1},{f,2},{f,3},{f,4},{f,5},{f,6},{f,7},{f,8},{f,9},{f,10},{f,11},{f,12},
                {f,13},{f,14},{f,15},{f,16},{f,17},{f,18},{f,19},{f,20},{f,21},{f,22},{f,23},{f,24},
                {f,25},{f,26},{f,27},{f,28},{f,29},{f,30},{f,31}],
+
   Context = lists:foldl(fun
     ({function,Type,Name,Args,_},Cxt) ->
       Cxt#context{fn=maps:put(Name,{Type,Args},Cxt#context.fn)};
     ({global,Type,Name,_},Cxt) ->
       Cxt#context{types=maps:put({g,Name},Type,Cxt#context.types)}
     end, #context{i_reg=Reg_Pref,f_reg=Float_Reg}, Ir),
-
   {Data,Text} = lists:foldl(fun
     ({function,Type,Name,Args,St},{Data,Text}) ->
       {ok,Args_Context} = gen_arg_types(Args,Context,0,false,0),
-      Scope_Asm = gen_scoped(St,Args_Context),
+      Scope_Asm = [{addiu,{i,29},{i,29},-Args_Context#context.sp}|gen_scoped(St,Args_Context)],
       Asm = Scope_Asm,
       {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Text]++Asm++[{'.end',Name}]};
     ({global,Type,Name,Frame},{Data,Text}) ->
@@ -40,11 +40,13 @@ generate(Ir) ->
 gen_arg_types([{0,f,32}|Args],Context,0,false,0) ->
   Types = maps:put({z,0},{0,f,32},Context#context.types),
   Reg = maps:put({z,0},{f,12},Context#context.reg),
+  io:fwrite("~p~n",[Reg]),
   gen_arg_types(Args,Context#context{types=Types,reg=Reg},1,false,32);
 
-gen_arg_types([{0,f,32}|Args],Context,N,false,Bits) when 64 >= Bits ->
+gen_arg_types([{0,f,32}|Args],Context,N,false,Bits) when 32 >= Bits ->
   Types = maps:put({z,N},{0,f,32},Context#context.types),
-  Reg = maps:put({z,0},{f,14},Context#context.reg),
+  Reg = maps:put({z,N},{f,14},Context#context.reg),
+  io:fwrite("~p~n",[Reg]),
   gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,false,Bits+32);
 
 gen_arg_types([{0,f,64}|Args],Context,0,false,0) ->
@@ -54,12 +56,12 @@ gen_arg_types([{0,f,64}|Args],Context,0,false,0) ->
 
 gen_arg_types([{0,f,64}|Args],Context,N,false,Bits) when 64 >= Bits ->
   Types = maps:put({z,N},{0,f,64},Context#context.types),
-  Reg = maps:put({z,0},[{f,14},{f,15}],Context#context.reg),
+  Reg = maps:put({z,N},[{f,14},{f,15}],Context#context.reg),
   gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,false,Bits+64);
 
 gen_arg_types([{0,T,64}|Args],Context,N,_,Bits) when 64 >= Bits andalso 2 >= N ->
   Types = maps:put({z,N},{0,T,64},Context#context.types),
-  Reg = maps:put({z,0},[{i,6},{i,7}],Context#context.reg),
+  Reg = maps:put({z,N},[{i,6},{i,7}],Context#context.reg),
   gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,true,Bits+64);
 
 gen_arg_types([Hd|Args],Context,N,_,Bits) when 96 >= Bits andalso 3 >= N ->
@@ -120,6 +122,17 @@ gen_scoped([{move,{i,Val},{x,N}}|Rest],Context) when 16#7FFFFFFF >= Val
 %% Move a long literal to a register
 gen_scoped([{move,{i,Val},{x,N}}|Rest],Context) ->
   error({not_impl,long});
+
+% Move a double to a register
+gen_scoped([{move,{f,Val},{x,N}},{cast,{x,N},{0,f,64}}|Rest],Context) ->
+  error({not_impl,double});
+
+% Move a float to a register
+gen_scoped([{move,{f,Val},{x,N}}|Rest],Context) ->
+  {ok,Reg,Reg_Context} = get_reg({x,N},{0,f,32},Context),
+  <<Value:32>> = <<Val:32/float>>,
+  [{'li.s',Reg,Value}|gen_scoped(Rest,Reg_Context)];
+
 
 gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   Src = maps:get({x,Ns},Context#context.reg,{i,0}),
@@ -182,7 +195,7 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
   {ok,Dest,Reg_Context} = get_reg({x,Nd},{Ps,Ts,Ss},Context),
   Size = if Ps =:= 0 -> Ss;
             true -> 32 end,
-  Instr = case {Size,Src} of
+  Instr = case {Size,Dest} of
     {32,{f,N}} -> 'l.s';
     {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 'l.d';
     {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
@@ -306,7 +319,7 @@ get_reg(Reg,{0,_,64},Context) ->
 get_reg(Reg,{0,f,32},Context) ->
   N_Types = maps:put(Reg,{0,f,32},Context#context.types),
   % Check if the register has been previously assigned
-  case {maps:get(Reg,Context#context.reg,nil),Context#context.i_reg} of
+  case {maps:get(Reg,Context#context.reg,nil),Context#context.f_reg} of
     {{s,Saved},[Dest|Rest]} ->
       error(saved_reg);
     {{f,N},_} ->

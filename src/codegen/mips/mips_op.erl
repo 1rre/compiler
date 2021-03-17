@@ -17,7 +17,7 @@ simple_float_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,f,32},Context),
   case {Src_1,Src_2,Dest} of
-    {{f,_},{f,_},{f,_}} -> {ok,{Op,Dest,Src_1,Src_2},Dest_Context};
+    {{f,_},{f,_},{f,_}} -> {ok,[{Op,Dest,Src_1,Src_2}],Dest_Context};
     _ -> error({not_float,{Src_1,Src_2,Dest}})
   end.
 
@@ -32,7 +32,7 @@ simple_double_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
     {[{f,R11},{f,R12}],[{f,R21},{f,R22}],[{f,R31},{f,R32}]} when R11 == R12+1
                                                             andalso R21 == R22+1
                                                             andalso R31 == R32+1 ->
-      {ok,{Op,R31,R11,R21},Dest_Context};
+      {ok,[{Op,R31,R11,R21}],Dest_Context};
     _ -> error({nonconsecutive,{Src_1,Src_2,Dest}})
 end.
 
@@ -72,7 +72,6 @@ gen_op('&&',_,Size,Reg_1,Reg_2,Reg_3,Context) when 32 >= Size ->
     _ -> {ok,[{sltiu,Dest,Src_1,1},{xori,Dest,Dest,1},{movz,Dest,{i,0},Src_2}],Dest_Context}
   end;
 
-% || is multi-instruction & so
 gen_op('||',_,Size,Reg_1,Reg_2,Reg_3,Context) when 32 >= Size ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
