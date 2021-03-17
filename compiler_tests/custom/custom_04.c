@@ -1,3 +1,3 @@
 int f(int a){
-    return ~a;
+    return (~a);
 }
