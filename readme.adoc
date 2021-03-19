@@ -1,14 +1,2 @@
 = C Compiler
 
-== Progress
-The parser seems to work, time to make type checker, translator etc.
-
-If we want we can make the type checker in C++ using a NIF - more info link:https://erlang.org/doc/man/erl_nif.html[here].
-
-It's almost certainly also a good idea to improve the AST to make it more obvious what is being produced and what is expected
-
-== Compilation
-To compile everything so you can run an eshell in `.build`, chmod "build.erl" and run `./build.erl compile`.
-
-To compile a runnable escript, run `./build.erl bin/compiler` (or just `./build.erl`)
-
