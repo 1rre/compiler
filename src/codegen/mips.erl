@@ -112,7 +112,7 @@ gen_scoped([return|Rest],Context) ->
   [{move,{i,29},{i,30}},{jr,{i,31}},nop|gen_scoped(Rest,Context)];
 
 %% Move an int literal to a register
-gen_scoped([{move,{i,Val},{x,N}}|Rest],Context) when 16#7FFFFFFF >= Val
+gen_scoped([{move,{i,Val},{x,N}}|Rest],Context) when 16#FFFFFFFF >= Val
                                                 andalso Val >= -16#8000000 ->
   {ok,Reg,Reg_Context} = get_reg({x,N},{0,i,32},Context),
   [{li,Reg,Val}|gen_scoped(Rest,Reg_Context)];

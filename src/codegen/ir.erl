@@ -362,6 +362,30 @@ generate({{'*',Ln},Raw_St},State) ->
       {ok,copy_lvcnt(State,N_State),Ptr_St}
   end;
 
+
+generate({{'-',Ln},Raw_St},State) ->
+  {ok, St_State, St} = generate(Raw_St,State),
+  Active_Reg = {x,State#state.lvcnt},
+  Temp_Reg = {x,State#state.lvcnt+1},
+  Rtn_St = St ++ [{move,{i,0},Temp_Reg},{'-',[Temp_Reg,Active_Reg],Active_Reg}],
+  {ok,St_State,Rtn_St};
+
+generate({{'~',Ln},Raw_St},State) ->
+  {ok, St_State, St} = generate(Raw_St,State),
+  Active_Reg = {x,State#state.lvcnt},
+  Temp_Reg = {x,State#state.lvcnt+1},
+  Rtn_St = St ++ [{move,{i,16#FFFFFFFF},Temp_Reg},
+                  {'*',[Active_Reg,Temp_Reg],Active_Reg},
+                  {'+',[Active_Reg,Temp_Reg],Active_Reg}],
+  {ok,St_State,Rtn_St};
+
+generate({{'!',Ln},Raw_St},State) ->
+  {ok, St_State, St} = generate(Raw_St,State),
+  Active_Reg = {x,State#state.lvcnt},
+  Temp_Reg = {x,State#state.lvcnt+1},
+  Rtn_St = St ++ [{move,{i,0},Temp_Reg},{'==',[Active_Reg,Temp_Reg],Active_Reg}],
+  {ok,St_State,Rtn_St};
+
 generate({void,_},State) ->
   {ok,State,[]};
 %% Empty statement in for loop
