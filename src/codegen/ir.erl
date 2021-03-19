@@ -543,7 +543,6 @@ gen_heap({[Const],{P,T,S}},State,Inits) when length(Inits) > 0 ->
 gen_heap({[Const|Arr],{P,T,S}},State,[]) -> [];
 
 gen_heap({[Const|Arr],{P,T,S}},State,Inits) ->
-  io:fwrite("~p~n",["case 3"]),
   {_,N} = Const,State,
   Lv_Cnt = State#state.lvcnt,
   Size = sizeof({P,T,S},State),
@@ -819,7 +818,7 @@ get_type([{{enum,_},{identifier,_,Ident}}],Context) ->
 get_type([{typedef,_}|Types],Context) ->
   error({no_ir,typedef});
 
-get_type(Type,_) -> error({unknown_type, Type}).
+get_type(Type,_) -> {error,{unknown_type,Type}}.
 
 %% Function to return the size of different types.
 %% TODO: #5

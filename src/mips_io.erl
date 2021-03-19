@@ -62,7 +62,7 @@ part({A,B}) when is_list(B) ->
   lists:flatten([io_lib:format("$~B",[N]) || N <- B]) ++ io_lib:format("~s",[A]);
 % Float register
 part({f,B}) when is_integer(B) ->
-  io_lib:format("$f~s",[B]);
+  io_lib:format("$f~B",[B]);
 % General register
 part({R,B}) when is_integer(B) and ((R =:= i) or (R =:= s)) ->
   io_lib:format("$~B",[B]);

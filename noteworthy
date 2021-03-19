@@ -1,5 +1,0 @@
-compiler_tests/strings/search.c: fail
-Reason:
-{no_ir,{{identifier,1,search},
-        [{declaration,[{char,1}],[{{'*',1},{identifier,1,x}}]},
-         {declaration,[{char,1}],[{identifier,1,c}]}]}}
