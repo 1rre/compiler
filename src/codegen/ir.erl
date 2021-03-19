@@ -43,7 +43,7 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(
   if Arr =/= [] -> error({return_type,array});
   true -> ok end,
   % Reverse because the stack be like that sometimes
-  {ok, Arg_State, Arg_St} = generate(lists:reverse(Raw_Args), State#state{scope=1}),
+  {ok, Arg_State, _Arg_St} = generate(lists:reverse(Raw_Args), State#state{scope=1}),
   Arg_Types = [Arg_T || {{_Arr,Arg_T},{y,_}} <- maps:values(Arg_State#state.var)],
   Arity = case Raw_Args of
     [[{void,_}]] -> 0;
@@ -171,7 +171,7 @@ generate({{identifier,Ln,Ident},{apply,Args}}, State) ->
           Mv_0_St = {move,{x,0},{x,Lv_Cnt}},
           Arg_St++Alloc_St++Mv_To_St++To_A_St++[Call_St,Mv_0_St|Mv_Bk_St]++[Dealloc_St]
       end,
-      N_Types = maps:put({x,Lv_Cnt},{[],Type},State#state.typecheck),
+      N_Types = maps:put({x,Lv_Cnt},Type,State#state.typecheck),
       {ok,copy_lbcnt(Arg_State,State#state{typecheck=N_Types}),New_St};
     Other ->
       error({Other, Ident, {args, Args}, {line, Ln}, {state, State}})
@@ -186,7 +186,7 @@ generate({sizeof,Expr},State) ->
       {ok,State#state{typecheck=N_Types},[{move,{i,S div 8},{x,Lv_Cnt}}]};
     {ok,_} -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,Lv_Cnt}}]};
     _ ->
-      {ok,Expr_State,Expr_St} = generate(Expr, State),
+      {ok,Expr_State,_Expr_St} = generate(Expr, State),
       {Arr,Type} = maps:get({x,Lv_Cnt},Expr_State#state.typecheck,{[],{0,n,0}}),
       Size = lists:foldl(fun (A,V) -> A * V end,sizeof(Type,State),Arr),
       Types = State#state.typecheck,
@@ -239,7 +239,7 @@ generate({{'if',_},Predicate,True,False}, State) ->
       {ok,Rtn_State,Rtn_St}
   end;
 
-generate({{switch,_},Raw_St,Cases},Context) ->
+generate({{switch,_},_Raw_St,_Cases},_Context) ->
   error({no_ir,switch});
 
 
@@ -356,21 +356,23 @@ generate({{'*',Ln},Raw_St},State) ->
           {ok,copy_lvcnt(State,N_State),Next_St};
         Other -> error({Other,{line,Ln}})
       end;
-    {[Hd|Arr],Type} ->
+    {[_Hd|Arr],Type} ->
       New_Types = maps:put(Active_Reg,{Arr,Type},Ptr_State#state.typecheck),
       N_State = Ptr_State#state{typecheck=New_Types},
       {ok,copy_lvcnt(State,N_State),Ptr_St}
   end;
 
 
-generate({{'-',Ln},Raw_St},State) ->
+generate({{'-',_Ln},Raw_St},State) ->
   {ok, St_State, St} = generate(Raw_St,State),
   Active_Reg = {x,State#state.lvcnt},
   Temp_Reg = {x,State#state.lvcnt+1},
   Rtn_St = St ++ [{move,{i,0},Temp_Reg},{'-',[Temp_Reg,Active_Reg],Active_Reg}],
   {ok,St_State,Rtn_St};
 
-generate({{'~',Ln},Raw_St},State) ->
+generate({{'+',_Ln},Raw_St},State) -> generate(Raw_St,State);
+
+generate({{'~',_Ln},Raw_St},State) ->
   {ok, St_State, St} = generate(Raw_St,State),
   Active_Reg = {x,State#state.lvcnt},
   Temp_Reg = {x,State#state.lvcnt+1},
@@ -379,7 +381,7 @@ generate({{'~',Ln},Raw_St},State) ->
                   {'+',[Active_Reg,Temp_Reg],Active_Reg}],
   {ok,St_State,Rtn_St};
 
-generate({{'!',Ln},Raw_St},State) ->
+generate({{'!',_Ln},Raw_St},State) ->
   {ok, St_State, St} = generate(Raw_St,State),
   Active_Reg = {x,State#state.lvcnt},
   Temp_Reg = {x,State#state.lvcnt+1},
@@ -404,7 +406,7 @@ generate({[]},State) ->
 %% TODO: #5
 %        We need to support array declarations and accesses,
 %        which will be done using the `[]` operators and the `offset` token.
-generate(Other, State) -> error({no_ir,Other}).
+generate(Other, _State) -> error({no_ir,Other}).
 
 %% Delegated function for declarations.
 %% Function prototypes
@@ -457,7 +459,7 @@ get_decl_specs({N,Raw_T,Raw_S}, [{Raw_Ident,{'=',_},Raw_St}], State) ->
     {[],Var_Type} -> Mem_St ++ [{move,Active_Reg,{y,Rv_Cnt}}];
     {[],_} -> Mem_St ++ [{cast,Active_Reg,Var_Type},{move,Active_Reg,{y,Rv_Cnt}}];
     {_,Var_Type} -> Mem_St;
-    {_,Type_0} -> Mem_St ++ [{cast,{y,Rv_Cnt},Var_Type}]
+    {_,_Type_0} -> Mem_St ++ [{cast,{y,Rv_Cnt},Var_Type}]
   end,
   {ok, Next_State, Next_St};
 
@@ -507,7 +509,7 @@ get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
 get_ident_specs({Rest,{array,N}}, State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Rest, State),
   {ok, Ident, Ptr_Depth,Arr++[N]};
-get_ident_specs({'*',_}, State) ->
+get_ident_specs({'*',_}, _State) ->
   {ok, '', 1, []};
 get_ident_specs({identifier,_,Ident}, _State) ->
   {ok, Ident, 0, []};
@@ -549,32 +551,27 @@ allocate_mem(Type,State,{g,Ident},Init) ->
   N_State = State#state{sizeof=N_Sizes},
   {ok,N_State,Heap_St}.
 
-gen_heap({[],Type},State,Init) ->
+gen_heap({[],_Type},State,Init) ->
   {ok,_,St} = generate(Init,State),
   St;
 
-gen_heap({[Const],{P,T,S}},State,Inits) when length(Inits) > 0 ->
-  {_,N} = Const,
+gen_heap({[_Const],{P,T,S}},State,Inits) when length(Inits) > 0 ->
   Lv_Cnt = State#state.lvcnt,
-  Size = sizeof({P,T,S},State),
-   [[{move,{i,1},{x,Lv_Cnt+1}},
-     {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}} |
+  [[{move,{i,1},{x,Lv_Cnt+1}},
+    {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}} |
      % Changed from {P-1,T,S}
-     gen_heap({[],{P,T,S}},State#state{lvcnt=Lv_Cnt+1},Init)] ++
-    [{store,{x,Lv_Cnt+1},{x,Lv_Cnt}}] || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)];
+    gen_heap({[],{P,T,S}},State#state{lvcnt=Lv_Cnt+1},Init)] ++
+   [{store,{x,Lv_Cnt+1},{x,Lv_Cnt}}] || Init <- Inits];
 
 % Array doesn't need initialising or something idk
-gen_heap({[Const|Arr],{P,T,S}},State,[]) -> [];
+gen_heap(_,_State,[]) -> [];
 
-gen_heap({[Const|Arr],{P,T,S}},State,Inits) ->
-  {_,N} = Const,State,
-  Lv_Cnt = State#state.lvcnt,
-  Size = sizeof({P,T,S},State),
-  [gen_heap({Arr,{P-1,T,S}},State,Init) || {Ptr,Init} <- lists:zip(lists:seq(0,N-1),Inits)].
+gen_heap({[_|Arr],{P,T,S}},State,Inits) ->
+  [gen_heap({Arr,{P-1,T,S}},State,Init) || Init <- Inits].
 
 
 % TODO: Make sure this doesn't interfere with actual array generation (this is for empty arrays)
-gen_global_heap({[],Type},State,[]) ->
+gen_global_heap({[],Type},_State,[]) ->
   {data,Type,{i,0}};
 
 gen_global_heap({[],Type},State,Init) ->
@@ -604,11 +601,11 @@ get_constant({bif,T,[A,B]},State) ->
 get_constant({sizeof,T},State) ->
   {ok,_,[{move,N,_}]} = generate({sizeof,T},State),
   N;
-get_constant({i,N},State) ->
+get_constant({i,N},_State) ->
   {i,N};
-get_constant({f,N},State) ->
+get_constant({f,N},_State) ->
   {i,N};
-get_constant(Type,State) ->
+get_constant(Type,_State) ->
   error({not_const,Type}).
 
 resolve_type(i,i) -> i;
@@ -619,7 +616,7 @@ resolve_type(_,_) -> i.
 %% To deallocate memory due to variables going out of scope,
 %  such as at the end of a compound statement or for a return statement,
 %  the number of variables to trim the stack to is found & returned
-deallocate_mem(State_1,State_2) ->
+deallocate_mem(State_1,_State_2) ->
   Rv_Cnt = maps:size(State_1),
   {ok, {gc,Rv_Cnt}}.
 
@@ -632,7 +629,6 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   % TODO: Make this non_constant
   Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
   Lv_Cnt = State#state.lvcnt,
-  Active_Reg = {x,Lv_Cnt},
   {ok,{Arr_Depth,{Rp,Rt,Rs}},Ptr} = case maps:get(Ident,State#state.var,undefined) of
     {T,Ptr_Loc} ->
       {ok,T,Ptr_Loc};
@@ -642,7 +638,6 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
     Arr =:= [] -> [];
     true ->
       {Arr_Depth,Type} = maps:get(Ptr,State#state.typecheck),
-      Size = sizeof(Type,State),
       {Offset,_} = lists:foldl(fun
         ({_,A},{B,C}) -> {B+A*sizeof({C,Type},State),tl(C)};
         (A,{B,C}) -> {B+A*sizeof({C,Type},State),tl(C)}
@@ -686,7 +681,7 @@ get_assign_specs(Op, Other, State) ->
 %% When there is no dereference operator, an empty statement is returned.
 % TODO: Do we need to do something about arrays here?
 % Probably we should?
-get_ptr({_,Type},0,Ptr,State) ->
+get_ptr({_,Type},0,_Ptr,_State) ->
   {ok,Type,[]};
 get_ptr({_,{N,T,S}},Ptr_Depth,Ptr,State) ->
   Type = {N-Ptr_Depth,T,S},
@@ -695,7 +690,7 @@ get_ptr({_,{N,T,S}},Ptr_Depth,Ptr,State) ->
   Load_St = [{move,Ptr,Active_Reg}|get_ptr_load_st(Ptr_Depth,Active_Reg,Active_Reg)],
   {ok,Type,Load_St}.
 
-get_ptr_load_st(1,Reg,Ptr) -> [];
+get_ptr_load_st(1,_Reg,_Ptr) -> [];
 get_ptr_load_st(N,Reg,Ptr) -> [{load,Ptr,Reg}|get_ptr_load_st(N-1,Reg,Reg)].
 
 %% Delegated function for processing built-in functions.
@@ -717,16 +712,16 @@ process_bif('+',Fst,Sec,State,Swap) ->
   B_Type = maps:get({x,Lv_Cnt+1},B_State#state.typecheck,undefined),
   {Mul_St,R_Type} = case {A_Type,B_Type} of
     {{[],{0,T,S_A}},{[],{0,T,S_B}}} -> {[],{[],{0,T,max(S_A,S_B)}}};
-    {{[],{N,T,S_A}},{[],{0,i,S_B}}} -> {[],{[],{N,T,S_A}}}; %% TODO: Change size of A
-    {{[],{0,i,S_A}},{[],{N,T,S_B}}} -> {[],{[],{N,T,S_A}}}; %% TODO: Change size of B
-    {{Arr,Raw_A_Type},{[],Raw_B_Type}} when Arr /= [] ->
+    {{[],{N,T,S_A}},{[],{0,i,_S_B}}} -> {[],{[],{N,T,S_A}}}; %% TODO: Change size of A
+    {{[],{0,i,_S_A}},{[],{N,T,S_B}}} -> {[],{[],{N,T,S_B}}}; %% TODO: Change size of B
+    {{Arr,Raw_A_Type},{[],_Raw_B_Type}} when Arr /= [] ->
       Arr_Size = lists:foldl(fun
         ({_,X},Y) -> X*Y;
         (X,Y) -> X*Y
       end,1,tl(Arr)),
       {[{move,{i,Arr_Size},{x,Lv_Cnt+2}},
         {'*',[{x,Lv_Cnt+1},{x,Lv_Cnt+2}],{x,Lv_Cnt+1}}],{tl(Arr),Raw_A_Type}};
-    {{[],Raw_A_Type},{Arr,Raw_B_Type}} when Arr /= [] ->
+    {{[],Raw_A_Type},{Arr,_Raw_B_Type}} when Arr /= [] ->
       Arr_Size = lists:foldl(fun
         ({_,X},Y) -> X*Y;
         (X,Y) -> X*Y
@@ -756,7 +751,7 @@ process_bif('-',Fst,Sec,State,Swap) ->
   %% TODO: THIS WILL CRASH
   R_Type = case {A_Type,B_Type} of
     {{[],{0,T,S_A}},{[],{0,T,S_B}}} -> {[],{0,T,max(S_A,S_B)}};
-    {{[],{N,T,S_A}},{[],{0,i,S_B}}} -> {[],{N,T,S_A}}; %% TODO: Change size of B
+    {{[],{N,T,S_A}},{[],{0,i,_S_B}}} -> {[],{N,T,S_A}}; %% TODO: Change size of B
     Types -> error({{undefined_op_cast,'-'},Types})
   end,
   Lv_Cnt = State#state.lvcnt,
@@ -823,23 +818,23 @@ get_type([{signed,_}|Type],C) ->
   end;
 
 % Struct with declaration of struct type
-get_type([{{struct,_},{identifier,_,Ident}, Struct_Specs}],Context) ->
+get_type([{{struct,_},{identifier,_,_Ident}, _Struct_Specs}],_Context) ->
   error({no_ir,struct});
 
 % Predeclared struct
-get_type([{{struct,_},{identifier,_,Ident}}],Context) ->
+get_type([{{struct,_},{identifier,_,_Ident}}],_Context) ->
   error({no_ir,struct});
 
 % Enum with declaration of enum type
-get_type([{{enum,_},{identifier,_,Ident}, Enum_Specs}],Context) ->
+get_type([{{enum,_},{identifier,_,_Ident}, _Enum_Specs}],_Context) ->
   error({no_ir,enum});
 
 % Predeclared enum
-get_type([{{enum,_},{identifier,_,Ident}}],Context) ->
+get_type([{{enum,_},{identifier,_,_Ident}}],_Context) ->
   error({no_ir,enum});
 
 % Typedef
-get_type([{typedef,_}|Types],Context) ->
+get_type([{typedef,_}|_Types],_Context) ->
   error({no_ir,typedef});
 
 get_type(Type,_) -> {error,{unknown_type,Type}}.
@@ -854,12 +849,12 @@ get_type(Type,_) -> {error,{unknown_type,Type}}.
 %        Add support for compile-time evaluation of the size of variables,
 %        if this is possible (confirm that allocation is done at declaration time?).
 sizeof({0,_,S},_) -> S;
-sizeof({_,_,_},State) -> ?SIZEOF_POINTER;
+sizeof({_,_,_},_State) -> ?SIZEOF_POINTER;
 sizeof({Arr,T},State) -> lists:foldl(fun
   ({_,A},B) -> A*B;
   (A,B) -> A*B
 end,sizeof(T,State),Arr);
-sizeof(Type,State) -> error({type,Type}).
+sizeof(Type,_State) -> error({type,Type}).
 
 %% TODO: Replace this with new array thing
 size_var(Var,State) ->

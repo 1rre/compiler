@@ -10,7 +10,7 @@ c_test([File|Tests],Gcc,Qemu) ->
   process_flag(trap_exit, true),
   io:fwrite(standard_error,"~n~s: ",[File]),
   try c_compiler:main(["-S", "-o", ".test/test.s", File]) of
-    Result ->
+    _Result ->
       open_port({spawn_executable, Gcc},
                 [stderr_to_stdout,
                  exit_status,

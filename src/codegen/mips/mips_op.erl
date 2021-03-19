@@ -87,13 +87,13 @@ gen_op('&',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
 gen_op('^',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
   simple_int_op('xor',{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
-gen_op('==',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+gen_op('==',T,_Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
   {ok,[{'xor',Dest,Src_1,Src_2},{sltiu,Dest,Dest,1}],Dest_Context};
 
-gen_op('!=',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+gen_op('!=',T,_Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),

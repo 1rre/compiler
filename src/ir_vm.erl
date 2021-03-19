@@ -2,7 +2,7 @@
 -export([run/3,run/4]).
 
 -define(STACK_PTR,16#7fffffff).
--define(GLOBL_PTR,16#10008000).
+%-define(GLOBL_PTR,16#10008000).
 
 -include("arch_type_consts.hrl").
 
@@ -16,7 +16,7 @@ run(Ir,Args,Flags) ->
   end.
 
 run(Ir,Fn,Args,Flags) ->
-  Init_Args = Args,
+  %Init_Args = Args,
   Init_Global = maps:from_list([{Ident,{Type,Value}} || {global,Type,Ident,Value} <- Ir]),
   Init_Types = maps:from_list([{{z,N},{0,i,?SIZEOF_INT}}||N<-lists:seq(0,length(Args)-1)]),
   Context = #context{fn=Fn,
@@ -96,7 +96,7 @@ run_st([{gc,N}|Rest],Context,Ir) ->
   S_Reg = Context#context.s_reg,
   Address = lists:nth(length(S_Reg)-N+1,S_Reg),
   Stack = Context#context.stack,
-  Fp = Context#context.fp,
+  %Fp = Context#context.fp,
   Offset = bit_size(Stack) - (?STACK_PTR - Address) * 8,
   <<_:Offset,N_Stack/bits>> = Stack,
   N_S_Reg = lists:nthtail(length(S_Reg)-N,S_Reg),
@@ -174,7 +174,7 @@ run_st([{label,_}|Rest],Context,Ir) ->
 run_st([{jump,{l,Lb}}|_],Context,Ir) ->
   jump(Lb,Context,Ir);
 
-run_st([{call,N_Fn,Arity}|Rest],Context,Ir) ->
+run_st([{call,N_Fn,_Arity}|Rest],Context,Ir) ->
   Types = Context#context.types,
   Args = maps:filter(fun ({R,_},_) -> R =:= z end, Types),
   Stack = Context#context.stack,
@@ -259,19 +259,19 @@ error({unknown,Data}).
 
 get_data({0,f,Size},Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Fp = Context#context.fp,
+  %Fp = Context#context.fp,
   Offset = bit_size(Stack) - (?STACK_PTR - Address)*8,
   <<_:Offset,Data:Size/float,_/bits>> = Stack,
   {ok,Data};
 get_data({0,_,Size},Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Fp = Context#context.fp,
+  %Fp = Context#context.fp,
   Offset = bit_size(Stack) - (?STACK_PTR - Address)*8,
   <<_:Offset,Data:Size,_/bits>> = Stack,
   {ok,Data};
 get_data(_,Address,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Fp = Context#context.fp,
+  %Fp = Context#context.fp,
   Offset = bit_size(Stack) - (?STACK_PTR - Address)*8,
   <<_:Offset,Data:?SIZEOF_POINTER,_/bits>> = Stack,
   {ok,Data};
@@ -282,7 +282,7 @@ set_data(Type,Dest,true,Context) -> set_data(Type,Dest,1,Context);
 set_data(Type,Dest,false,Context) -> set_data(Type,Dest,0,Context);
 set_data(Type,{x,N},Data,Context) ->
   Types = Context#context.types,
-  Reg = Context#context.reg,
+  %Reg = Context#context.reg,
   N_Types = maps:put({x,N},Type,Types),
   N_Reg = set_reg(Context#context.reg,N,Data),
   {ok,Context#context{reg=N_Reg,types=N_Types}};
@@ -298,7 +298,7 @@ set_data(Type,{y,N},Data,Context) ->
 
 set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
   Stack = Context#context.stack,
-  Fp = Context#context.fp,
+  %Fp = Context#context.fp,
   Offset = bit_size(Stack) - (?STACK_PTR - Address)*8,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size/float,Rest/bits>>,
@@ -307,7 +307,7 @@ set_data({0,f,Size},Address,Data,Context) when is_integer(Address) ->
 set_data({P,_,Raw_Size},Address,Data,Context) when is_integer(Address) ->
   Size = if P =:= 0 -> Raw_Size; true -> ?SIZEOF_POINTER end,
   Stack = Context#context.stack,
-  Fp = Context#context.fp,
+  %Fp = Context#context.fp,
   Offset = bit_size(Stack) - (?STACK_PTR - Address)*8,
   <<Init:Offset,_:Size,Rest/bits>> = Stack,
   N_Stack = <<Init:Offset,Data:Size,Rest/bits>>,
@@ -328,15 +328,6 @@ get_address({x,N},Context) ->
   get_data({x,N},Context);
 get_address(_,_) -> error("").
 
-%% TODO: N/A
-%        Replace this function with inline/less buggy functions
-%        We shouldn't have to exclusively access memory at boundaries
-get_mem_size(C1,[C2,C1|_]) ->
-  abs(C1-C2);
-get_mem_size(C1,[C2,C3|Bounds]) when (C2 > C1) /= (C3 > C1) ->
-  error({boundary_get,{C1,{C2,C3}}});
-get_mem_size(C1,[_|Bounds]) ->
-  get_mem_size(C1,Bounds).
 
 jump(Lb,Context,Ir) ->
   Fn = Context#context.fn,
@@ -348,22 +339,16 @@ jump(Lb,Context,Ir) ->
     _ -> error({not_found, Fn})
   end.
 
-find_lb([{label,_Lb}|St],_Lb) -> St;
+find_lb([{label,Lb}|St],Lb) -> St;
 find_lb([_|St],Lb) -> find_lb(St,Lb);
 find_lb(_,Lb) -> error({no_label,Lb}).
 
-rm_chunks(C1,[C1|Bounds]) ->
-  [C1|Bounds];
-rm_chunks(C1,[C2,C3|Bounds]) when (C2 > C1) /= (C3 > C1) ->
-  error({boundary_rm,{C1,{C2,C3}}});
-rm_chunks(C1,[_|Bounds]) ->
-  rm_chunks(C1,Bounds).
 
 cast(Data,{0,i,Size}) ->
   <<N_Data:Size>> = <<(trunc(Data)):Size>>,
   N_Data;
 %% 32 bit floats are tricky so for now I'm going to just use 64 bit for everything
-cast(Data,{0,f,Size}) ->
+cast(Data,{0,f,_Size}) ->
   <<N_Data:?SIZEOF_FLOAT/float>> = <<(float(Data)):?SIZEOF_FLOAT/float>>,
   N_Data;
 cast(Data,{0,_,Size}) ->
@@ -388,10 +373,6 @@ do_op('<',A,B,0,0) -> B>A;
 do_op('&&',A,B,0,0) -> (A /= 0) and (B /= 0);
 do_op('||',A,B,0,0) -> (A /= 0) or (B /= 0);
 do_op(Op,_,_,0,0) -> error({bif_not_recognised,Op}).
-
-get_literal_type(_Val) when is_float(_Val) -> {0,f,?SIZEOF_FLOAT};
-get_literal_type(_Val) when is_integer(_Val) -> {0,i,?SIZEOF_FLOAT};
-get_literal_type(Val) -> error({{expected,{'float|int'}},{got,Val}}).
 
 debug_print([Hd|_],Context) when Context#context.debug ->
   io:fwrite("Reg: ~p~nFp:~p~nSReg:~p~nTypes: ~p~nStack: ~p~n~nNext St: ~p~n",
