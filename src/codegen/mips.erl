@@ -289,8 +289,23 @@ gen_scoped([{cast,{x,N},Type}|Rest],Context) ->
       gen_scoped(Rest,Context)
   end;
 
+gen_scoped([{label,N}|Rest],Context) ->
+  Str_N = integer_to_list(N),
+  N_Labels = [Str_N|Context#context.labels],
+  [{Str_N,[maps:size(Context#context.fn)]}|gen_scoped(Rest,Context#context{labels=N_Labels})];
 
+gen_scoped([{jump,{l,N}}|Rest],Context) ->
+  Str_N = integer_to_list(N),
+  [{'j',{Str_N,[maps:size(Context#context.fn)]}}|gen_scoped(Rest,Context)];
 
+gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
+  Str_N = integer_to_list(N),
+  Type = maps:get(Src,Context#context.types,{0,i,32}),
+  {ok,Reg,Reg_Context} = get_reg(Src,Type,Context),
+  case Reg of
+    {f,F_Reg} -> error(test_float);
+    _ -> [{beq,Reg,{i,0},{Str_N,[maps:size(Context#context.fn)]}}|gen_scoped(Rest,Reg_Context)]
+  end;
 
 gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
   T1 = maps:get(Src_1,Context#context.types),
