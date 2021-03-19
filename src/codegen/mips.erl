@@ -22,7 +22,7 @@ generate(Ir) ->
     end, #context{i_reg=Reg_Pref,f_reg=Float_Reg}, Ir),
   {Data,Text} = lists:foldl(fun
     ({function,Type,Name,Args,St},{Data,Text}) ->
-      {ok,Args_Context} = gen_arg_types(Args,Context,0,false,0),
+      {ok,Args_Context} = gen_arg_types(lists:reverse(Args),Context,0,false,0),
       Scope_Asm = [{addiu,{i,29},{i,29},-Args_Context#context.sp}|gen_scoped(St,Args_Context)],
       Asm = Scope_Asm,
       {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Text]++Asm++[{'.end',Name}]};
@@ -40,13 +40,11 @@ generate(Ir) ->
 gen_arg_types([{0,f,32}|Args],Context,0,false,0) ->
   Types = maps:put({z,0},{0,f,32},Context#context.types),
   Reg = maps:put({z,0},{f,12},Context#context.reg),
-  io:fwrite("~p~n",[Reg]),
   gen_arg_types(Args,Context#context{types=Types,reg=Reg},1,false,32);
 
 gen_arg_types([{0,f,32}|Args],Context,N,false,Bits) when 32 >= Bits ->
   Types = maps:put({z,N},{0,f,32},Context#context.types),
   Reg = maps:put({z,N},{f,14},Context#context.reg),
-  io:fwrite("~p~n",[Reg]),
   gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,false,Bits+32);
 
 gen_arg_types([{0,f,64}|Args],Context,0,false,0) ->
@@ -71,7 +69,7 @@ gen_arg_types([Hd|Args],Context,N,_,Bits) when 96 >= Bits andalso 3 >= N ->
 
 gen_arg_types([Hd|Args],Context,N,Int_Reg,Bits) ->
   Types = maps:put({z,N},Hd,Context#context.types),
-  gen_arg_types(Args,Context#context{types=Types},N+1,Int_Reg,Bits+sizeof(Hd));
+  gen_arg_types(Args,Context#context{types=Types},N+1,true,Bits+sizeof(Hd));
 
 % Frame pointer is offset from 0 in the context we return
 % as we count the SP from the start of the arguments
@@ -344,6 +342,9 @@ get_reg(Reg,{0,f,32},Context) ->
       I_Reg = [R || R <- [R1,R2], (element(1,R) =/= f)],
       N_Reg = maps:put(Dest,Context#context.reg),
       {ok,Dest,Context#context{f_reg=F_Reg,i_reg=I_Reg,reg=N_Reg,types=N_Types}};
+    {nil,[Dest|Rest]} ->
+      N_Reg = maps:put(Reg,Dest,Context#context.reg),
+      {ok,Dest,Context#context{f_reg=Rest,reg=N_Reg,types=N_Types}};
     {Old_Reg,[Dest|Rest]} ->
       I_Reg = [Old_Reg | Context#context.i_reg],
       N_Reg = maps:put(Reg,Dest,Context#context.reg),
@@ -363,6 +364,9 @@ get_reg(Reg,Type,Context) ->
       I_Reg = [R || R <- [R1,R2], not is_tuple(R) or element(1,R) =:= s] ++ Rest,
       N_Reg = maps:put(Dest,Context#context.reg),
       {ok,Dest,Context#context{f_reg=F_Reg,i_reg=I_Reg,reg=N_Reg,types=N_Types}};
+    {nil,[Dest|Rest]} ->
+      N_Reg = maps:put(Reg,Dest,Context#context.reg),
+      {ok,Dest,Context#context{i_reg=Rest,reg=N_Reg,types=N_Types}};
     {Old_Reg,[Dest|Rest]} ->
       F_Reg = [Old_Reg | Context#context.f_reg],
       N_Reg = maps:put(Reg,Dest,Context#context.reg),

@@ -33,7 +33,7 @@ directive(Directive,Opts) ->
 %% TODO: Change indent on different types
 % Label
 statement({A,B},Opts) when is_list(B) ->
-  Output = lists:flatten([io_lib:format("$~B",[N]) || N <- B]) ++ io_lib:format("~s:",[A]),
+  Output = lists:flatten(io_lib:format("~s",[A]) ++ [io_lib:format("$~B",[N]) || N <- B] ++ [$:]),
   ?PRINT_LINE,
   {ok,Opts#opts{indent=Opts#opts.indent}};%+length(Output)}};
 %% TODO: Other types of statments with indent
