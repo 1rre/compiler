@@ -25,7 +25,7 @@ generate(Ir) ->
       {ok,Args_Context} = gen_arg_types(lists:reverse(Args),Context,0,false,0),
       Scope_Asm = [{addiu,{i,29},{i,29},-Args_Context#context.sp}|gen_scoped(St,Args_Context)],
       Asm = Scope_Asm,
-      {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Text]++Asm++[{'.end',Name}]};
+      {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Asm]++[{'.end',Name}|Text]};
     ({global,Type,Name,Frame},{Data,Text}) ->
       % .bgnb Name
       Asm = gen_global(Frame,Name),
