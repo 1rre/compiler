@@ -299,11 +299,26 @@ gen_scoped([{jump,{l,N}}|Rest],Context) ->
 % TODO: More storing on the stack & updating return value
 gen_scoped([{call,Fn,Arity}|Rest],Context) ->
   Ra_Store = [{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
-  {Arg_Context,Arg_Store} = lists:foldl(fun (Src, {N_Context,St}) ->
+  Ra_Pos = Context#context.sp,
+  {Arg_Context,Arg_Store} = lists:foldl(fun (N, {N_Context,St}) ->
       Type = maps:get({z,N},N_Context#context.types,{0,i,32}),
-      {ok,Reg,Reg_Context} = get_reg({z,N},Type,)
-    end,{Context,[]},lists:seq(Arity-1,0,-1)),
-  Ra_Store ++ Arg_Store ++ gen_scoped(Rest,Arg_Context);
+      {ok,Reg,Reg_Context} = get_reg({z,N},Type,N_Context),
+      case Reg of
+        {f,N} ->
+          N_Sp = Context#context.sp + 4,
+          {St ++ [{'s.s',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}],Reg_Context#context{sp=N_Sp}};
+        [{f,N1},{f,N2}] -> error(double);
+        Reg ->
+          N_Sp = Context#context.sp + 4,
+          {St ++ [{'sw',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}],Reg_Context#context{sp=N_Sp}}
+      end
+    end,{Context#context{sp=Context#context.sp+4},[]},lists:seq(Arity-1,0,-1)),
+  Ra_Diff = Arg_Context#context.sp - Context#context.sp,
+  N_Fp_Jal = [{addiu,{i,30},{i,30},-Arg_Context#context.sp},{jal,Fn}],
+  R_Fp_Ra = [{addiu,{i,30},{i,30},Arg_Context#context.sp},
+             {addiu,{i,29},{i,29},Ra_Diff},
+             {lw,{i,31},{sp,0}}],
+  Ra_Store ++ Arg_Store ++ N_Fp_Jal ++ R_Fp_Ra ++ gen_scoped(Rest,Arg_Context);
 
 gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
