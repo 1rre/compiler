@@ -294,7 +294,16 @@ gen_scoped([{label,N}|Rest],Context) ->
 
 gen_scoped([{jump,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
-  [{'j',{Str_N,[maps:size(Context#context.fn)]}}|gen_scoped(Rest,Context)];
+  [{'j',{Str_N,[maps:size(Context#context.fn)]}},nop|gen_scoped(Rest,Context)];
+
+% TODO: More storing on the stack & updating return value
+gen_scoped([{call,Fn,Arity}|Rest],Context) ->
+  Ra_Store = [{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
+  {Arg_Context,Arg_Store} = lists:foldl(fun (Src, {N_Context,St}) ->
+      Type = maps:get({z,N},N_Context#context.types,{0,i,32}),
+      {ok,Reg,Reg_Context} = get_reg({z,N},Type,)
+    end,{Context,[]},lists:seq(Arity-1,0,-1)),
+  Ra_Store ++ Arg_Store ++ gen_scoped(Rest,Arg_Context);
 
 gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
