@@ -270,21 +270,13 @@ gen_scoped([{cast,{y,N},T}|Rest],Context) ->
   N_Types = maps:put({y,N},T,Context#context.types),
   gen_scoped(Rest,Context#context{types=N_Types});
 
-gen_scoped([{cast,{x,_N},{0,T,S}}|_Rest],_Context) ->
-  error({no_mips,cast,{0,T,S}});
+%gen_scoped([{cast,{x,_N},{0,T,S}}|_Rest],_Context) ->
+%  error({no_mips,cast,{0,T,S}});
 
+% TODO: Probably needs more work?
 gen_scoped([{cast,{x,N},Type}|Rest],Context) ->
-  case maps:get({x,N},Context#context.types,Type) of
-    Type ->
-      N_Types = maps:put({x,N},Type,Context#context.types),
-      gen_scoped(Rest,Context#context{types=N_Types});
-    {0,T,S} ->
-      error({no_mips,cast,{Type,{0,T,S}}});
-    {N,T,S} ->
-      % Pointer to pointer needs no extra work?
-      N_Types = maps:put({x,N},{N,T,S},Context#context.types),
-      gen_scoped(Rest,Context#context{types=N_Types})
-  end;
+    N_Types = maps:put({x,N},Type,Context#context.types),
+    gen_scoped(Rest,Context#context{types=N_Types});
 
 gen_scoped([{label,N}|Rest],Context) ->
   Str_N = integer_to_list(N),
@@ -329,19 +321,29 @@ gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   end;
 
 gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
-  T1 = maps:get(Src_1,Context#context.types),
-  T2 = maps:get(Src_2,Context#context.types),
-  case {T1,T2} of
+  RT1 = maps:get(Src_1,Context#context.types),
+  RT2 = maps:get(Src_2,Context#context.types),
+  case {RT1,RT2} of
     % Same non-pointer type
     {{0,T,S},{0,T,S}} ->
       {ok,Res,Res_Context} = gen_op(Op,T,S,Src_1,Src_2,Dest,Context),
       Res++gen_scoped(Rest,Res_Context);
     % Adding unsigned to signed (useful for unsigned + constant?)
     {{0,T1,S},{0,T2,S}} when ((T1 =:= i) or (T1 =:= u)) andalso ((T2 =:= i) or (T2 =:= u)) ->
-      {ok,Res,Res_Context} = gen_op(Op,i,S,Src_1,Src_2,Dest,Context),
+      {ok,Res,Res_Context} = gen_op(Op,T1,S,Src_1,Src_2,Dest,Context),
       Res++gen_scoped(Rest,Res_Context);
     %% TODO: Pointers
-    {T1,T2} -> error({cast,{T1,T2}})
+    {{N,T2,S2},{0,T1,S1}} ->
+      Shift_Amount = trunc(math:log2(sizeof({N-1,T2,S2}) div 8)),
+      {ok,Reg_2,Reg_2_Context} = get_reg(Src_2,{0,T1,S1},Context),
+      {ok,Temp,Temp_Context} = get_reg({x,-1},{0,u,32},Reg_2_Context),
+      Shift = {sll,Temp,Reg_2,Shift_Amount},
+      {ok,Res,Res_Context} = gen_op(Op,u,S1,Src_1,{x,-1},Dest,Temp_Context),
+      N_I_Reg = [Temp|Res_Context#context.i_reg],
+      N_Reg = maps:remove({x,-1},Res_Context#context.reg),
+      N_Types = maps:remove({x,-1},Res_Context#context.types),
+      N_Context = Res_Context#context{reg=N_Reg,types=N_Types,i_reg=N_I_Reg},
+      [Shift|Res] ++ gen_scoped([{cast,Dest,{N,T2,S2}}|Rest],N_Context)
   end;
 
 

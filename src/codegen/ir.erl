@@ -62,6 +62,14 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(
   end,
   {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St};
 
+generate({declaration,[{typedef,_}|Raw_Type],[Raw_Ident]}, State) ->
+  {ok,{P,T,S}} = get_type(Raw_Type, State),
+  {ok,Ident,Ptr_Depth,Raw_Arr} = get_ident_specs(Raw_Ident, State),
+  Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+  N_Td = maps:put(Ident,{Arr,{P+Ptr_Depth,T,S}},State#state.typedef),
+  {ok, State#state{typedef=N_Td}, []};
+
+
 %% As there are multiple cases for declaration, it is delegated to a helper function.
 generate({declaration,Raw_Type,Raw_St}, State) ->
   {ok, Type} = get_type(Raw_Type, State),
@@ -836,6 +844,9 @@ get_type([{{enum,_},{identifier,_,_Ident}}],_Context) ->
 % Typedef
 get_type([{typedef,_}|_Types],_Context) ->
   error({no_ir,typedef});
+
+get_type([{typedef_name,_,Ident}], Context) ->
+  {ok, element(2,maps:get(Ident,Context#state.typedef))};
 
 get_type(Type,_) -> {error,{unknown_type,Type}}.
 

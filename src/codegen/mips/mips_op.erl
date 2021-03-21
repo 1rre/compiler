@@ -87,17 +87,11 @@ gen_op('&',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
 gen_op('^',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
   simple_int_op('xor',{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
-gen_op('==',T,_Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
-  {ok,[{'xor',Dest,Src_1,Src_2},{sltiu,Dest,Dest,1}],Dest_Context};
+gen_op('==',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+  simple_int_op(seq,{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
-gen_op('!=',T,_Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,T,32},Context),
-  {ok,[{'xor',Dest,Src_1,Src_2},{sltu,Dest,{i,0},Dest}],Dest_Context};
+gen_op('!=',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+  simple_int_op(sne,{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('<',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
   simple_int_op(slt,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
@@ -106,34 +100,22 @@ gen_op('<',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
   simple_int_op(sltu,{0,u,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('>',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  simple_int_op(slt,{0,i,Size},Reg_2,Reg_1,Reg_3,Context);
+  simple_int_op(sgt,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('>',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  simple_int_op(sltu,{0,u,Size},Reg_2,Reg_1,Reg_3,Context);
+  simple_int_op(sgtu,{0,u,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('<=',i,Size,Reg_1,Reg_2,Reg_3,Context)->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,Size},Context),
-  {ok,[{slt,Dest,Src_2,Src_1},{'not',Dest,Dest},{andi,Dest,Dest,1}],Dest_Context};
+  simple_int_op(sle,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('<=',u,Size,Reg_1,Reg_2,Reg_3,Context)->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,u,Size},Context),
-  {ok,[{sltu,Dest,Src_2,Src_1},{'not',Dest,Dest},{andi,Dest,Dest,1}],Dest_Context};
+  simple_int_op(sleu,{0,u,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('>=',i,Size,Reg_1,Reg_2,Reg_3,Context)->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,Size},Context),
-  {ok,[{slt,Dest,Src_1,Src_2},{'not',Dest,Dest},{addi,Dest,Dest,2}],Dest_Context};
+  simple_int_op(sge,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('>=',u,Size,Reg_1,Reg_2,Reg_3,Context)->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,u,Size},Context),
-  {ok,[{sltu,Dest,Src_1,Src_2},{'not',Dest,Dest},{andi,Dest,Dest,1}],Dest_Context};
+  simple_int_op(sgeu,{0,u,Size},Reg_1,Reg_2,Reg_3,Context);
 
 
 gen_op('<<',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
@@ -158,10 +140,8 @@ gen_op('-',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
   simple_int_op(sub,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('-',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  Src_1 = maps:get(Reg_1,Context#context.reg),
-  Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,u,Size},Context),
-  {ok,[{neg,Dest,Src_2},{addu,Dest,Src_1,Dest}],Dest_Context};
+    simple_int_op(subu,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('*',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
