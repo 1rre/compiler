@@ -127,7 +127,6 @@ generate({identifier,Ln,Ident}, State) ->
 %% TODO: Fix this for new arrays
 generate({Rest,{array, Offset}}, State) ->
   % TODO: Find out if this works?
-  %
   Lv_Cnt = State#state.lvcnt,
   {ok,Ptr_State,Ptr_St} = generate(Rest,State),
   case maps:get({x,Lv_Cnt},Ptr_State#state.typecheck,{[],{0,n,0}}) of
@@ -307,7 +306,10 @@ generate({{for,_},{Init,Predicate,Update},Loop}, State) ->
 generate({string_l,Ln,Str},State) ->
   St = [[{int_l,Ln,N,[c]}] || N <- Str]++[{int_l,Ln,0,[c]}],
   Rv_Cnt = State#state.rvcnt,
-  Heap_St = [{allocate,32},{cast,{y,Rv_Cnt},{1,u,8}}|gen_heap({[{i,length(St)}],{0,u,8}},State,St)],
+  Heap_St = lists:flatten([{allocate,32},
+                           {cast,{y,Rv_Cnt},{1,u,8}},
+                           {address,{y,Rv_Cnt},{x,State#state.lvcnt}}|
+                           gen_heap({[{i,length(St)}],{0,u,8}},State,St)]),
   N_Types = maps:put({y,Rv_Cnt},{1,u,8},State#state.typecheck),
   N_Var = maps:put(Str,{{[{i,length(St)}],{0,u,8}},{y,Rv_Cnt}},State#state.var),
   Lv_Cnt = State#state.lvcnt,

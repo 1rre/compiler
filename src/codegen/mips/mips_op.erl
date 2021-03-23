@@ -140,7 +140,6 @@ gen_op('-',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
   simple_int_op(sub,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('-',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,u,Size},Context),
     simple_int_op(subu,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('*',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
