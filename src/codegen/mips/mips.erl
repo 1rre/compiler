@@ -221,6 +221,19 @@ gen_scoped([{move,{x,Ns},{z,Nd}}|Rest],Context) ->
         error({no_mips,{move,{x,Ns},{z,Nd}},stack})
   end;
 
+gen_scoped([{move,{x,Ns},{x,Nd}}|Rest],Context) ->
+  Type = maps:get({x,Ns},Context#context.types,{0,i,32}),
+  {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
+  {ok,Dest,Dest_Context} = get_reg({x,Nd},Type,Src_Context),
+  case {Src,Dest} of
+    {{f,_},{f,_}} -> [{'mov.s',Dest,Src}|gen_scoped(Rest,Dest_Context)];
+    {{_R,_},{_R,_}} -> [{'move',Dest,Src}|gen_scoped(Rest,Dest_Context)];
+    {{f,_},{_,_}} -> [{'mfc1',Dest,Src}|gen_scoped(Rest,Dest_Context)];
+    {{_,_},{f,_}} -> [{'mtc1',Dest,Src}|gen_scoped(Rest,Dest_Context)];
+    _ -> error({no_mips,{move,{x,Ns},{x,Nd}},double})
+  end;
+
+
 
 % Arguments
 gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
@@ -373,15 +386,15 @@ gen_scoped([{call,Fn,Arity}|Rest],Context) ->
           {Reg_Context#context{sp=N_Sp},St ++ [{'sw',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]}
       end
     end,{Context#context{sp=Ra_Pos+4},[]},lists:seq(Arity-1,0,-1)),
-  {Ra_Diff,N_Sp} = case Arg_Context#context.sp - Ra_Pos of
-    N when N < 16 -> {16,Ra_Pos+16};
-    N -> {N,Ra_Pos+N}
+  {Ra_Diff,N_Sp} = case Arg_Context#context.sp - Ra_Pos - 4 of
+    N when N < 16 -> {16-N,Ra_Pos+16};
+    N -> {0,Ra_Pos+N}
   end,
   N_Fp_Jal = [{addiu,{i,30},{i,30},-N_Sp},{addiu,{i,29},{i,29},-Ra_Diff},{jal,Fn}],
   R_Fp_Ra = [{addiu,{i,30},{i,30},N_Sp},
-             {addiu,{i,29},{i,29},Ra_Diff+4},
+             {addiu,{i,29},{i,30},-Ra_Pos+4},
              {lw,{i,31},{sp,0}}],
-  Ra_Store ++ Arg_Store ++ N_Fp_Jal ++ R_Fp_Ra ++ gen_scoped(Rest,Arg_Context);
+  Ra_Store ++ Arg_Store ++ N_Fp_Jal ++ R_Fp_Ra ++ gen_scoped(Rest,Context);
 
 gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),

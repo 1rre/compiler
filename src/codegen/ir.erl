@@ -324,9 +324,12 @@ generate({{for,_},{Init,Predicate,Update},Loop}, State) ->
 generate({string_l,Ln,Str},State) ->
   St = [[{int_l,Ln,N,[c]}] || N <- Str]++[{int_l,Ln,0,[c]}],
   Rv_Cnt = State#state.rvcnt,
+  Lv_Cnt = State#state.lvcnt,
   Heap_St = lists:flatten([{allocate,8*length(St)},
                            {cast,{y,Rv_Cnt},{0,u,8}},
-                           {address,{y,Rv_Cnt},{x,State#state.lvcnt}}|
+                           {address,{y,Rv_Cnt},{x,Lv_Cnt}},
+                           {move,{i,1},{x,Lv_Cnt+1}},
+                           {'-',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}|
                            gen_heap({[{i,length(St)}],{0,u,8}},State,St)]),
   N_Types = maps:put({y,Rv_Cnt},{1,u,8},State#state.typecheck),
   N_Var = maps:put(Str,{{[{i,length(St)}],{0,u,8}},{y,Rv_Cnt}},State#state.var),
