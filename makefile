@@ -2,15 +2,18 @@ ERL_FILES = src/c_compiler.erl .build/lexer.erl .build/parser.erl src/type_enum.
 ESCRIPT_FILES = ["c_compiler.beam","lexer.beam","parser.beam","type_enum.beam","ir_vm.beam","ir.beam","mips.beam","mips_io.beam","mips_op.beam"]
 ESCRIPT_CMD = 'c:cd(".build/"), escript:create("../bin/c_compiler",[shebang,{archive,$(ESCRIPT_FILES),[]}]), halt(0)'
 
-bin/c_compiler: clean .build .build/parser.erl .build/lexer.erl
+all: bin/c_compiler
+
+bin/c_compiler: .build/ bin/ .build/parser.erl .build/lexer.erl
 	erlc -W0 -I include/ -o .build/ -DTARGET_ARCH=mips32 $(ERL_FILES)
-	erl -noshell -pa .build/ -eval $(ESCRIPT_CMD)
+	erl -noinput -pa .build/ -eval $(ESCRIPT_CMD)
 	chmod a+x bin/c_compiler
 
-.PHONY: .build 
+bin/:
+	mkdir -p bin
 
-.build:
-	mkdir .build bin
+.build/:
+	mkdir -p .build
 
 .build/parser.erl:
 	erlc -W0 -o .build/parser.erl src/parsing/parser.yrl
@@ -19,6 +22,5 @@ bin/c_compiler: clean .build .build/parser.erl .build/lexer.erl
 	erlc -W0 -o .build/lexer.erl src/parsing/lexer.xrl
 
 .PHONY: clean
-
 clean:
 	rm -rf .build bin .test
