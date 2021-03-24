@@ -277,7 +277,8 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
     {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 'l.d';
     {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
     {32,_Reg} -> lw;
-    {16,_Reg} -> lh
+    {16,_Reg} -> lh;
+    {8,_Reg} -> lb
   end,
   %% TODO: Find out what way around SP should be
   [{Instr,Dest,{sp,Context#context.sp-Src}}|gen_scoped(Rest,Reg_Context)];
@@ -292,7 +293,8 @@ gen_scoped([{move,{g,Global},{x,Nd}}|Rest],Context) ->
     {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 'l.d';
     {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
     {32,_Reg} -> lw;
-    {16,_Reg} -> lh
+    {16,_Reg} -> lh;
+    {8,_Reg} -> lb
   end,
   [{Instr,Dest,Global}|gen_scoped(Rest,Dest_Context)];
 

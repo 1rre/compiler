@@ -222,13 +222,17 @@ run_st([{Op,[A,B],Dest}|Rest],Context,Ir) ->
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = if
     (TA =:= f) orelse (TB =:= f) ->
-      set_data({0,f,?SIZEOF_FLOAT},Dest,do_op(Op,A_Val,B_Val,PA,PB),Context);
+      Res = do_op(Op,A_Val,B_Val,PA,PB),
+      set_data({0,f,?SIZEOF_FLOAT},Dest,Res,Context);
     PA =/= 0 ->
-      set_data({PA,i,SA},Dest,do_op(Op,A_Val,B_Val*SA,PA,PB),Context);
+      Res = do_op(Op,A_Val,B_Val,PA,PB),
+      set_data({PA,i,SA},Dest,Res,Context);
     PB =/= 0 ->
-      set_data({PB,i,SB},Dest,do_op(Op,A_Val,B_Val*SB,PA,PB),Context);
+      Res = do_op(Op,A_Val,B_Val,PA,PB),
+      set_data({PB,i,SB},Dest,Res,Context);
     true ->
-      set_data({0,i,max(SA,SB)},Dest,do_op(Op,A_Val,B_Val,PA,PB),Context)
+      Res = do_op(Op,A_Val,B_Val,PA,PB),
+      set_data({0,i,max(SA,SB)},Dest,Res,Context)
   end,
   debug_print(Rest,N_Context),
   run_st(Rest,N_Context,Ir);

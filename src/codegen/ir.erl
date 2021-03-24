@@ -63,6 +63,32 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(
   end,
   {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St};
 
+generate({function,{Raw_Type,Raw_Ident_Ptr,Raw_St}}, State) ->
+  {ok,{Ident,Raw_Args},Ptr,Arr} = get_ident_specs(Raw_Ident_Ptr,State),
+  {ok,{P,T,S}} = get_type(Raw_Type,State),
+  Type = {P+Ptr,T,S},
+  if Arr =/= [] -> error({return_type,array});
+  true -> ok end,
+  % Reverse because the stack be like that sometimes
+  {ok, Arg_State, _Arg_St} = generate(lists:reverse(Raw_Args), State#state{scope=1}),
+  Arg_Types = [Arg_T || {{_Arr,Arg_T},{y,_}} <- maps:values(Arg_State#state.var)],
+  Arity = case Raw_Args of
+    [[{void,_}]] -> 0;
+    _ -> length(Raw_Args)
+  end,
+  Alloc_St = lists:flatten([[{allocate,size_var({y,N},Arg_State)},
+                             {move,{z,Arity-N-1},{y,N}}] || N <- lists:seq(0,Arity-1)]),
+  New_Fn = maps:put(Ident,{{Arr,Type},length(Raw_Args)},Arg_State#state.fn),
+  {ok, N_State, N_St} = generate(Raw_St,Arg_State#state{fn=New_Fn}),
+  Rtn_St = case lists:last(N_St) of
+    return ->
+      [{function,Type,Ident,Arg_Types,Alloc_St++N_St}];
+    _ ->
+      {ok, Dealloc} = deallocate_mem(#{},N_State#state.var),
+      [{function,Type,Ident,Arg_Types,Alloc_St++N_St++[Dealloc,return]}]
+  end,
+  {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St};
+
 generate({declaration,[{typedef,_}|Raw_Type],[Raw_Ident]}, State) ->
   {ok,{P,T,S}} = get_type(Raw_Type, State),
   {ok,Ident,Ptr_Depth,Raw_Arr} = get_ident_specs(Raw_Ident, State),
@@ -76,7 +102,7 @@ generate({declaration,[{{enum,_},{identifier,_,Ident},Enums}],[]}, State) ->
   {ok,Enum_State,[]};
 
 
-generate({declaration,[{{enum,_},{identifier,_,Ident},Enums}],Raw_St}, State) ->
+generate({declaration,[{{enum,_},{identifier,_,_Ident},_Enums}],Raw_St}, _State) ->
   error({enum_statement,Raw_St});
 
 generate({break,_},State) ->
@@ -559,6 +585,8 @@ get_ident_specs({Rest,{array,N}}, State) ->
   {ok, Ident, Ptr_Depth,Arr++[N]};
 get_ident_specs({'*',_}, _State) ->
   {ok, '', 1, []};
+get_ident_specs({{identifier,_,Ident},Fn_St}, _State) when is_list(Fn_St) ->
+{ok, {Ident,Fn_St}, 0, []};
 get_ident_specs({identifier,_,Ident}, _State) ->
   {ok, Ident, 0, []};
 get_ident_specs(Ident, _State) ->
@@ -909,10 +937,6 @@ get_type([{{struct,_},{identifier,_,_Ident}, _Struct_Specs}],_Context) ->
 % Predeclared struct
 get_type([{{struct,_},{identifier,_,_Ident}}],_Context) ->
   error({no_ir,struct});
-
-% Typedef
-get_type([{typedef,_}|_Types],_Context) ->
-  error({no_ir,typedef});
 
 get_type([{typedef_name,_,Ident}], Context) ->
   {ok, element(2,maps:get(Ident,Context#state.typedef))};

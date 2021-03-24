@@ -1,10 +1,11 @@
 -module(c_compiler).
 -export([main/1,run_vm/2,run_vm/3]).
 
-main(Args) ->
-  Opts = lists:sort(get_args(Args)),
+main(Raw_Args) ->
+  Args = get_args(Raw_Args),
+  Opts = lists:sort(Args),
   File = proplists:get_value(in, Opts),
-  Fn_Args = [list_to_integer(Arg)||{arg,Arg} <- Opts],
+  Fn_Args = [list_to_integer(Arg)||{arg,Arg} <- Args],
   N_Args = [Atom || Atom <- Opts, is_atom(Atom) orelse is_tuple(Atom) andalso element(1,Atom) =:= out],
   compile(File,Fn_Args,N_Args).
 
