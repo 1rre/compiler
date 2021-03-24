@@ -1,4 +1,4 @@
-ERL_FILES = src/c_compiler.erl .build/lexer.erl .build/parser.erl src/type_enum.erl src/ir_vm.erl src/codegen/ir.erl src/codegen/mips.erl src/codegen/mips/mips_op.erl src/mips_io.erl
+ERL_FILES = src/c_compiler.erl .build/lexer.erl .build/parser.erl src/type_enum.erl src/ir_vm.erl src/codegen/ir.erl src/codegen/mips/mips.erl src/codegen/mips/mips_op.erl src/mips_io.erl
 ESCRIPT_FILES = ["c_compiler.beam","lexer.beam","parser.beam","type_enum.beam","ir_vm.beam","ir.beam","mips.beam","mips_io.beam","mips_op.beam"]
 ESCRIPT_CMD = 'c:cd(".build/"), escript:create("../bin/c_compiler",[shebang,{archive,$(ESCRIPT_FILES),[]}]), halt(0)'
 
