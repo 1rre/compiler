@@ -21,6 +21,17 @@ simple_float_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
     _ -> error({not_float,{Src_1,Src_2,Dest}})
   end.
 
+float_compare(Op,Reg_1,Reg_2,Reg_3,Context) ->
+  Src_1 = maps:get(Reg_1,Context#context.reg),
+  Src_2 = maps:get(Reg_2,Context#context.reg),
+  {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,32},Context),
+  case {Src_1,Src_2,Dest} of
+    {{f,_},{f,_},{R,_}} when R /= f ->
+      {ok,[{Op,Src_1,Src_2},{cfc1,Dest,0}],Dest_Context};
+    _ -> error({not_float,{Src_1,Src_2,Dest}})
+  end.
+
+
 
 simple_double_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
@@ -117,7 +128,6 @@ gen_op('>=',i,Size,Reg_1,Reg_2,Reg_3,Context)->
 gen_op('>=',u,Size,Reg_1,Reg_2,Reg_3,Context)->
   simple_int_op(sgeu,{0,u,Size},Reg_1,Reg_2,Reg_3,Context);
 
-
 gen_op('<<',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
   simple_int_op(slav,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
@@ -177,6 +187,25 @@ gen_op('%',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
   Src_2 = maps:get(Reg_2,Context#context.reg),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,u,Size},Context),
   {ok,[{divu,Src_1,Src_2},{mfhi,Dest}],Dest_Context};
+
+
+gen_op('==',f,Size,Reg_1,Reg_2,Reg_3,Context) ->
+  float_compare('c.eq.s',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('!=',f,Size,Reg_1,Reg_2,Reg_3,Context) ->
+  float_compare('c.neq.s',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('<',f,Size,Reg_1,Reg_2,Reg_3,Context) ->
+  float_compare('c.lt.s',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('>',f,Size,Reg_1,Reg_2,Reg_3,Context) ->
+  float_compare('c.gt.s',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('<=',f,Size,Reg_1,Reg_2,Reg_3,Context)->
+  float_compare('c.le.s',Reg_1,Reg_2,Reg_3,Context);
+
+gen_op('>=',f,Size,Reg_1,Reg_2,Reg_3,Context)->
+  float_compare('c.ge.s',Reg_1,Reg_2,Reg_3,Context);
 
 
 gen_op(Op,_,_,_,_,_,_) -> error({no_mips,Op}).

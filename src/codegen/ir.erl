@@ -2,7 +2,7 @@
 -export([generate/1]).
 
 -record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},sizeof=#{},scope=0,break=0,continue=0,
-               var=#{},typedef=#{},struct=#{},enum=#{},typecheck=#{}}).
+               enum_names=[],var=#{},typedef=#{},struct=#{},enum=#{},typecheck=#{}}).
 
 -include("arch_type_consts.hrl").
 
@@ -70,6 +70,15 @@ generate({declaration,[{typedef,_}|Raw_Type],[Raw_Ident]}, State) ->
   N_Td = maps:put(Ident,{Arr,{P+Ptr_Depth,T,S}},State#state.typedef),
   {ok, State#state{typedef=N_Td}, []};
 
+generate({declaration,[{{enum,_},{identifier,_,Ident},Enums}],[]}, State) ->
+  N_Enums = [Ident|State#state.enum_names],
+  {ok,Enum_State} = put_enums(Enums,0,State#state{enum_names=N_Enums}),
+  {ok,Enum_State,[]};
+
+
+generate({declaration,[{{enum,_},{identifier,_,Ident},Enums}],Raw_St}, State) ->
+  error({enum_statement,Raw_St});
+
 generate({break,_},State) ->
   Break = State#state.break,
   {ok,State,[{jump,{l,Break}}]};
@@ -118,18 +127,21 @@ generate({float_l,_Line,Val,_Suffix}, State) ->
 %% Process an identifier by finding the integer's location on the stack
 %  and moving it to the active register
 generate({identifier,Ln,Ident}, State) ->
-  case maps:get(Ident,State#state.var,undefined) of
-    {{[],Type}, X} ->
-      Lv_Cnt = State#state.lvcnt,
+  Lv_Cnt = State#state.lvcnt,
+  case {maps:get(Ident,State#state.var,undefined),maps:get(Ident,State#state.enum,undefined)} of
+    {{{[],Type}, X},_} ->
       N_Types = maps:put({x,Lv_Cnt},{[],Type},State#state.typecheck),
       {ok,State#state{typecheck=N_Types},[{move,X,{x,Lv_Cnt}}]};
-    {{Arr,{P,T,S}},X} ->
-      Lv_Cnt = State#state.lvcnt,
+    {{{Arr,{P,T,S}},X},_} ->
       % Not sure if P should be P+length(Arr) or P+1 or something??
       % So that we can reference it as a pointer?
       N_Types = maps:put({x,Lv_Cnt},{Arr,{P,T,S}},State#state.typecheck),
       {ok,State#state{typecheck=N_Types},[{address,X,{x,Lv_Cnt}}]};
-    Other -> error({Other,Ident,{line,Ln},{state,State}})
+    {_,undefined} ->
+      error({undef,Ident,{line,Ln}});
+    {_,Value} ->
+      N_Types = maps:put({x,Lv_Cnt},{[],{0,i,32}},State#state.typecheck),
+      {ok,State#state{typecheck=N_Types},[{move,{i,Value},{x,Lv_Cnt}}]}
   end;
 
 %% TODO: Fix this for new arrays
@@ -349,6 +361,11 @@ generate({bif,T,[A,B]}, State) ->
     {_A,_B} when _A>_B -> Way_2;
     _ -> Way_1
   end;
+
+% S-S-S-SHORTCUT....
+% it's probably the same thing, right?
+generate({'?',St,[A,B]}, State) ->
+  generate({{'if',0},St,[A],[B]},State);
 
 %% Process an address operator by adding an expression to take the address of
 %  the value which was loaded to a register or put on the stack in the last instruction
@@ -636,6 +653,11 @@ get_constant({i,N},_State) ->
   {i,N};
 get_constant({f,N},_State) ->
   {i,N};
+get_constant({identifier,_,Ident},State) ->
+  case maps:get(Ident,State#state.enum,undefined) of
+    undefined -> error({not_const,Ident});
+    Value -> {i,Value}
+  end;
 get_constant(Type,_State) ->
   error({not_const,Type}).
 
@@ -658,9 +680,13 @@ deallocate_mem(State_1,_State_2) ->
 get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   {ok,Ident,Ptr_Depth,Raw_Arr} = get_ident_specs(Raw_Ident, State),
   % TODO: Make this non_constant
-  Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+  %Arr = [generate(Elem,State) || Elem <- Raw_Arr],
   Lv_Cnt = State#state.lvcnt,
-  {ok,{Arr_Depth,{Rp,Rt,Rs}},Ptr} = case maps:get(Ident,State#state.var,undefined) of
+  {Arr_State,Arr} = lists:foldr(fun (St,{Arr_Gen_State,Arr_Gen_St}) ->
+    {ok,N_State,N_St} = generate(St,Arr_Gen_State),
+    {N_State,[N_St|Arr_Gen_St]}
+  end,{State#state{lvcnt=Lv_Cnt+2},[]},Raw_Arr),
+  {ok,{Arr_Depth,{Rp,Rt,Rs}},Ptr} = case maps:get(Ident,Arr_State#state.var,undefined) of
     {T,Ptr_Loc} ->
       {ok,T,Ptr_Loc};
     Other -> {error, {Other,{undeclared,Ident}}}
@@ -668,18 +694,16 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
   Arr_St = if
     Arr =:= [] -> [];
     true ->
-      {Arr_Depth,Type} = maps:get(Ptr,State#state.typecheck),
-      {Offset,_} = lists:foldl(fun
-        ({_,A},{B,C}) -> {B+A*sizeof({C,Type},State),tl(C)};
-        (A,{B,C}) -> {B+A*sizeof({C,Type},State),tl(C)}
-      end, {0,Arr_Depth}, Arr),
-      Reg_Above = {x,Lv_Cnt+1},
-      R2 = {x,Lv_Cnt+2},
-      [{address,Ptr,Reg_Above},{move,{i,Offset},R2},{'+',[Reg_Above,R2],Reg_Above}]
+      {Arr_Depth,Type} = maps:get(Ptr,Arr_State#state.typecheck),
+      Offset_St = lists:foldl(fun (Index,{St,[_|Rest]}) ->
+        St++Index++[{move,{i,sizeof({Rest,{0,i,1}},Arr_State)},{x,Lv_Cnt+3}},
+                    {'*',[{x,Lv_Cnt+2},{x,Lv_Cnt+3}],{x,Lv_Cnt+2}},
+                    {'+',[{x,Lv_Cnt+1},{x,Lv_Cnt+2}],{x,Lv_Cnt+1}}]
+      end,{[{address,Ptr,{x,Lv_Cnt+1}}],Arr_Depth},Arr),
+      Offset_St
   end,
   {ok,Ptr_Type,Ptr_St} = get_ptr({Arr,{Rp,Rt,Rs}},Ptr_Depth,Ptr,State#state{lvcnt=Lv_Cnt+1}),
-  Lv_Cnt = State#state.lvcnt,
-  {ok,Assign_State,Assign_St} = generate(Raw_St,State),
+  {ok,Assign_State,Assign_St} = generate(Raw_St,Arr_State#state{lvcnt=Lv_Cnt}),
   St_Type = maps:get({x,Lv_Cnt},Assign_State#state.typecheck,undefined),
   case Arr_St++Ptr_St of
     [] ->
@@ -886,14 +910,6 @@ get_type([{{struct,_},{identifier,_,_Ident}, _Struct_Specs}],_Context) ->
 get_type([{{struct,_},{identifier,_,_Ident}}],_Context) ->
   error({no_ir,struct});
 
-% Enum with declaration of enum type
-get_type([{{enum,_},{identifier,_,_Ident}, _Enum_Specs}],_Context) ->
-  error({no_ir,enum});
-
-% Predeclared enum
-get_type([{{enum,_},{identifier,_,_Ident}}],_Context) ->
-  error({no_ir,enum});
-
 % Typedef
 get_type([{typedef,_}|_Types],_Context) ->
   error({no_ir,typedef});
@@ -926,6 +942,15 @@ size_var(Var,State) ->
     undefined -> ?SIZEOF_POINTER;
     S -> S
   end.
+
+put_enums([{identifier,_,Ident}|Rest],N,State=#state{enum=Enums}) ->
+  put_enums(Rest,N+1,State#state{enum=maps:put(Ident,N,Enums)});
+put_enums([{{identifier,_,Ident},{'=',_},Constant}|Rest],_,State=#state{enum=Enums}) ->
+  {i,N} = get_constant(Constant,State),
+  put_enums(Rest,N+1,State#state{enum=maps:put(Ident,N,Enums)});
+put_enums([],_,State) ->
+  {ok,State}.
+
 
 do_op('+',[A,B]) -> A+B;
 do_op('-',[A,B]) -> A-B;
