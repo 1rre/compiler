@@ -832,10 +832,10 @@ gen_cases([St|Rest],State) ->
   {Cases,C_Case} = gen_cases(Rest,State),
   {Cases,[St|C_Case]}.
 
-gen_case_branches([{none,Lb}],State) ->
+gen_case_branches([{none,Lb}],_State) ->
   [{jump,{l,Lb}}];
 gen_case_branches([{{default,_},Lb}|Rest],State) ->
-  [{jump,{l,Lb}}];
+  gen_case_branches(Rest,State)++[{jump,{l,Lb}}];
 gen_case_branches([{{Const,_},Lb}|Rest],State) ->
   Active_Reg = {x,State#state.lvcnt},
   Temp_Reg = {x,State#state.lvcnt+1},

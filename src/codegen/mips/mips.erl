@@ -227,7 +227,7 @@ gen_scoped([{move,{x,Ns},{x,Nd}}|Rest],Context) ->
   {ok,Dest,Dest_Context} = get_reg({x,Nd},Type,Src_Context),
   case {Src,Dest} of
     {{f,_},{f,_}} -> [{'mov.s',Dest,Src}|gen_scoped(Rest,Dest_Context)];
-    {{_R,_},{_R,_}} -> [{'move',Dest,Src}|gen_scoped(Rest,Dest_Context)];
+    {{R,_},{R,_}} -> [{'move',Dest,Src}|gen_scoped(Rest,Dest_Context)];
     {{f,_},{_,_}} -> [{'mfc1',Dest,Src}|gen_scoped(Rest,Dest_Context)];
     {{_,_},{f,_}} -> [{'mtc1',Dest,Src}|gen_scoped(Rest,Dest_Context)];
     _ -> error({no_mips,{move,{x,Ns},{x,Nd}},double})
@@ -280,6 +280,20 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
   %% TODO: Find out what way around SP should be
   [{Instr,Dest,{sp,Context#context.sp-Src}}|gen_scoped(Rest,Reg_Context)];
 
+gen_scoped([{move,{g,Global},{x,Nd}}|Rest],Context) ->
+  {_,{Ps,Ts,Ss}} = maps:get({g,Global},Context#context.types),
+  {ok,Dest,Dest_Context} = get_reg({x,Nd},{Ps,Ts,Ss},Context),
+  Size = if Ps =:= 0 -> Ss;
+            true -> 32 end,
+  Instr = case {Size,Dest} of
+    {32,{f,_N}} -> 'l.s';
+    {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 'l.d';
+    {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
+    {32,_Reg} -> lw;
+    {16,_Reg} -> lh
+  end,
+  [{Instr,Dest,Global}|gen_scoped(Rest,Dest_Context)];
+
 % Get from stack
 gen_scoped([{address,{y,Ns},{x,Nd}}|Rest],Context) ->
   Src = maps:get({y,Ns},Context#context.s_reg),
@@ -287,6 +301,13 @@ gen_scoped([{address,{y,Ns},{x,Nd}}|Rest],Context) ->
   {ok,Dest,Reg_Context} = get_reg({x,Nd},{Ps+1,Ts,Ss},Context),
   % Do we need a sub statement here?
   [{addiu,Dest,{i,29},Context#context.sp-Src}|gen_scoped(Rest,Reg_Context)];
+
+% Get from stack
+gen_scoped([{address,{g,Global},{x,Nd}}|Rest],Context) ->
+  {_,{Ps,Ts,Ss}} = maps:get({g,Global},Context#context.types,{0,i,32}),
+  {ok,Dest,Reg_Context} = get_reg({x,Nd},{Ps+1,Ts,Ss},Context),
+  % Do we need a sub statement here?
+  [{la,Dest,Global}|gen_scoped(Rest,Reg_Context)];
 
 % Get from stack
 gen_scoped([{load,{x,Ns},{x,Nd}}|Rest],Context) ->
