@@ -5,7 +5,7 @@ main(Args) ->
   Opts = lists:sort(get_args(Args)),
   File = proplists:get_value(in, Opts),
   Fn_Args = [list_to_integer(Arg)||{arg,Arg} <- Opts],
-  N_Args = [Atom || Atom <- Opts, is_atom(Atom) or (is_tuple(Atom) andalso (element(1,Atom) =:= out))],
+  N_Args = [Atom || Atom <- Opts, is_atom(Atom) orelse is_tuple(Atom) andalso element(1,Atom) =:= out],
   compile(File,Fn_Args,N_Args).
 
 get_args(["-S"|Rest]) -> [asm|get_args(Rest)];

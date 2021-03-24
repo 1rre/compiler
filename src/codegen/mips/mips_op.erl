@@ -1,8 +1,8 @@
 -module(mips_op).
 -export([gen_op/7]).
 
--record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},i_reg,f_reg,labels=[],stack_size=0,fp=0}).
-
+-record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},args=[],
+                 i_reg,f_reg,labels=[],stack_size=0,fp=0}).
 %% Putting boilerplate for built in functions here because it clutters the mips file
 
 simple_int_op(Op,Type,Reg_1,Reg_2,Reg_3,Context) ->
@@ -78,19 +78,19 @@ gen_op('||',_,Size,Reg_1,Reg_2,Reg_3,Context) when 32 >= Size ->
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,32},Context),
   {ok,[{'or',Dest,Src_1,Src_2},{sltu,Dest,{i,0},Dest}],Dest_Context};
 
-gen_op('|',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+gen_op('|',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) orelse (T =:= u) ->
   simple_int_op('or',{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
-gen_op('&',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+gen_op('&',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) orelse (T =:= u) ->
   simple_int_op('and',{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
-gen_op('^',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+gen_op('^',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) orelse (T =:= u) ->
   simple_int_op('xor',{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
-gen_op('==',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+gen_op('==',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) orelse (T =:= u) ->
   simple_int_op(seq,{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
-gen_op('!=',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) or (T =:= u) ->
+gen_op('!=',T,Size,Reg_1,Reg_2,Reg_3,Context) when (T =:= i) orelse (T =:= u) ->
   simple_int_op(sne,{0,T,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('<',i,Size,Reg_1,Reg_2,Reg_3,Context) ->

@@ -206,7 +206,7 @@ run_st([{'/',[A,B],Dest}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = if
-    (TA =:= f) or (TB =:= f) -> set_data({0,f,?SIZEOF_FLOAT},Dest,A_Val / B_Val,Context);
+    (TA =:= f) orelse (TB =:= f) -> set_data({0,f,?SIZEOF_FLOAT},Dest,A_Val / B_Val,Context);
     true -> set_data({0,i,max(SA,SB)},Dest,A_Val div B_Val,Context)
   end,
   debug_print(Rest,Context),
@@ -221,7 +221,7 @@ run_st([{Op,[A,B],Dest}|Rest],Context,Ir) ->
   {ok,A_Val} = get_data(A, Context),
   {ok,B_Val} = get_data(B, Context),
   {ok,N_Context} = if
-    (TA =:= f) or (TB =:= f) ->
+    (TA =:= f) orelse (TB =:= f) ->
       set_data({0,f,?SIZEOF_FLOAT},Dest,do_op(Op,A_Val,B_Val,PA,PB),Context);
     PA =/= 0 ->
       set_data({PA,i,SA},Dest,do_op(Op,A_Val,B_Val*SA,PA,PB),Context);

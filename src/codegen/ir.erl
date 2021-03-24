@@ -1,7 +1,7 @@
 -module(ir).
 -export([generate/1]).
 
--record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},sizeof=#{},scope=0,
+-record(state,{lbcnt=0,rvcnt=0,lvcnt=0,fn=#{},sizeof=#{},scope=0,break=0,continue=0,
                var=#{},typedef=#{},struct=#{},enum=#{},typecheck=#{}}).
 
 -include("arch_type_consts.hrl").
@@ -40,6 +40,7 @@ generate([Hd|Tl], State) ->
 generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(Raw_Args) ->
   {ok, Type} = get_type(Raw_Type, State),
   {ok, Ident, _Ptr_Ident, Arr} = get_ident_specs(Raw_Ident,State),
+  % Is this ok?
   if Arr =/= [] -> error({return_type,array});
   true -> ok end,
   % Reverse because the stack be like that sometimes
@@ -51,7 +52,7 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(
   end,
   Alloc_St = lists:flatten([[{allocate,size_var({y,N},Arg_State)},
                              {move,{z,Arity-N-1},{y,N}}] || N <- lists:seq(0,Arity-1)]),
-  New_Fn = maps:put(Ident,{Type,length(Raw_Args)},Arg_State#state.fn),
+  New_Fn = maps:put(Ident,{{Arr,Type},length(Raw_Args)},Arg_State#state.fn),
   {ok, N_State, N_St} = generate(Raw_St,Arg_State#state{fn=New_Fn}),
   Rtn_St = case lists:last(N_St) of
     return ->
@@ -69,6 +70,13 @@ generate({declaration,[{typedef,_}|Raw_Type],[Raw_Ident]}, State) ->
   N_Td = maps:put(Ident,{Arr,{P+Ptr_Depth,T,S}},State#state.typedef),
   {ok, State#state{typedef=N_Td}, []};
 
+generate({break,_},State) ->
+  Break = State#state.break,
+  {ok,State,[{jump,{l,Break}}]};
+
+generate({continue,_},State) ->
+  Continue = State#state.continue,
+  {ok,State,[{jump,{l,Continue}}]};
 
 %% As there are multiple cases for declaration, it is delegated to a helper function.
 generate({declaration,Raw_Type,Raw_St}, State) ->
@@ -246,8 +254,15 @@ generate({{'if',_},Predicate,True,False}, State) ->
       {ok,Rtn_State,Rtn_St}
   end;
 
-generate({{switch,_},_Raw_St,_Cases},_Context) ->
-  error({no_ir,switch});
+generate({{switch,_},Raw_St,Raw_Cases},State) ->
+  {ok,Switch_State,Switch_St} = generate(Raw_St,State),
+  {Lists,[]} = gen_cases(Raw_Cases,Switch_State),
+  Lb_Cnt = Switch_State#state.lbcnt,
+  Zipped = lists:zip(Lists,lists:seq(Lb_Cnt+1,Lb_Cnt+length(Lists))),
+  Cases = gen_case_branches(Zipped,Switch_State),
+  Gen_State = Switch_State#state{lbcnt=Lb_Cnt+length(Lists),break=Lb_Cnt+length(Lists)},
+  {ok,Rtn_State,Rtn_St} = gen_case_st(Zipped,Gen_State),
+  {ok,Rtn_State#state{lvcnt=State#state.lvcnt},lists:flatten(Switch_St++Cases++Rtn_St)};
 
 
 %% Process a while loop by processing each of the predicate and the loop body,
@@ -258,7 +273,8 @@ generate({{while,_},Predicate,Do}, State) ->
   Start_Label = {label,Lb_Cnt},
   {ok,Pred_State,Pred_St} = generate(Predicate,State#state{lbcnt=Lb_Cnt+1}),
   Test_Jump = {test,{x,State#state.lvcnt},{l,Lb_Cnt+1}},
-  {ok,Do_State,Do_St} = generate(Do,copy_lvcnt(State,Pred_State)),
+  Pre_Do_State = Pred_State#state{lbcnt=Lb_Cnt,break=Lb_Cnt+1,continue=Lb_Cnt},
+  {ok,Do_State,Do_St} = generate(Do,copy_lvcnt(State,Pre_Do_State)),
   {ok,Do_Dealloc} = deallocate_mem(Pred_State#state.var,Do_State#state.var),
   Jump = {jump,{l,Lb_Cnt}},
   End_Label = {label,Lb_Cnt + 1},
@@ -272,7 +288,8 @@ generate({{while,_},Predicate,Do}, State) ->
 generate({{do,_},Do,Predicate}, State) ->
   Lb_Cnt = State#state.lbcnt,
   Start_Label = {label,Lb_Cnt + 1},
-  {ok,Do_State,Do_St} = generate(Do,State#state{lbcnt=Lb_Cnt+2}),
+  Pre_Do_State = State#state{lbcnt=Lb_Cnt+2,break=Lb_Cnt+2,continue=Lb_Cnt+1},
+  {ok,Do_State,Do_St} = generate(Do,Pre_Do_State),
   {ok,Do_Dealloc} = deallocate_mem(State#state.var,Do_State#state.var),
   {ok,Pred_State,Pred_St} = generate(Predicate,copy_lbcnt(Do_State,State)),
   Test_Jump = {test,{x,State#state.lvcnt},{l,Lb_Cnt+2}},
@@ -294,7 +311,8 @@ generate({{for,_},{Init,Predicate,Update},Loop}, State) ->
   Pred_Label = {label,Lb_Cnt+1},
   {ok,Pred_State,Pred_St} = generate(Predicate,Root_State),
   Pred_Test = {test,{x,Lv_Cnt},{l,Lb_Cnt+2}},
-  {ok,Loop_State,Loop_St} = generate(Loop,copy_lbcnt(Pred_State,Root_State)),
+  Pre_Loop_State = copy_lbcnt(Pred_State,Root_State#state{break=Lb_Cnt+2,continue=Lb_Cnt+1}),
+  {ok,Loop_State,Loop_St} = generate(Loop,Pre_Loop_State),
   {ok,Dealloc} = deallocate_mem(Init_State#state.var,Loop_State#state.var),
   {ok,Update_State,Update_St} = generate(Update,copy_lbcnt(Loop_State,Root_State)),
   Jump = {jump,{l,Lb_Cnt+1}},
@@ -306,8 +324,8 @@ generate({{for,_},{Init,Predicate,Update},Loop}, State) ->
 generate({string_l,Ln,Str},State) ->
   St = [[{int_l,Ln,N,[c]}] || N <- Str]++[{int_l,Ln,0,[c]}],
   Rv_Cnt = State#state.rvcnt,
-  Heap_St = lists:flatten([{allocate,32},
-                           {cast,{y,Rv_Cnt},{1,u,8}},
+  Heap_St = lists:flatten([{allocate,8*length(St)},
+                           {cast,{y,Rv_Cnt},{0,u,8}},
                            {address,{y,Rv_Cnt},{x,State#state.lvcnt}}|
                            gen_heap({[{i,length(St)}],{0,u,8}},State,St)]),
   N_Types = maps:put({y,Rv_Cnt},{1,u,8},State#state.typecheck),
@@ -798,6 +816,36 @@ process_bif(Type,Fst,Sec,State,Swap) ->
   Rtn_State = B_State#state{typecheck=N_Types},
   {ok,Rtn_State,Statement}.
 
+
+gen_cases([],_State) ->
+  {[none],[]};
+gen_cases([{{default,_},{':',_},St}|Rest],State) ->
+  {Cases,C_Case} = gen_cases(Rest,State),
+  {[{default,[St|C_Case]}|Cases],[]};
+gen_cases([{{'case',_},Const,{':',_},St}|Rest],State) ->
+  {Cases,C_Case} = gen_cases(Rest,State),
+  {[{get_constant(Const,State),[St|C_Case]}|Cases],[]};
+gen_cases([St|Rest],State) ->
+  {Cases,C_Case} = gen_cases(Rest,State),
+  {Cases,[St|C_Case]}.
+
+gen_case_branches([{none,Lb}],State) ->
+  [{jump,{l,Lb}}];
+gen_case_branches([{{default,_},Lb}|Rest],State) ->
+  [{jump,{l,Lb}}];
+gen_case_branches([{{Const,_},Lb}|Rest],State) ->
+  Active_Reg = {x,State#state.lvcnt},
+  Temp_Reg = {x,State#state.lvcnt+1},
+  [{move,Const,Temp_Reg},
+   {'!=',[Active_Reg,Temp_Reg],Temp_Reg},
+   {test,Temp_Reg,{l,Lb}}|gen_case_branches(Rest,State)].
+
+ gen_case_st([{none,Lb}],State) ->
+   {ok,State,[{label,Lb}]};
+ gen_case_st([{{_,St},Lb}|Rest],State) ->
+   {ok,O_State,O_St} = gen_case_st(Rest,State),
+   {ok,St_State,St_St} = generate(St,O_State),
+   {ok,St_State,[{label,Lb}|St_St++O_St]}.
 
 %% Get a shortened name of a type
 %% TODO: #18

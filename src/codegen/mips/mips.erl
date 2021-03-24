@@ -3,7 +3,8 @@
 
 -include("arch_type_consts.hrl").
 
--record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},i_reg,f_reg,labels=[],stack_size=0,fp=0}).
+-record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},args=[],
+                 i_reg,f_reg,labels=[],stack_size=0,fp=0}).
 
 generate(Ir) ->
   % Use these for ints & pointers if possible
@@ -158,6 +159,69 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   %% TODO: Find out what way around SP should be
   [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_scoped(Rest,N_Context)];
 
+
+gen_scoped([{move,{x,Ns},{z,Nd}}|Rest],Context) ->
+  case {maps:get({x,Ns},Context#context.types),Context#context.args} of
+    {{0,f,32},[{f,12}|_]} ->
+      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
+      N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
+      N_Args = [{f,14}|Src_Context#context.args],
+      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+      [{'mov.s',{f,14},Src}|gen_scoped(Rest,N_Context)];
+    {{0,f,64},[{f,12}|_]} ->
+      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
+      N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
+      N_Args = [{f,14}|Src_Context#context.args],
+      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+      [{'mov.d',{f,14},Src}|gen_scoped(Rest,N_Context)];
+    {Type,[{f,12}|_]} ->
+      {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
+      N_Reg = maps:put({z,Nd},{i,5},Src_Context#context.reg),
+      N_Args = [{i,5}|Src_Context#context.args],
+      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+      [{move,{i,5},Src}|gen_scoped(Rest,N_Context)];
+    {{0,f,32},[{i,N}|_]} when 7 > N->
+      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
+      N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
+      N_Args = [{i,N+1}|Src_Context#context.args],
+      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+      [{mfc1,{i,N+1},Src}|gen_scoped(Rest,N_Context)];
+    {{0,f,64},[{i,N}|_]} when 6 > N ->
+      {ok,[S1,S2],Src_Context} = get_reg({x,Ns},{0,f,64},Context),
+      N_Reg = maps:put({z,Nd},[{i,6},{i,7}],Src_Context#context.reg),
+      N_Args = [[{i,6},{i,7}]|Src_Context#context.args],
+      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+      [{mfc1,{i,6},S1},{mfc1,{i,7},S2}|gen_scoped(Rest,N_Context)];
+    {Type,[{i,N}|_]} when 7 > N ->
+      {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
+      N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
+      N_Args = [{i,N+1}|Src_Context#context.args],
+      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+      [{move,{i,N+1},Src}|gen_scoped(Rest,N_Context)];
+    {{0,f,32},[]} ->
+      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
+      N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
+      N_Args = [{f,12}|Src_Context#context.args],
+      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+      [{'mov.s',{f,12},Src}|gen_scoped(Rest,N_Context)];
+    {{0,f,64},[]} ->
+      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
+      N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
+      N_Args = [{f,12}|Src_Context#context.args],
+      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+      [{'mov.d',{f,12},Src}|gen_scoped(Rest,N_Context)];
+    {Type,[]} ->
+      {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
+      N_Reg = maps:put({z,Nd},{i,4},Src_Context#context.reg),
+      N_Args = [{i,4}|Src_Context#context.args],
+      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+      [{move,{i,4},Src}|gen_scoped(Rest,N_Context)];
+    _ ->
+      % Dest is stack
+        error({no_mips,{move,{x,Ns},{z,Nd}},stack})
+  end;
+
+
 % Arguments
 gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
   case maps:get({z,Ns},Context#context.reg,nil) of
@@ -211,7 +275,6 @@ gen_scoped([{address,{y,Ns},{x,Nd}}|Rest],Context) ->
   % Do we need a sub statement here?
   [{addiu,Dest,{i,29},Context#context.sp-Src}|gen_scoped(Rest,Reg_Context)];
 
-
 % Get from stack
 gen_scoped([{load,{x,Ns},{x,Nd}}|Rest],Context) ->
   {Ps,Ts,Ss} = maps:get({x,Ns},Context#context.types,{1,i,32}),
@@ -252,13 +315,13 @@ gen_scoped([{store,{x,Ns},{x,Nd}}|Rest],Context) ->
   [{Instr,Src,{0,Dest}}|gen_scoped(Rest,Reg_Context)];
 
 
-gen_scoped([{cast,{x,N},{0,T,S}}|Rest],Context) when (T =:= i) or (T =:= u) ->
+gen_scoped([{cast,{x,N},{0,T,S}}|Rest],Context) when T =:= i orelse T =:= u ->
   <<Bitmask:S>> = <<16#FFFFFFFF>>,
   case maps:get({x,N},Context#context.types,{0,i,S}) of
-    {0,NT,S} when (NT =:= i) or (NT =:= u) ->
+    {0,NT,S} when (NT =:= i) orelse (NT =:= u) ->
       gen_scoped(Rest,Context);
     %% Really we should check for float registers and changes of register here
-    {0,NT,_} when (NT =:= i) or (NT =:= u) ->
+    {0,NT,_} when (NT =:= i) orelse (NT =:= u) ->
       {ok,Reg,Reg_Context} = get_reg({x,N},{0,u,S},Context),
       [{andi,Reg,Reg,Bitmask}|gen_scoped(Rest,Reg_Context)];
     Other ->
@@ -289,25 +352,34 @@ gen_scoped([{jump,{l,N}}|Rest],Context) ->
 
 % TODO: More storing on the stack & updating return value
 gen_scoped([{call,Fn,Arity}|Rest],Context) ->
-  Ra_Store = [{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
-  Ra_Pos = Context#context.sp,
+  Ra_Add = case Context#context.sp rem 4 of
+    1 -> -7;
+    2 -> -6;
+    3 -> -5;
+    _ -> -4
+  end,
+  Ra_Store = [{addiu,{i,29},{i,29},Ra_Add},{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
+  Ra_Pos = Context#context.sp-Ra_Add+4,
   {Arg_Context,Arg_Store} = lists:foldl(fun (N, {N_Context,St}) ->
       Type = maps:get({z,N},N_Context#context.types,{0,i,32}),
       {ok,Reg,Reg_Context} = get_reg({z,N},Type,N_Context),
       case Reg of
         {f,_} ->
           N_Sp = Reg_Context#context.sp + 4,
-          {St ++ [{'s.s',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}],Reg_Context#context{sp=N_Sp}};
+          {Reg_Context#context{sp=N_Sp},St ++ [{'s.s',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]};
         [{f,_N1},{f,_N2}] -> error(double);
         _Reg ->
           N_Sp = Reg_Context#context.sp + 4,
-          {St ++ [{'sw',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}],Reg_Context#context{sp=N_Sp}}
+          {Reg_Context#context{sp=N_Sp},St ++ [{'sw',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]}
       end
     end,{Context#context{sp=Ra_Pos+4},[]},lists:seq(Arity-1,0,-1)),
-  Ra_Diff = Arg_Context#context.sp - Ra_Pos,
-  N_Fp_Jal = [{addiu,{i,30},{i,30},-Arg_Context#context.sp},{jal,Fn}],
-  R_Fp_Ra = [{addiu,{i,30},{i,30},Arg_Context#context.sp},
-             {addiu,{i,29},{i,29},Ra_Diff},
+  {Ra_Diff,N_Sp} = case Arg_Context#context.sp - Ra_Pos of
+    N when N < 16 -> {16,Ra_Pos+16};
+    N -> {N,Ra_Pos+N}
+  end,
+  N_Fp_Jal = [{addiu,{i,30},{i,30},-N_Sp},{addiu,{i,29},{i,29},-Ra_Diff},{jal,Fn}],
+  R_Fp_Ra = [{addiu,{i,30},{i,30},N_Sp},
+             {addiu,{i,29},{i,29},Ra_Diff+4},
              {lw,{i,31},{sp,0}}],
   Ra_Store ++ Arg_Store ++ N_Fp_Jal ++ R_Fp_Ra ++ gen_scoped(Rest,Arg_Context);
 
@@ -329,7 +401,7 @@ gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
       {ok,Res,Res_Context} = gen_op(Op,T,S,Src_1,Src_2,Dest,Context),
       Res++gen_scoped(Rest,Res_Context);
     % Adding unsigned to signed (useful for unsigned + constant?)
-    {{0,T1,S},{0,T2,S}} when ((T1 =:= i) or (T1 =:= u)) andalso ((T2 =:= i) or (T2 =:= u)) ->
+    {{0,T1,S},{0,T2,S}} when (T1 =:= i orelse T1 =:= u) andalso (T2 =:= i orelse T2 =:= u) ->
       {ok,Res,Res_Context} = gen_op(Op,T1,S,Src_1,Src_2,Dest,Context),
       Res++gen_scoped(Rest,Res_Context);
     %% TODO: Pointers
@@ -386,7 +458,7 @@ get_reg(Reg,Type,Context) ->
       {ok,{i,N},Context#context{types=N_Types}};
     {[R1,R2],[Dest|Rest]} ->
       F_Reg = [{f,N} || {f,N} <- [R1,R2]],
-      I_Reg = [R || R <- [R1,R2], not is_tuple(R) or element(1,R) =:= s] ++ Rest,
+      I_Reg = [R || R <- [R1,R2], not is_tuple(R) orelse element(1,R) =:= s] ++ Rest,
       N_Reg = maps:put(Dest,Context#context.reg),
       {ok,Dest,Context#context{f_reg=F_Reg,i_reg=I_Reg,reg=N_Reg,types=N_Types}};
     {nil,[Dest|Rest]} ->
