@@ -57,6 +57,8 @@ statement({A,B,C,D},Opts) ->
 
 part({sp,N}) when is_integer(N) ->
   io_lib:format("~B($29)",[N]);
+part([{f,A},{f,_}]) ->
+  io_lib:format("$f~B",[A]);
 % Label
 part({A,B}) when is_list(B) ->
   lists:flatten([io_lib:format("$~B",[N]) || N <- B]) ++ io_lib:format("~s",[A]);

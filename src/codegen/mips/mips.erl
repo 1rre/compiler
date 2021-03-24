@@ -123,8 +123,10 @@ gen_scoped([{move,{i,_Val},{x,_N}}|_Rest],_Context) ->
   error({not_impl,long});
 
 % Move a double to a register
-gen_scoped([{move,{f,_Val},{x,N}},{cast,{x,N},{0,f,64}}|_Rest],_Context) ->
-  error({not_impl,double});
+gen_scoped([{move,{f,Val},{x,N}},{cast,{x,N},{0,f,64}}|Rest],Context) ->
+  {ok,[R1,_],Reg_Context} = get_reg({x,N},{0,f,64},Context),
+  <<Value:64>> = <<Val:64/float>>,
+  [{'li.d',R1,Value}|gen_scoped(Rest,Reg_Context)];
 
 % Move a float to a register
 gen_scoped([{move,{f,Val},{x,N}}|Rest],Context) ->
@@ -469,8 +471,25 @@ gen_scoped([],_Context) -> [];
 gen_scoped([Other|_],_Context) -> error({no_mips,Other}).
 
 % Reg for a 64 bit object
-get_reg(_Reg,{0,_,64},_Context) ->
-  error({not_impl,double});
+get_reg(Reg,{0,f,64},Context) ->
+  N_Types = maps:put(Reg,{0,f,64},Context#context.types),
+  % Check if the register has been previously assigned
+  case {maps:get(Reg,Context#context.reg,nil),Context#context.f_reg} of
+  {{s,_Saved},[_Dest|_Rest]} ->
+    error({cast,'i32 -> double'});
+  {{f,N},[A,B|Rest]} ->
+    error({cast,'float -> double'});
+  {[R1,R2],_} ->
+    {ok,[R1,R2],Context#context{types=N_Types}};
+  {nil,[R1,R2|Rest]} ->
+    N_Reg = maps:put(Reg,[R1,R2],Context#context.reg),
+    {ok,[R1,R2],Context#context{f_reg=Rest,reg=N_Reg,types=N_Types}};
+  {Old_Reg,[R1,R2|Rest]} ->
+    I_Reg = [Old_Reg | Context#context.i_reg],
+    N_Reg = maps:put(Reg,[R1,R2],Context#context.reg),
+    {ok,[R1,R2],Context#context{f_reg=Rest,reg=N_Reg,i_reg=I_Reg,types=N_Types}};
+  Other -> error(Other)
+end;
 % Reg for a 32 bit float
 get_reg(Reg,{0,f,32},Context) ->
   N_Types = maps:put(Reg,{0,f,32},Context#context.types),
@@ -483,7 +502,7 @@ get_reg(Reg,{0,f,32},Context) ->
     {[R1,R2],[Dest|Rest]} ->
       F_Reg = [{f,N} || {f,N} <- [R1,R2]] ++ Rest,
       I_Reg = [R || R <- [R1,R2], (element(1,R) =/= f)],
-      N_Reg = maps:put(Dest,Context#context.reg),
+      N_Reg = maps:put(Reg,Dest,Context#context.reg),
       {ok,Dest,Context#context{f_reg=F_Reg,i_reg=I_Reg,reg=N_Reg,types=N_Types}};
     {nil,[Dest|Rest]} ->
       N_Reg = maps:put(Reg,Dest,Context#context.reg),

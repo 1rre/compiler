@@ -40,9 +40,9 @@ simple_double_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
   case {Src_1,Src_2,Dest} of
     % Make sure all registers are consecutive double registers
     % They should be though...
-    {[{f,R11},{f,R12}],[{f,R21},{f,R22}],[{f,R31},{f,R32}]} when R11 == R12+1
-                                                            andalso R21 == R22+1
-                                                            andalso R31 == R32+1 ->
+    {[{f,R11},{f,R12}],[{f,R21},{f,R22}],[{f,R31},{f,R32}]} when R11+1 == R12
+                                                            andalso R21+1 == R22
+                                                            andalso R31+1 == R32 ->
       {ok,[{Op,R31,R11,R21}],Dest_Context};
     _ -> error({nonconsecutive,{Src_1,Src_2,Dest}})
 end.

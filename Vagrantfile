@@ -41,12 +41,12 @@ Vagrant.configure(2) do |config|
       curl https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | sudo apt-key add -
       sudo apt-get update
       # Standard build tools
-      sudo apt-get -y install musl g++ gdb make dos2unix git
+      sudo apt-get -y install g++ make dos2unix git
       # MIPS cross-compiler stuff
-      sudo apt-get -y install g++-mips-linux-gnu gdb-multiarch
+      sudo apt-get -y install g++-mips-linux-gnu
       # QEMU run-time emulator
       sudo apt-get -y install qemu
       # Erlang RTS
-      sudo apt-get -y install erlang
+      sudo apt-get -y install erlang erlang-base-hipe
    SHELL
 end
