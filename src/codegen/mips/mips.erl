@@ -105,7 +105,13 @@ gen_scoped([{gc,N}|Rest],Context) ->
 %% Return
 %% TODO: Implement return properly with SP movement etc.
 gen_scoped([return|Rest],Context) ->
-  [{move,{i,29},{i,30}},{jr,{i,31}},nop|gen_scoped(Rest,Context)];
+  Move_St = case maps:get({x,0},Context#context.reg,{i,2}) of
+    {i,2} -> [];
+    {f,R} -> [{mfc1,{i,2},{f,R}}];
+    {T,R} -> [{move,{i,2},{T,R}}];
+    [{f,A},{f,B}] -> [{mfc1,{i,2},{f,A}},{mfc1,{i,3},{f,B}}]
+  end,
+  Move_St ++ [{move,{i,29},{i,30}},{jr,{i,31}},nop|gen_scoped(Rest,Context)];
 
 %% Move an int literal to a register
 gen_scoped([{move,{i,Val},{x,N}}|Rest],Context) when 16#FFFFFFFF >= Val
@@ -120,14 +126,13 @@ gen_scoped([{move,{i,_Val},{x,_N}}|_Rest],_Context) ->
 % Move a double to a register
 gen_scoped([{move,{f,Val},{x,N}},{cast,{x,N},{0,f,64}}|Rest],Context) ->
   {ok,[R1,_],Reg_Context} = get_reg({x,N},{0,f,64},Context),
-  <<Value:64>> = <<Val:64/float>>,
-  [{'li.d',R1,Value}|gen_scoped(Rest,Reg_Context)];
+  [{'li.d',R1,Val}|gen_scoped(Rest,Reg_Context)];
 
 % Move a float to a register
 gen_scoped([{move,{f,Val},{x,N}}|Rest],Context) ->
   {ok,Reg,Reg_Context} = get_reg({x,N},{0,f,32},Context),
   <<Value:32>> = <<Val:32/float>>,
-  [{'li.s',Reg,Value}|gen_scoped(Rest,Reg_Context)];
+  [{li,{i,1},Value},{mtc1,{i,1},Reg}|gen_scoped(Rest,Reg_Context)];
 
 
 gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
