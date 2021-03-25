@@ -30,7 +30,7 @@ Rootsymbol translation_unit.
 % This seemed to work at 850, but I think it should be 0?
 Nonassoc 850 '('.
 Left  025 ','.
-Left  050 assignment_operator.
+Right 050 assignment_operator.
 Left  075 '?'.
 Left  100 '||'.
 Left  125 '&&'.
@@ -46,7 +46,7 @@ Right 375 cast.
 Unary 350 unary_operator.
 Unary 350 sizeof.
 Left  400 postfix_operator.
-Right 400 postfix_list.
+Left  400 postfix_list.
 Right 450 declaration_list.
 Unary 475 external_declaration.
 
@@ -72,6 +72,7 @@ expression -> sizeof_expression : '$1'.
 expression -> unary_operator expression : {'$1','$2'}.
 expression -> cast expression : {cast,'$1','$2'}.
 expression -> expression postfix_operator : {'$1','$2'}.
+expression -> identifier postfix_list : {'$1','$2'}.
 expression -> expression postfix_list : {'$1','$2'}.
 expression -> identifier : '$1'.
 expression -> constant : '$1'.

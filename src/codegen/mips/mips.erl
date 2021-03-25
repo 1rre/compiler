@@ -462,9 +462,9 @@ gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
       [Shift|Res] ++ gen_scoped([{cast,Dest,{N,T2,S2}}|Rest],N_Context);
     {{0,T2,S2},{N,T1,S1}} ->
       Shift_Amount = trunc(math:log2(sizeof({N-1,T1,S1}) div 8)),
-      {ok,Reg_2,Reg_2_Context} = get_reg(Src_2,{0,T2,S2},Context),
-      {ok,Temp,Temp_Context} = get_reg({x,-1},{0,u,32},Reg_2_Context),
-      Shift = {sll,Temp,Reg_2,Shift_Amount},
+      {ok,Reg_1,Reg_1_Context} = get_reg(Src_1,{0,T2,S2},Context),
+      {ok,Temp,Temp_Context} = get_reg({x,-1},{0,u,32},Reg_1_Context),
+      Shift = {sll,Temp,Reg_1,Shift_Amount},
       {ok,Res,Res_Context} = gen_op(Op,u,S2,Src_2,{x,-1},Dest,Temp_Context),
       N_I_Reg = [Temp|Res_Context#context.i_reg],
       N_Reg = maps:remove({x,-1},Res_Context#context.reg),

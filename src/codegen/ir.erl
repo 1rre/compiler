@@ -119,9 +119,6 @@ generate({declaration,Raw_Type,Raw_St}, State) ->
   get_decl_specs(Type,Raw_St,State);
 
 %% Process an integer node by moving the literal value to the active register
-%  As longs are out of spec we currently don't differentiate however it may be useful to later
-%% TODO: N/A
-%        Add unsigned
 generate({int_l,_Line,Val,[]}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{[],{0,i,?SIZEOF_INT}},State#state.typecheck),
@@ -181,25 +178,26 @@ generate({Rest,{array, Offset}}, State) ->
   Lv_Cnt = State#state.lvcnt,
   {ok,Ptr_State,Ptr_St} = generate(Rest,State),
   case maps:get({x,Lv_Cnt},Ptr_State#state.typecheck,{[],{0,n,0}}) of
-    {[],_} -> generate({{'*',0},{bif,'+',[Rest,Offset]}},State);
+    {[],_} ->
+      generate({{'*',0},{bif,'+',[Rest,Offset]}},State);
     _ ->
-    {ok,Off_State,Off_St} = generate(Offset,Ptr_State#state{lvcnt=Lv_Cnt+1}),
-    {Arr,Type} = maps:get({x,Lv_Cnt},Ptr_State#state.typecheck),
-    Size = lists:foldl(fun ({_,A},B) -> A*B end,1,tl(Arr)),
-    Arr_St = Ptr_St++Off_St++[{move,{i,Size},{x,Lv_Cnt+2}},
-                              {'*',[{x,Lv_Cnt+1},{x,Lv_Cnt+2}],{x,Lv_Cnt+1}},
-                              {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
-    case Arr of
-      [_] ->
-        N_Types = maps:put({x,Lv_Cnt},{tl(Arr),Type},Ptr_State#state.typecheck),
-        Rtn_St = Arr_St ++ [{load,{x,Lv_Cnt},{x,Lv_Cnt}}],
-        {ok,copy_lvcnt(Off_State,Ptr_State#state{typecheck=N_Types}),Rtn_St};
-      % TODO: Find effects of *not* making this a pointer?
-      %       I'm not sure how we'd support pointer to array though - would we at all?
-      _ ->
-        {P,T,S} = Type,
-        N_Types = maps:put({x,Lv_Cnt},{tl(Arr),{P,T,S}},Ptr_State#state.typecheck),
-        {ok,copy_lvcnt(Off_State,Ptr_State#state{typecheck=N_Types}),Arr_St}
+      {ok,Off_State,Off_St} = generate(Offset,Ptr_State#state{lvcnt=Lv_Cnt+1}),
+      {Arr,Type} = maps:get({x,Lv_Cnt},Ptr_State#state.typecheck),
+      Size = lists:foldl(fun ({_,A},B) -> A*B end,1,tl(Arr)),
+      Arr_St = Ptr_St++Off_St++[{move,{i,Size},{x,Lv_Cnt+2}},
+                                {'*',[{x,Lv_Cnt+1},{x,Lv_Cnt+2}],{x,Lv_Cnt+1}},
+                                {'+',[{x,Lv_Cnt},{x,Lv_Cnt+1}],{x,Lv_Cnt}}],
+      case Arr of
+        [_] ->
+          N_Types = maps:put({x,Lv_Cnt},{tl(Arr),Type},Ptr_State#state.typecheck),
+          Rtn_St = Arr_St ++ [{load,{x,Lv_Cnt},{x,Lv_Cnt}}],
+          {ok,copy_lvcnt(Off_State,Ptr_State#state{typecheck=N_Types}),Rtn_St};
+        % TODO: Find effects of *not* making this a pointer?
+        %       I'm not sure how we'd support pointer to array though - would we at all?
+        _ ->
+          {P,T,S} = Type,
+          N_Types = maps:put({x,Lv_Cnt},{tl(Arr),{P,T,S}},Ptr_State#state.typecheck),
+          {ok,copy_lvcnt(Off_State,Ptr_State#state{typecheck=N_Types}),Arr_St}
     end
   end;
 
