@@ -42,6 +42,10 @@ statement({'.end',Name},Prev_Opts) ->
   Output = io_lib:format("~s ~s",['.end',Name]),
   ?PRINT_LINE,
   {ok,Opts};
+statement({A,B={B1,B2}},Opts) when is_list(B1) andalso is_list(B2) ->
+  Output = lists:flatten(part(A)++[$ |part(B)]),
+  ?PRINT_LINE,
+  {ok,Opts};
 statement({A,B},Opts) ->
   Output = part(A)++[$ |part(B)],
   ?PRINT_LINE,
@@ -59,9 +63,9 @@ part({sp,N}) when is_integer(N) ->
   io_lib:format("~B($29)",[N]);
 part([{f,A},{f,_}]) ->
   io_lib:format("$f~B",[A]);
-% Label
+%label
 part({A,B}) when is_list(B) ->
-  lists:flatten([io_lib:format("$~B",[N]) || N <- B]) ++ io_lib:format("~s",[A]);
+  io_lib:format("~s",[A]) ++ lists:flatten([io_lib:format("$~B",[N]) || N <- B]);
 % Float register
 part({f,B}) when is_integer(B) ->
   io_lib:format("$f~B",[B]);

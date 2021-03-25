@@ -24,10 +24,18 @@ simple_float_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
 float_compare(Op,Reg_1,Reg_2,Reg_3,Context) ->
   Src_1 = maps:get(Reg_1,Context#context.reg),
   Src_2 = maps:get(Reg_2,Context#context.reg),
+  Un = abs(erlang:unique_integer()),
   {ok,Dest,Dest_Context} = mips:get_reg(Reg_3,{0,i,32},Context),
   case {Src_1,Src_2,Dest} of
-    {{f,_},{f,_},{R,_}} when R /= f ->
-      {ok,[{Op,Src_1,Src_2},{cfc1,Dest,0}],Dest_Context};
+    {{f,A},{f,B},{R,C}} when R /= f ->
+      {ok,[{Op,Src_1,Src_2},
+           {bc1t,{"$float_cmp_true",[A,B,C,Un]}},
+           {li,{R,C},0},
+           {b,{"$float_cmp_false",[A,B,C,Un]}},
+           nop,
+           {"$float_cmp_true",[A,B,C,Un]},
+           {li,{R,C},1},
+           {"$float_cmp_false",[A,B,C,Un]}],Dest_Context};
     _ -> error({not_float,{Src_1,Src_2,Dest}})
   end.
 
@@ -199,13 +207,13 @@ gen_op('<',f,Size,Reg_1,Reg_2,Reg_3,Context) ->
   float_compare('c.lt.s',Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('>',f,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  float_compare('c.gt.s',Reg_1,Reg_2,Reg_3,Context);
+  float_compare('c.lt.s',Reg_2,Reg_1,Reg_3,Context);
 
 gen_op('<=',f,Size,Reg_1,Reg_2,Reg_3,Context)->
   float_compare('c.le.s',Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('>=',f,Size,Reg_1,Reg_2,Reg_3,Context)->
-  float_compare('c.ge.s',Reg_1,Reg_2,Reg_3,Context);
+  float_compare('c.le.s',Reg_2,Reg_1,Reg_3,Context);
 
 
 gen_op(Op,_,_,_,_,_,_) -> error({no_mips,Op}).

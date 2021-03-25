@@ -5,5 +5,5 @@ int main() {
   int a = f(12.,15.);
   int b = f(18.,15.);
   printf("%d\n%d\n",a,b);
-    return !(a == 0);
+    return !(a == 1);
 }

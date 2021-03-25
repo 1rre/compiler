@@ -570,10 +570,18 @@ get_decl_specs(Type, Other, State) -> error({Type,Other,State}).
 %% Function for getting information about an identifier.
 %% Strips superfluous information (line numbers etc) from the identifier
 %  and returns the identifier and the a version with dereference etc. operators maintained.
-%% TODO: #4
-%        Currently we can take the address of a variable just fine, however chaining
-%        dereference & address operators (eg `*&x = 10;`) passes the parser but
-%        cannot be processed. The fix here is easy but I believe other fixes are needed.
+%% TODO: Assignments to *(a+b) etc.
+get_ident_specs({{'&',_},Rest}, State) ->
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Rest, State),
+  {ok, Ident, Ptr_Depth-1, Arr};
+get_ident_specs({{'*',_},{bif,'+',[A,B]}}, State) ->
+  try get_ident_specs(A, State) of
+    {ok, Ident, Ptr_Depth, Arr} -> {ok, Ident, Ptr_Depth,Arr++[B]}
+  catch
+    _:_ ->
+      {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(B, State),
+      {ok, Ident, Ptr_Depth+1, Arr++[A]}
+  end;
 get_ident_specs({{'*',_},Rest}, State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Rest, State),
   {ok, Ident, Ptr_Depth+1, Arr};
@@ -583,6 +591,9 @@ get_ident_specs({{{'*',_},Ptr},Rest}, State) ->
 get_ident_specs({Rest,{array,N}}, State) ->
   {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(Rest, State),
   {ok, Ident, Ptr_Depth,Arr++[N]};
+get_ident_specs({bif,'-',[A,B]}, State) ->
+  {ok, Ident, Ptr_Depth, Arr} = get_ident_specs(A, State),
+  {ok, Ident, Ptr_Depth,Arr++[{{'-',0},B}]};
 get_ident_specs({'*',_}, _State) ->
   {ok, '', 1, []};
 get_ident_specs({{identifier,_,Ident},Fn_St}, _State) when is_list(Fn_St) ->
@@ -723,10 +734,15 @@ get_assign_specs('=',[Raw_Ident,Raw_St], State) ->
     Arr =:= [] -> [];
     true ->
       {Arr_Depth,Type} = maps:get(Ptr,Arr_State#state.typecheck),
-      Offset_St = lists:foldl(fun (Index,{St,[_|Rest]}) ->
-        St++Index++[{move,{i,sizeof({Rest,{0,i,1}},Arr_State)},{x,Lv_Cnt+3}},
-                    {'*',[{x,Lv_Cnt+2},{x,Lv_Cnt+3}],{x,Lv_Cnt+2}},
-                    {'+',[{x,Lv_Cnt+1},{x,Lv_Cnt+2}],{x,Lv_Cnt+1}}]
+      Offset_St = lists:foldl(fun
+        (Index,{St,[_|Rest]}) ->
+          St++Index++[{move,{i,sizeof({Rest,{0,i,1}},Arr_State)},{x,Lv_Cnt+3}},
+                      {'*',[{x,Lv_Cnt+2},{x,Lv_Cnt+3}],{x,Lv_Cnt+2}},
+                      {'+',[{x,Lv_Cnt+1},{x,Lv_Cnt+2}],{x,Lv_Cnt+1}}];
+        (Index,{[{address,_Ptr,A_Reg}],[]}) ->
+          [{move,Ptr,A_Reg}] ++ Index ++ [{'+',[{x,Lv_Cnt+1},{x,Lv_Cnt+2}],{x,Lv_Cnt+1}}];
+        (Index,{St,[]}) ->
+          St ++ Index ++ [{'+',[{x,Lv_Cnt+1},{x,Lv_Cnt+2}],{x,Lv_Cnt+1}}]
       end,{[{address,Ptr,{x,Lv_Cnt+1}}],Arr_Depth},Arr),
       Offset_St
   end,
