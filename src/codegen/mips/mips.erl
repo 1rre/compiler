@@ -95,10 +95,10 @@ gen_scoped([{allocate,Size}|Rest],Context) ->
 % but it's built into the IR now and it'd be difficult to change
 gen_scoped([{gc,N}|Rest],Context) ->
   S_Reg = Context#context.s_reg, maps:filter(fun
-    ({y,X},_) when X >= N -> false;
+    ({y,X},_) when X > N -> false;
     (_,_) -> true
   end,Context#context.s_reg),
-  Diff = Context#context.sp - maps:get({y,N},Context#context.s_reg,Context#context.sp),
+  Diff = Context#context.sp - maps:get({y,N-1},Context#context.s_reg,Context#context.sp),
   N_Context = Context#context{sp=Context#context.sp-Diff,s_reg=S_Reg,stack_size=N},
   [{addiu,{i,29},{i,29},Diff}|gen_scoped(Rest,N_Context)];
 

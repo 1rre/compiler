@@ -374,6 +374,8 @@ do_op('>=',A,B,0,0) -> A>=B;
 do_op('<=',A,B,0,0) -> B>=A;
 do_op('>',A,B,0,0) -> A>B;
 do_op('<',A,B,0,0) -> B>A;
+do_op('<<',A,B,0,0) -> A bsl B;
+do_op('>>',A,B,0,0) -> A bsr B;
 do_op('&&',A,B,0,0) -> (A /= 0) and (B /= 0);
 do_op('||',A,B,0,0) -> (A /= 0) or (B /= 0);
 do_op(Op,_,_,0,0) -> error({bif_not_recognised,Op}).
