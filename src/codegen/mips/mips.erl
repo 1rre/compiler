@@ -531,7 +531,7 @@ get_reg(Reg,Type,Context) ->
     {[R1,R2],[Dest|Rest]} ->
       F_Reg = [{f,N} || {f,N} <- [R1,R2]],
       I_Reg = [R || R <- [R1,R2], not is_tuple(R) orelse element(1,R) =:= s] ++ Rest,
-      N_Reg = maps:put(Dest,Context#context.reg),
+      N_Reg = maps:put(Reg,[R1,R2],Context#context.reg),
       {ok,Dest,Context#context{f_reg=F_Reg,i_reg=I_Reg,reg=N_Reg,types=N_Types}};
     {nil,[Dest|Rest]} ->
       N_Reg = maps:put(Reg,Dest,Context#context.reg),

@@ -145,10 +145,15 @@ generate({int_l,_Line,Val,[ul]}, State) ->
 
 %% Process a float node by moving the literal value to the active register
 %  As doubles are out of spec we currently don't support these however it may be useful to later
-generate({float_l,_Line,Val,_Suffix}, State) ->
+generate({float_l,_Line,Val,[$f|_]}, State) ->
   Lv_Cnt = State#state.lvcnt,
   N_Types = maps:put({x,Lv_Cnt},{[],{0,f,?SIZEOF_FLOAT}},State#state.typecheck),
   {ok,State#state{typecheck=N_Types},[{move,{f,Val},{x,Lv_Cnt}}]};
+
+generate({float_l,_Line,Val,Suf}, State) ->
+  Lv_Cnt = State#state.lvcnt,
+  N_Types = maps:put({x,Lv_Cnt},{[],{0,f,?SIZEOF_DOUBLE}},State#state.typecheck),
+  {ok,State#state{typecheck=N_Types},[{move,{f,Val},{x,Lv_Cnt}},{cast,{x,Lv_Cnt},{0,f,?SIZEOF_DOUBLE}}]};
 
 %% Process an identifier by finding the integer's location on the stack
 %  and moving it to the active register
