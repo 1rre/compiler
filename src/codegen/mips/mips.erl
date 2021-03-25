@@ -4,7 +4,7 @@
 -include("arch_type_consts.hrl").
 
 -record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},args=[],
-                 i_reg,f_reg,labels=[],stack_size=0,fp=0}).
+                 i_reg,f_reg,labels=[],stack_size=0,fp=0,lb_sp=#{}}).
 
 generate(Ir) ->
   % Use these for ints & pointers if possible
@@ -94,16 +94,12 @@ gen_scoped([{allocate,Size}|Rest],Context) ->
 % I know this isn't technically necessary for C
 % but it's built into the IR now and it'd be difficult to change
 gen_scoped([{gc,N}|Rest],Context) ->
-  Types = maps:filter(fun
-    ({y,X},_) when X >= N -> false;
-    (_,_) -> true
-  end,Context#context.types),
-  S_Reg = maps:filter(fun
+  S_Reg = Context#context.s_reg, maps:filter(fun
     ({y,X},_) when X >= N -> false;
     (_,_) -> true
   end,Context#context.s_reg),
   Diff = Context#context.sp - maps:get({y,N},Context#context.s_reg,Context#context.sp),
-  N_Context = Context#context{sp=Context#context.sp-Diff,s_reg=S_Reg,stack_size=N,types=Types},
+  N_Context = Context#context{sp=Context#context.sp-Diff,s_reg=S_Reg,stack_size=N},
   [{addiu,{i,29},{i,29},Diff}|gen_scoped(Rest,N_Context)];
 
 %% Return
@@ -379,13 +375,16 @@ gen_scoped([{cast,{x,N},Type}|Rest],Context) ->
     gen_scoped(Rest,Context#context{types=N_Types});
 
 gen_scoped([{label,N}|Rest],Context) ->
+  {S_Reg,Sp} = maps:get({l,N},Context#context.lb_sp,{Context#context.s_reg,Context#context.sp}),
+  C_Context = Context#context{sp=Sp,s_reg=S_Reg},
   Str_N = integer_to_list(N),
-  N_Labels = [Str_N|Context#context.labels],
-  [{Str_N,[maps:size(Context#context.fn)]}|gen_scoped(Rest,Context#context{labels=N_Labels})];
+  N_Labels = [Str_N|C_Context#context.labels],
+  [{Str_N,[maps:size(C_Context#context.fn)]}|gen_scoped(Rest,C_Context#context{labels=N_Labels})];
 
 gen_scoped([{jump,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
-  [{'j',{Str_N,[maps:size(Context#context.fn)]}},nop|gen_scoped(Rest,Context)];
+  Lb_Sp = maps:put({l,N},{Context#context.s_reg,Context#context.sp},Context#context.lb_sp),
+  [{'j',{Str_N,[maps:size(Context#context.fn)]}},nop|gen_scoped(Rest,Context#context{lb_sp=Lb_Sp})];
 
 % TODO: More storing on the stack & updating return value
 gen_scoped([{call,Fn,Arity}|Rest],Context) ->
@@ -424,9 +423,11 @@ gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
   Type = maps:get(Src,Context#context.types,{0,i,32}),
   {ok,Reg,Reg_Context} = get_reg(Src,Type,Context),
+  Lb_Sp = maps:put({l,N},{Reg_Context#context.s_reg,Reg_Context#context.sp},Context#context.lb_sp),
+  N_Context=Reg_Context#context{lb_sp=Lb_Sp},
   case Reg of
     {f,_F_Reg} -> error(test_float);
-    _ -> [{beq,Reg,{i,0},{Str_N,[maps:size(Context#context.fn)]}}|gen_scoped(Rest,Reg_Context)]
+    _ -> [{beq,Reg,{i,0},{Str_N,[maps:size(Context#context.fn)]}}|gen_scoped(Rest,N_Context)]
   end;
 
 gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->

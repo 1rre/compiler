@@ -2,7 +2,7 @@
 -export([gen_op/7]).
 
 -record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},args=[],
-                 i_reg,f_reg,labels=[],stack_size=0,fp=0}).
+                 i_reg,f_reg,labels=[],stack_size=0,fp=0,lb_sp=#{}}).
 %% Putting boilerplate for built in functions here because it clutters the mips file
 
 simple_int_op(Op,Type,Reg_1,Reg_2,Reg_3,Context) ->
@@ -137,7 +137,7 @@ gen_op('>=',u,Size,Reg_1,Reg_2,Reg_3,Context)->
   simple_int_op(sgeu,{0,u,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('<<',i,Size,Reg_1,Reg_2,Reg_3,Context) ->
-  simple_int_op(slav,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
+  simple_int_op(sllv,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
 
 gen_op('<<',u,Size,Reg_1,Reg_2,Reg_3,Context) ->
   simple_int_op(sllv,{0,i,Size},Reg_1,Reg_2,Reg_3,Context);
