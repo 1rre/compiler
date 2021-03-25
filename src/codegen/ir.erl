@@ -904,7 +904,8 @@ gen_cases([St|Rest],State) ->
 gen_case_branches([{none,Lb}],_State) ->
   [{jump,{l,Lb}}];
 gen_case_branches([{{default,_},Lb}|Rest],State) ->
-  gen_case_branches(Rest,State)++[{jump,{l,Lb}}];
+  % If we need default we don't need to make one?
+  lists:droplast(gen_case_branches(Rest,State))++[{jump,{l,Lb}}];
 gen_case_branches([{{Const,_},Lb}|Rest],State) ->
   Active_Reg = {x,State#state.lvcnt},
   Temp_Reg = {x,State#state.lvcnt+1},
