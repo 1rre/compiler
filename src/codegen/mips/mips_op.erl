@@ -51,7 +51,7 @@ simple_double_op(Op,Reg_1,Reg_2,Reg_3,Context) ->
     {[{f,R11},{f,R12}],[{f,R21},{f,R22}],[{f,R31},{f,R32}]} when R11+1 == R12
                                                             andalso R21+1 == R22
                                                             andalso R31+1 == R32 ->
-      {ok,[{Op,R31,R11,R21}],Dest_Context};
+      {ok,[{Op,{f,R31},{f,R11},{f,R21}}],Dest_Context};
     _ -> error({nonconsecutive,{Src_1,Src_2,Dest}})
 end.
 
