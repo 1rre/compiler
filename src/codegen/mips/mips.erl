@@ -147,7 +147,8 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
        io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
        Sd;
-     true -> Ss end,
+     Ps /= 0 orelse Pd /= 0 -> 32;
+true -> Ss end,
   Instr = case {Size,Src} of
     {32,{f,_N}} -> 's.s';
     {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 's.d';
@@ -250,7 +251,8 @@ gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
       Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
            io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
            Sd;
-         true -> Ss end,
+         Ps /= 0 orelse Pd /= 0 -> 32;
+true -> Ss end,
       Instr = case {Size,Src} of
         {32,{f,_N}} -> 's.s';
         {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 's.d';
@@ -341,7 +343,8 @@ gen_scoped([{store,{x,Ns},{x,Nd}}|Rest],Context) ->
   Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
        io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
        Sd;
-     true -> Ss end,
+     Ps /= 0 orelse Pd /= 0 -> 32;
+true -> Ss end,
   Instr = case {Size,Src} of
     {32,{f,_N}} -> 's.s';
     {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 's.d';
