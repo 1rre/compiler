@@ -12,5 +12,5 @@ int r2(int n)
 
 int main()
 {
-    return !(r1(5)==32);
+  return !(r1(5)==32);
 }

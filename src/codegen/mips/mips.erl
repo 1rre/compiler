@@ -421,8 +421,9 @@ gen_scoped([{call,Fn,Arity}|Rest],Context) ->
   N_Fp_Jal = [{addiu,{i,30},{i,30},-N_Sp},{addiu,{i,29},{i,29},-Ra_Diff},{jal,Fn}],
   R_Fp_Ra = [{addiu,{i,30},{i,30},N_Sp},
              {addiu,{i,29},{i,30},-Ra_Pos+4},
-             {lw,{i,31},{sp,0}}],
-  Ra_Store ++ Arg_Store ++ N_Fp_Jal ++ R_Fp_Ra ++ gen_scoped(Rest,Context);
+             {lw,{i,31},{sp,0}},
+             {addiu,{i,29},{i,29},-Ra_Add}],
+  Ra_Store ++ Arg_Store ++ N_Fp_Jal ++ R_Fp_Ra ++ gen_scoped(Rest,Context#context{args=[]});
 
 gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
