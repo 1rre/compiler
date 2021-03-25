@@ -144,11 +144,12 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   Dest = maps:get({y,Nd},Context#context.s_reg,Context#context.sp),
   {Ps,Ts,Ss} = maps:get({x,Ns},Context#context.types,{0,i,32}),
   {Pd,Td,Sd} = maps:get({y,Nd},Context#context.types,{Ps,Ts,Ss}),
-  Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
-       io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
-       Sd;
-     Ps /= 0 orelse Pd /= 0 -> 32;
-true -> Ss end,
+  Size = if
+    {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
+      io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
+      Sd;
+    Ps /= 0 -> 32;
+    true -> Ss end,
   Instr = case {Size,Src} of
     {32,{f,_N}} -> 's.s';
     {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 's.d';
@@ -251,7 +252,7 @@ gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
       Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
            io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
            Sd;
-         Ps /= 0 orelse Pd /= 0 -> 32;
+         Ps /= 0 -> 32;
 true -> Ss end,
       Instr = case {Size,Src} of
         {32,{f,_N}} -> 's.s';
@@ -343,7 +344,7 @@ gen_scoped([{store,{x,Ns},{x,Nd}}|Rest],Context) ->
   Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
        io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
        Sd;
-     Ps /= 0 orelse Pd /= 0 -> 32;
+     Ps /= 0 -> 32;
 true -> Ss end,
   Instr = case {Size,Src} of
     {32,{f,_N}} -> 's.s';
@@ -363,7 +364,7 @@ gen_scoped([{cast,{x,N},{0,T,S}}|Rest],Context) when T =:= i orelse T =:= u ->
       gen_scoped(Rest,Context);
     %% Really we should check for float registers and changes of register here
     {0,NT,_} when (NT =:= i) orelse (NT =:= u) ->
-      {ok,Reg,Reg_Context} = get_reg({x,N},{0,u,S},Context),
+      {ok,Reg,Reg_Context} = get_reg({x,N},{0,NT,S},Context),
       [{andi,Reg,Reg,Bitmask}|gen_scoped(Rest,Reg_Context)];
     Other ->
       error({no_mips,cast,{{0,i,S},{Other}}})

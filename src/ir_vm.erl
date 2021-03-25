@@ -362,8 +362,8 @@ cast(Data,{_,_,_}) -> Data.
 
 
 do_op('+',A,B,0,0) -> A+B;
-do_op('+',A,B,_,0) -> A+B div 8;
-do_op('+',A,B,0,_) -> B+A div 8;
+do_op('+',A,B,_,0) -> A+B;
+do_op('+',A,B,0,_) -> B+A;
 do_op('-',A,B,0,0) -> A-B;
 do_op('-',A,B,_,0) -> A-B div 8;
 do_op('*',A,B,0,0) -> A*B;
