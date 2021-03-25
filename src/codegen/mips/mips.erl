@@ -102,9 +102,8 @@ gen_scoped([{gc,N}|Rest],Context) ->
     ({y,X},_) when X >= N -> false;
     (_,_) -> true
   end,Context#context.s_reg),
-  Sp = maps:get({y,N},Context#context.s_reg,0),
-  Diff = Context#context.sp - maps:get({y,N},Context#context.s_reg,0),
-  N_Context = Context#context{sp=Sp,s_reg=S_Reg,stack_size=N,types=Types},
+  Diff = Context#context.sp - maps:get({y,N},Context#context.s_reg,Context#context.sp),
+  N_Context = Context#context{sp=Context#context.sp-Diff,s_reg=S_Reg,stack_size=N,types=Types},
   [{addiu,{i,29},{i,29},Diff}|gen_scoped(Rest,N_Context)];
 
 %% Return

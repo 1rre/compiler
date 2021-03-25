@@ -33,7 +33,7 @@ directive(Directive,Opts) ->
 %% TODO: Change indent on different types
 % Label
 statement({A,B},Opts) when is_list(B) ->
-  Output = lists:flatten(io_lib:format("~s",[A]) ++ [io_lib:format("$~B",[N]) || N <- B] ++ [$:]),
+  Output = lists:flatten([io_lib:format("$l~B",[N]) || N <- B] ++ io_lib:format("~s",[A]) ++ [$:]),
   ?PRINT_LINE,
   {ok,Opts#opts{indent=Opts#opts.indent}};%+length(Output)}};
 %% TODO: Other types of statments with indent
@@ -65,7 +65,7 @@ part([{f,A},{f,_}]) ->
   io_lib:format("$f~B",[A]);
 %label
 part({A,B}) when is_list(B) ->
-  io_lib:format("~s",[A]) ++ lists:flatten([io_lib:format("$~B",[N]) || N <- B]);
+  lists:flatten([io_lib:format("$l~B",[N]) || N <- B]) ++ io_lib:format("~s",[A]);
 % Float register
 part({f,B}) when is_integer(B) ->
   io_lib:format("$f~B",[B]);

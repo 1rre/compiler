@@ -15,25 +15,37 @@ c_test([File|Tests],Gcc,Qemu) ->
                 [stderr_to_stdout,
                  exit_status,
                  {args, ["-mfp32","-mhard-float","-o",".test/test.o","-c",".test/test.s"]}]),
-      wait_exe(),
-      Driver = filename:rootname(File) ++ "_driver.c",
-      open_port({spawn_executable, Gcc},
-                [stderr_to_stdout,
-                 exit_status,
-                 {args, ["-mfp32","-mhard-float","-static",
-                         "-o",".test/test.bin",".test/test.o",Driver]}]),
-      wait_exe(),
-      open_port({spawn_executable, Qemu},
-                [stderr_to_stdout,
-                 exit_status,
-                 {args, [".test/test.bin"]}]),
       case wait_exe() of
         0 ->
-          io:fwrite(standard_error,"\e[1;32mpass\e[0;37m~n",[]),
-          1;
+          Driver = filename:rootname(File) ++ "_driver.c",
+          open_port({spawn_executable, Gcc},
+                    [stderr_to_stdout,
+                     exit_status,
+                     {args, ["-mfp32","-mhard-float","-static",
+                             "-o",".test/test.bin",".test/test.o",Driver]}]),
+          case wait_exe() of
+            0 ->
+              open_port({spawn_executable, Qemu},
+                        [stderr_to_stdout,
+                         exit_status,
+                         {args, [".test/test.bin"]}]),
+              case wait_exe() of
+                0 ->
+                  io:fwrite(standard_error,"\e[1;32mpass\e[0;37m~n",[]),
+                  1;
+                N ->
+                  io:fwrite(standard_error,"\e[1;31mfail\e[0;37m~n",[]),
+                  io:fwrite(standard_error,"Reason:~nqemu-mips exited with code ~B~n",[N]),
+                  0
+              end;
+            N ->
+              io:fwrite(standard_error,"\e[1;31mfail\e[0;37m~n",[]),
+              io:fwrite(standard_error,"Reason:~nGCC exited with code ~B~n",[N]),
+              0
+          end;
         N ->
           io:fwrite(standard_error,"\e[1;31mfail\e[0;37m~n",[]),
-          io:fwrite(standard_error,"Reason:~nqemu-mips exited with code ~B~n",[N]),
+          io:fwrite(standard_error,"Reason:~nGCC exited with code ~B~n",[N]),
           0
       end
   catch

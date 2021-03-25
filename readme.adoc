@@ -1,2 +1,38 @@
 = C Compiler
 
+image::https://i.imgur.com/tWyI3s5.png[e]
+
+== Compiling from source
+run `make bin/c_compiler`
+
+== Compilation to MIPS
+=== From ANSI C
+A C source file can be compiled to MIPS assembly using the `-S` switch, such as in `bin/c_compiler -S <file>``.
+
+=== From SegFault Bytecode
+A Segfault bytecode file can be compiled to MIPS assembly using the `-ir` and `-S` switches together, such as in `bin/c_compiler -ir -S <file>`.
+
+=== Directing Output
+Mips code can be output to a file using the `-o <output_file>` switch, such as in `bin/c_compiler -S <input_file> -o <output_file>`
+
+=== Debug Mode
+Debug mode can be enabled using the `-d` switch, and prints the AST & IR before generating the assembly.
+It also prints the raw representation of the assembly before it is printed.
+
+== Compilation to SegFault Bytecode
+=== From ANSI C
+A C source file can be compiled to SegFault Bytecode using the `-ir` switch, such as in `bin/c_compiler -ir <input_file>`.
+
+== Bytecode interpreter
+An interpreter for SegFault bytecode with a working stack has been included in the compiler.
+=== Normal Mode
+The interpreter can be run using the `-vm` switch & takes a single C source file & runs the *last* function in the file, calling it with any integer arguments supplied on the command line, such as in `bin/c_compiler -vm <input_file> <arg1> ...`.
+
+=== Debug Mode
+The debug output can be enabled with the `-d` switch.
+This prints the state of the stack & registers, next instruction to be executed & the type of each data value, along with a few other useful insights which can be used when testing the compilation of C programs to the IR.
+
+== Testing
+A test script, `test.sh`, has been included which will run any tests 1 subdirectory deep in the `compiler_tests` folder.
+An indication is given as to whether the test passed or failed, and if it failed a reason is given.
+The percentage of tests passed is printed at the end of testing.
