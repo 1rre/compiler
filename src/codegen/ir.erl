@@ -951,6 +951,8 @@ get_type([{signed,_}|Type],C) ->
     _ -> {error,{unknown_type,[signed|Type]}}
   end;
 
+get_type([{extern,_}|Type],C) -> get_type(Type,C);
+
 % Struct with declaration of struct type
 get_type([{{struct,_},{identifier,_,_Ident}, _Struct_Specs}],_Context) ->
   error({no_ir,struct});

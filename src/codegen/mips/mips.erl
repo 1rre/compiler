@@ -592,11 +592,11 @@ gen_data({0,i,16},{i,Val}) ->
 gen_data({0,i,32},{i,Val}) ->
   {ok,[{'.word',Val}]};
 %% Float
-gen_data({0,f,32},{i,Val}) ->
+gen_data({0,f,32},{f,Val}) ->
   <<Word:32>> = <<Val:32/float>>,
   {ok,[{'.word',Word}]};
 %% Double
-gen_data({0,f,64},{i,Val}) ->
+gen_data({0,f,64},{f,Val}) ->
   <<Upper:32,Lower:32>> = <<Val:64/float>>,
   {ok,[{'.word',Upper},{'.word',Lower}]};
 %% Pointer

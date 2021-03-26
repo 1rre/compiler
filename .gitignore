@@ -13,4 +13,5 @@ bin/
 null/
 out/
 .test/
+c-testsuite/
 
