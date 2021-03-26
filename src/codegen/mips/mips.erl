@@ -24,7 +24,7 @@ generate(Ir) ->
   {Data,Text} = lists:foldl(fun
     ({function,_Type,Name,Args,St},{Data,Text}) ->
       {ok,Args_Context} = gen_arg_types(lists:reverse(Args),Context,0,false,0),
-      Scope_Asm = [{addiu,{i,29},{i,29},-Args_Context#context.sp}|gen_scoped(St,Args_Context)],
+      Scope_Asm = [{addiu,{i,29},{i,29},-Args_Context#context.sp}|gen_comment(St,Args_Context)],
       Asm = Scope_Asm,
       {Data,[{'.globl',Name},{'.ent',Name},{Name,[]}|Asm]++[{'.end',Name}|Text]};
     ({global,_Type,Name,Frame},{Data,Text}) ->
@@ -77,6 +77,11 @@ gen_arg_types([Hd|Args],Context,N,Int_Reg,Bits) ->
 % - or + here?
 gen_arg_types([],Context,_,_,Bits) -> {ok,Context#context{sp=-Bits div 8}}.
 
+gen_comment(Ir = [Instr|_],Context) ->
+  [lists:flatten(io_lib:format("#~p",[Instr]))|gen_scoped(Ir,Context)];
+gen_comment([],Context) -> [].
+
+
 
 %% Stack Resize Up
 % I know this isn't technically necessary for C
@@ -88,7 +93,7 @@ gen_scoped([{allocate,Size}|Rest],Context) ->
   N_Context = Context#context{s_reg=N_S_Reg,
                               sp=Sp+(Size div 8),
                               stack_size=N+1},
-  [{addiu,{i,29},{i,29},-(Size div 8)}|gen_scoped(Rest,N_Context)];
+  [{addiu,{i,29},{i,29},-(Size div 8)}|gen_comment(Rest,N_Context)];
 
 %% Stack Resize Down
 % I know this isn't technically necessary for C
@@ -100,7 +105,7 @@ gen_scoped([{gc,N}|Rest],Context) ->
   end,Context#context.s_reg),
   Diff = Context#context.sp - maps:get({y,N-1},Context#context.s_reg,Context#context.sp),
   N_Context = Context#context{sp=Context#context.sp-Diff,s_reg=S_Reg,stack_size=N},
-  [{addiu,{i,29},{i,29},Diff}|gen_scoped(Rest,N_Context)];
+  [{addiu,{i,29},{i,29},Diff}|gen_comment(Rest,N_Context)];
 
 %% Return
 %% TODO: Implement return properly with SP movement etc.
@@ -111,13 +116,13 @@ gen_scoped([return|Rest],Context) ->
     {T,R} -> [{move,{i,2},{T,R}}];
     [{f,A},{f,B}] -> [{mfc1,{i,2},{f,A}},{mfc1,{i,3},{f,B}}]
   end,
-  Move_St ++ [{move,{i,29},{i,30}},{jr,{i,31}},nop|gen_scoped(Rest,Context)];
+  Move_St ++ [{move,{i,29},{i,30}},{jr,{i,31}},nop|gen_comment(Rest,Context)];
 
 %% Move an int literal to a register
 gen_scoped([{move,{i,Val},{x,N}}|Rest],Context) when 16#FFFFFFFF >= Val
                                                 andalso Val >= -16#8000000 ->
   {ok,Reg,Reg_Context} = get_reg({x,N},{0,i,32},Context),
-  [{li,Reg,Val}|gen_scoped(Rest,Reg_Context)];
+  [{li,Reg,Val}|gen_comment(Rest,Reg_Context)];
 
 %% Move a long literal to a register
 gen_scoped([{move,{i,_Val},{x,_N}}|_Rest],_Context) ->
@@ -126,13 +131,13 @@ gen_scoped([{move,{i,_Val},{x,_N}}|_Rest],_Context) ->
 % Move a double to a register
 gen_scoped([{move,{f,Val},{x,N}},{cast,{x,N},{0,f,64}}|Rest],Context) ->
   {ok,[R1,_],Reg_Context} = get_reg({x,N},{0,f,64},Context),
-  [{'li.d',R1,Val}|gen_scoped(Rest,Reg_Context)];
+  [{'li.d',R1,Val}|gen_comment(Rest,Reg_Context)];
 
 % Move a float to a register
 gen_scoped([{move,{f,Val},{x,N}}|Rest],Context) ->
   {ok,Reg,Reg_Context} = get_reg({x,N},{0,f,32},Context),
   <<Value:32>> = <<Val:32/float>>,
-  [{li,{i,1},Value},{mtc1,{i,1},Reg}|gen_scoped(Rest,Reg_Context)];
+  [{li,{i,1},Value},{mtc1,{i,1},Reg}|gen_comment(Rest,Reg_Context)];
 
 
 gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
@@ -161,7 +166,7 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   N_Types = maps:put({y,Nd},{Pd,Td,Sd},Context#context.types),
   N_Context = Context#context{types=N_Types},
   %% TODO: Find out what way around SP should be
-  [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_scoped(Rest,N_Context)];
+  [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
 
 
 gen_scoped([{move,{x,Ns},{z,Nd}}|Rest],Context) ->
@@ -171,55 +176,55 @@ gen_scoped([{move,{x,Ns},{z,Nd}}|Rest],Context) ->
       N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
       N_Args = [{f,14}|Src_Context#context.args],
       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{'mov.s',{f,14},Src}|gen_scoped(Rest,N_Context)];
+      [{'mov.s',{f,14},Src}|gen_comment(Rest,N_Context)];
     {{0,f,64},[{f,12}|_]} ->
       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
       N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
       N_Args = [{f,14}|Src_Context#context.args],
       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{'mov.d',{f,14},Src}|gen_scoped(Rest,N_Context)];
+      [{'mov.d',{f,14},Src}|gen_comment(Rest,N_Context)];
     {Type,[{f,12}|_]} ->
       {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
       N_Reg = maps:put({z,Nd},{i,5},Src_Context#context.reg),
       N_Args = [{i,5}|Src_Context#context.args],
       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{move,{i,5},Src}|gen_scoped(Rest,N_Context)];
+      [{move,{i,5},Src}|gen_comment(Rest,N_Context)];
     {{0,f,32},[{i,N}|_]} when 7 > N->
       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
       N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
       N_Args = [{i,N+1}|Src_Context#context.args],
       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{mfc1,{i,N+1},Src}|gen_scoped(Rest,N_Context)];
+      [{mfc1,{i,N+1},Src}|gen_comment(Rest,N_Context)];
     {{0,f,64},[{i,N}|_]} when 6 > N ->
       {ok,[S1,S2],Src_Context} = get_reg({x,Ns},{0,f,64},Context),
       N_Reg = maps:put({z,Nd},[{i,6},{i,7}],Src_Context#context.reg),
       N_Args = [[{i,6},{i,7}]|Src_Context#context.args],
       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{mfc1,{i,6},S1},{mfc1,{i,7},S2}|gen_scoped(Rest,N_Context)];
+      [{mfc1,{i,6},S1},{mfc1,{i,7},S2}|gen_comment(Rest,N_Context)];
     {Type,[{i,N}|_]} when 7 > N ->
       {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
       N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
       N_Args = [{i,N+1}|Src_Context#context.args],
       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{move,{i,N+1},Src}|gen_scoped(Rest,N_Context)];
+      [{move,{i,N+1},Src}|gen_comment(Rest,N_Context)];
     {{0,f,32},[]} ->
       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
       N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
       N_Args = [{f,12}|Src_Context#context.args],
       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{'mov.s',{f,12},Src}|gen_scoped(Rest,N_Context)];
+      [{'mov.s',{f,12},Src}|gen_comment(Rest,N_Context)];
     {{0,f,64},[]} ->
       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
       N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
       N_Args = [{f,12}|Src_Context#context.args],
       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{'mov.d',{f,12},Src}|gen_scoped(Rest,N_Context)];
+      [{'mov.d',{f,12},Src}|gen_comment(Rest,N_Context)];
     {Type,[]} ->
       {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
       N_Reg = maps:put({z,Nd},{i,4},Src_Context#context.reg),
       N_Args = [{i,4}|Src_Context#context.args],
       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{move,{i,4},Src}|gen_scoped(Rest,N_Context)];
+      [{move,{i,4},Src}|gen_comment(Rest,N_Context)];
     _ ->
       % Dest is stack
         error({no_mips,{move,{x,Ns},{z,Nd}},stack})
@@ -230,10 +235,10 @@ gen_scoped([{move,{x,Ns},{x,Nd}}|Rest],Context) ->
   {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
   {ok,Dest,Dest_Context} = get_reg({x,Nd},Type,Src_Context),
   case {Src,Dest} of
-    {{f,_},{f,_}} -> [{'mov.s',Dest,Src}|gen_scoped(Rest,Dest_Context)];
-    {{R,_},{R,_}} -> [{'move',Dest,Src}|gen_scoped(Rest,Dest_Context)];
-    {{f,_},{_,_}} -> [{'mfc1',Dest,Src}|gen_scoped(Rest,Dest_Context)];
-    {{_,_},{f,_}} -> [{'mtc1',Dest,Src}|gen_scoped(Rest,Dest_Context)];
+    {{f,_},{f,_}} -> [{'mov.s',Dest,Src}|gen_comment(Rest,Dest_Context)];
+    {{R,_},{R,_}} -> [{'move',Dest,Src}|gen_comment(Rest,Dest_Context)];
+    {{f,_},{_,_}} -> [{'mfc1',Dest,Src}|gen_comment(Rest,Dest_Context)];
+    {{_,_},{f,_}} -> [{'mtc1',Dest,Src}|gen_comment(Rest,Dest_Context)];
     _ -> error({no_mips,{move,{x,Ns},{x,Nd}},double})
   end;
 
@@ -244,7 +249,7 @@ gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
   case maps:get({z,Ns},Context#context.reg,nil) of
     nil ->
       Types = maps:put({y,Nd},maps:get({z,Ns},Context#context.types),Context#context.types),
-      gen_scoped(Rest,Context#context{types=Types});
+      gen_comment(Rest,Context#context{types=Types});
     Src ->
       Dest = maps:get({y,Nd},Context#context.s_reg,Context#context.sp),
       {Ps,Ts,Ss} = maps:get({z,Ns},Context#context.types,{0,i,32}),
@@ -265,7 +270,7 @@ true -> Ss end,
       N_Types = maps:put({y,Nd},{Ps,Ts,Ss},Context#context.types),
       N_Context = Context#context{types=N_Types},
       %% TODO: Find out what way around SP should be
-      [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_scoped(Rest,N_Context)]
+      [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)]
   end;
 
 % Get from stack
@@ -284,7 +289,7 @@ gen_scoped([{move,{y,Ns},{x,Nd}}|Rest],Context) ->
     {8,_Reg} -> lb
   end,
   %% TODO: Find out what way around SP should be
-  [{Instr,Dest,{sp,Context#context.sp-Src}}|gen_scoped(Rest,Reg_Context)];
+  [{Instr,Dest,{sp,Context#context.sp-Src}}|gen_comment(Rest,Reg_Context)];
 
 gen_scoped([{move,{g,Global},{x,Nd}}|Rest],Context) ->
   {_,{Ps,Ts,Ss}} = maps:get({g,Global},Context#context.types),
@@ -299,7 +304,7 @@ gen_scoped([{move,{g,Global},{x,Nd}}|Rest],Context) ->
     {16,_Reg} -> lh;
     {8,_Reg} -> lb
   end,
-  [{Instr,Dest,Global}|gen_scoped(Rest,Dest_Context)];
+  [{Instr,Dest,Global}|gen_comment(Rest,Dest_Context)];
 
 % Get from stack
 gen_scoped([{address,{y,Ns},{x,Nd}}|Rest],Context) ->
@@ -307,14 +312,14 @@ gen_scoped([{address,{y,Ns},{x,Nd}}|Rest],Context) ->
   {Ps,Ts,Ss} = maps:get({y,Ns},Context#context.types,{0,i,32}),
   {ok,Dest,Reg_Context} = get_reg({x,Nd},{Ps+1,Ts,Ss},Context),
   % Do we need a sub statement here?
-  [{addiu,Dest,{i,29},Context#context.sp-Src}|gen_scoped(Rest,Reg_Context)];
+  [{addiu,Dest,{i,29},Context#context.sp-Src}|gen_comment(Rest,Reg_Context)];
 
 % Get from stack
 gen_scoped([{address,{g,Global},{x,Nd}}|Rest],Context) ->
   {_,{Ps,Ts,Ss}} = maps:get({g,Global},Context#context.types,{0,i,32}),
   {ok,Dest,Reg_Context} = get_reg({x,Nd},{Ps+1,Ts,Ss},Context),
   % Do we need a sub statement here?
-  [{la,Dest,Global}|gen_scoped(Rest,Reg_Context)];
+  [{la,Dest,Global}|gen_comment(Rest,Reg_Context)];
 
 % Get from stack
 gen_scoped([{load,{x,Ns},{x,Nd}}|Rest],Context) ->
@@ -329,7 +334,7 @@ gen_scoped([{load,{x,Ns},{x,Nd}}|Rest],Context) ->
     {16,_Reg} -> lh;
     {8,_Reg} -> lb
   end,
-  [{Instr,Src,{0,Dest}}|gen_scoped(Rest,Reg_Context)];
+  [{Instr,Src,{0,Dest}}|gen_comment(Rest,Reg_Context)];
 
 % Will this be ok?
 gen_scoped([{load,{y,Ns},{x,Nd}}|Rest],Context) ->
@@ -354,18 +359,18 @@ true -> Ss end,
     {16,_Reg} -> sh;
     {8,_Reg} -> sb
   end,
-  [{Instr,Src,{0,Dest}}|gen_scoped(Rest,Reg_Context)];
+  [{Instr,Src,{0,Dest}}|gen_comment(Rest,Reg_Context)];
 
 
 gen_scoped([{cast,{x,N},{0,T,S}}|Rest],Context) when T =:= i orelse T =:= u ->
   <<Bitmask:S>> = <<16#FFFFFFFF>>,
   case maps:get({x,N},Context#context.types,{0,i,S}) of
     {0,NT,S} when (NT =:= i) orelse (NT =:= u) ->
-      gen_scoped(Rest,Context);
+      gen_comment(Rest,Context);
     %% Really we should check for float registers and changes of register here
     {0,NT,_} when (NT =:= i) orelse (NT =:= u) ->
       {ok,Reg,Reg_Context} = get_reg({x,N},{0,NT,S},Context),
-      [{andi,Reg,Reg,Bitmask}|gen_scoped(Rest,Reg_Context)];
+      [{andi,Reg,Reg,Bitmask}|gen_comment(Rest,Reg_Context)];
     Other ->
       error({no_mips,cast,{{0,i,S},{Other}}})
   end;
@@ -373,7 +378,7 @@ gen_scoped([{cast,{x,N},{0,T,S}}|Rest],Context) when T =:= i orelse T =:= u ->
 %% TODO: Do we need to do anything else here?
 gen_scoped([{cast,{y,N},T}|Rest],Context) ->
   N_Types = maps:put({y,N},T,Context#context.types),
-  gen_scoped(Rest,Context#context{types=N_Types});
+  gen_comment(Rest,Context#context{types=N_Types});
 
 %gen_scoped([{cast,{x,_N},{0,T,S}}|_Rest],_Context) ->
 %  error({no_mips,cast,{0,T,S}});
@@ -381,19 +386,19 @@ gen_scoped([{cast,{y,N},T}|Rest],Context) ->
 % TODO: Probably needs more work?
 gen_scoped([{cast,{x,N},Type}|Rest],Context) ->
     N_Types = maps:put({x,N},Type,Context#context.types),
-    gen_scoped(Rest,Context#context{types=N_Types});
+    gen_comment(Rest,Context#context{types=N_Types});
 
 gen_scoped([{label,N}|Rest],Context) ->
   {S_Reg,Sp} = maps:get({l,N},Context#context.lb_sp,{Context#context.s_reg,Context#context.sp}),
   C_Context = Context#context{sp=Sp,s_reg=S_Reg},
   Str_N = integer_to_list(N),
   N_Labels = [Str_N|C_Context#context.labels],
-  [{Str_N,[maps:size(C_Context#context.fn)]}|gen_scoped(Rest,C_Context#context{labels=N_Labels})];
+  [{Str_N,[maps:size(C_Context#context.fn)]}|gen_comment(Rest,C_Context#context{labels=N_Labels})];
 
 gen_scoped([{jump,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
   Lb_Sp = maps:put({l,N},{Context#context.s_reg,Context#context.sp},Context#context.lb_sp),
-  [{'j',{Str_N,[maps:size(Context#context.fn)]}},nop|gen_scoped(Rest,Context#context{lb_sp=Lb_Sp})];
+  [{'j',{Str_N,[maps:size(Context#context.fn)]}},nop|gen_comment(Rest,Context#context{lb_sp=Lb_Sp})];
 
 % TODO: More storing on the stack & updating return value
 gen_scoped([{call,Fn,Arity}|Rest],Context) ->
@@ -427,7 +432,7 @@ gen_scoped([{call,Fn,Arity}|Rest],Context) ->
              {addiu,{i,29},{i,30},-Ra_Pos+4},
              {lw,{i,31},{sp,0}},
              {addiu,{i,29},{i,29},-Ra_Add}],
-  Ra_Store ++ Arg_Store ++ N_Fp_Jal ++ R_Fp_Ra ++ gen_scoped(Rest,Context#context{args=[]});
+  Ra_Store ++ Arg_Store ++ N_Fp_Jal ++ R_Fp_Ra ++ gen_comment(Rest,Context#context{args=[]});
 
 gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
@@ -437,7 +442,7 @@ gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   N_Context=Reg_Context#context{lb_sp=Lb_Sp},
   case Reg of
     {f,_F_Reg} -> error(test_float);
-    _ -> [{beq,Reg,{i,0},{Str_N,[maps:size(Context#context.fn)]}}|gen_scoped(Rest,N_Context)]
+    _ -> [{beq,Reg,{i,0},{Str_N,[maps:size(Context#context.fn)]}}|gen_comment(Rest,N_Context)]
   end;
 
 gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
@@ -447,11 +452,11 @@ gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
     % Same non-pointer type
     {{0,T,S},{0,T,S}} ->
       {ok,Res,Res_Context} = gen_op(Op,T,S,Src_1,Src_2,Dest,Context),
-      Res++gen_scoped(Rest,Res_Context);
+      Res++gen_comment(Rest,Res_Context);
     % Adding unsigned to signed (useful for unsigned + constant?)
     {{0,T1,S},{0,T2,S}} when (T1 =:= i orelse T1 =:= u) andalso (T2 =:= i orelse T2 =:= u) ->
       {ok,Res,Res_Context} = gen_op(Op,T1,S,Src_1,Src_2,Dest,Context),
-      Res++gen_scoped(Rest,Res_Context);
+      Res++gen_comment(Rest,Res_Context);
     %% TODO: Pointers
     {{N,T2,S2},{0,T1,S1}} ->
       Shift_Amount = trunc(math:log2(sizeof({N-1,T2,S2}) div 8)),
@@ -463,7 +468,7 @@ gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
       N_Reg = maps:remove({x,-1},Res_Context#context.reg),
       N_Types = maps:remove({x,-1},Res_Context#context.types),
       N_Context = Res_Context#context{reg=N_Reg,types=N_Types,i_reg=N_I_Reg},
-      [Shift|Res] ++ gen_scoped([{cast,Dest,{N,T2,S2}}|Rest],N_Context);
+      [Shift|Res] ++ gen_comment([{cast,Dest,{N,T2,S2}}|Rest],N_Context);
     {{0,T2,S2},{N,T1,S1}} ->
       Shift_Amount = trunc(math:log2(sizeof({N-1,T1,S1}) div 8)),
       {ok,Reg_1,Reg_1_Context} = get_reg(Src_1,{0,T2,S2},Context),
@@ -474,7 +479,7 @@ gen_scoped([{Op,[Src_1,Src_2],Dest}|Rest],Context) ->
       N_Reg = maps:remove({x,-1},Res_Context#context.reg),
       N_Types = maps:remove({x,-1},Res_Context#context.types),
       N_Context = Res_Context#context{reg=N_Reg,types=N_Types,i_reg=N_I_Reg},
-      [Shift|Res] ++ gen_scoped([{cast,Dest,{N,T1,S1}}|Rest],N_Context);
+      [Shift|Res] ++ gen_comment([{cast,Dest,{N,T1,S1}}|Rest],N_Context);
     Oth -> error(Oth)
   end;
 

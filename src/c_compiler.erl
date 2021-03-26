@@ -48,36 +48,24 @@ compile(File, Args, [debug,vm]) ->
 compile(File, Args, [vm]) ->
   halt(run_vm(File,Args));
 
-compile(File,_,[asm,{out,Out_File}]) ->
-  {ok, Io_Stream} = file:open(File, [read]),
-  {ok, Input} = read_file(Io_Stream),
-  {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
-  {Scan, _Rest} = type_enum:scan(Tokens),
-  {ok, Result} = parser:parse(Scan),
-  {ok, _Context, Statement} = ir:generate(Result),
-  {ok, Mips_Code} = mips:generate(Statement),
-  mips_io:fwrite(Mips_Code,Out_File),
-  {ok, Mips_Code};
-
 compile(File,_,[asm,debug]) ->
-  {ok, Io_Stream} = file:open(File, [read]),
-  {ok, Input} = read_file(Io_Stream),
-  {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
-  {Scan, _Rest} = type_enum:scan(Tokens),
-  {ok, Result} = parser:parse(Scan),
-  {ok, _Context, Statement} = ir:generate(Result),
-  {ok, Mips_Code} = mips:generate(Statement),
-  io:fwrite("~p~n~n",[Mips_Code]),
-  mips_io:fwrite(Mips_Code,standard_io),
-  {ok, Mips_Code};
+  compile(File,[],[asm,debug,{out,standard_io}]);
 
 compile(File,_,[asm,ir]) ->
+  compile(File,[],[asm,ir,{out,standard_io}]);
+
+compile(File,_,[asm]) ->
+  compile(File,[],[asm,{out,standard_io}]);
+
+compile(File,_,[asm,debug,{out,Out_File}]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
-  {ok,Tokens,_} = erl_scan:string(Input),
-  {ok,Statement} = erl_parse:parse_term(Tokens++[{dot,0}]),
-  {ok,Mips_Code} = mips:generate(Statement),
-  mips_io:fwrite(Mips_Code,standard_io),
+  {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
+  {Scan, _Rest} = type_enum:scan(Tokens),
+  {ok, Result} = parser:parse(Scan),
+  {ok, _Context, Statement} = ir:generate(Result),
+  {ok, Mips_Code} = mips:generate(Statement),
+  mips_io:fwrite(Mips_Code,Out_File,true),
   {ok, Mips_Code};
 
 compile(File,_,[asm,ir,{out,Out_File}]) ->
@@ -86,10 +74,10 @@ compile(File,_,[asm,ir,{out,Out_File}]) ->
   {ok,Tokens,_} = erl_scan:string(Input),
   {ok,Statement} = erl_parse:parse_term(Tokens++[{dot,0}]),
   {ok,Mips_Code} = mips:generate(Statement),
-  mips_io:fwrite(Mips_Code,Out_File),
+  mips_io:fwrite(Mips_Code,Out_File,false),
   {ok, Mips_Code};
 
-compile(File,_,[asm]) ->
+compile(File,_,[asm,{out,Out_File}]) ->
   {ok, Io_Stream} = file:open(File, [read]),
   {ok, Input} = read_file(Io_Stream),
   {ok, Tokens, _} = lexer:string(lists:flatten(Input)),
@@ -97,8 +85,8 @@ compile(File,_,[asm]) ->
   {ok, Result} = parser:parse(Scan),
   {ok, _Context, Statement} = ir:generate(Result),
   {ok, Mips_Code} = mips:generate(Statement),
-  mips_io:fwrite(Mips_Code,standard_io),
-  {ok,Mips_Code};
+  mips_io:fwrite(Mips_Code,Out_File,false),
+  {ok, Mips_Code};
 
 compile(File,_,[]) ->
   {ok, Io_Stream} = file:open(File, [read]),
@@ -107,17 +95,17 @@ compile(File,_,[]) ->
   {Scan, _Rest} = type_enum:scan(Tokens),
   {ok, Result} = parser:parse(Scan),
   {ok, _Context, Statement} = ir:generate(Result),
-  {ok, Statement}.
+  mips:generate(Statement).
 
 % Reversing the IR for now as we want main to be at the start rather than at the end
 run_vm(File,Args) ->
-  {ok,Ir} = compile(File,Args,[]),
+  {ok,Ir} = compile(File,Args,[ir]),
   ir_vm:run(lists:reverse(Ir),lists:reverse(Args),[]).
 run_vm(File,Fn,Args) when is_atom(Fn) ->
-  {ok,Ir} = compile(File,Args,[]),
+  {ok,Ir} = compile(File,Args,[ir]),
   ir_vm:run(lists:reverse(Ir),Fn,lists:reverse(Args),[]);
 run_vm(File,Args,Flags) ->
-  {ok,Ir} = compile(File,Args,[]),
+  {ok,Ir} = compile(File,Args,[ir]),
   ir_vm:run(lists:reverse(Ir),lists:reverse(Args),Flags).
 
 read_file(Io_Stream) ->
