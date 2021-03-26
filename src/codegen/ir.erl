@@ -54,12 +54,16 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(
                              {move,{z,Arity-N-1},{y,N}}] || N <- lists:seq(0,Arity-1)]),
   New_Fn = maps:put(Ident,{{Arr,Type},length(Raw_Args)},Arg_State#state.fn),
   {ok, N_State, N_St} = generate(Raw_St,Arg_State#state{fn=New_Fn}),
-  Rtn_St = case lists:last(N_St) of
-    return ->
-      [{function,Type,Ident,Arg_Types,Alloc_St++N_St}];
-    _ ->
-      {ok, Dealloc} = deallocate_mem(#{},N_State#state.var),
-      [{function,Type,Ident,Arg_Types,Alloc_St++N_St++[Dealloc,return]}]
+  Rtn_St = if
+    N_St =:= [] ->
+      [{function,Type,Ident,Arg_Types,[return]}];
+    true -> case lists:last(N_St) of
+      return ->
+        [{function,Type,Ident,Arg_Types,Alloc_St++N_St}];
+      _ ->
+        {ok, Dealloc} = deallocate_mem(#{},N_State#state.var),
+        [{function,Type,Ident,Arg_Types,Alloc_St++N_St++[Dealloc,return]}]
+    end
   end,
   {ok,copy_lbcnt(N_State,State#state{fn=New_Fn}),Rtn_St};
 

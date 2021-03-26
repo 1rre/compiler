@@ -12,8 +12,8 @@
 [%header,cols="3,5"]
 |===
 |Syntax | Usage
-|`{data,<type>,init}` | Initialises a static space to  in the program data at compile time for `type` (in the form `reference level`, `type`, `width`)
-|`{local,<data>}` | Declare a private section of an array& initialise it to `data` (data statement list).
+|`{data,<type>,<init>}` | Initialises a static space in the program data at compile time for `type` & initialises that space to `init` (in the form `reference level`, `type`, `width`)
+|`{local,<data>}` | Declare a subsection of an array (as stated in an initialiser list) & initialise it to `data` (data statement list).
 |===
 
 == Scoped Statements
@@ -23,7 +23,7 @@
 |`{address,<rs>,<rd>}` | Finds the memory location of the object in `rs` (register or stack) & stores a pointer to it in `rd` (register)
 |`{allocate,<n>}` | Allocate `n` (integer) bits on the stack
 |`{call,<fn>,<ar>,<ra>}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (stack)
-|`{cast,<ra>,<type>}` | Advises the compiler of a variable's `type` (in the form `reference level`, `type`, `width`) of a variable which would otherwise be incorrectly inferred, such as `char c = 5l;` -> `[{move,{long,5>,<rd>>, {cast,<rd>,{0,i,8>}]`
+|`{cast,<ra>,<type>}` | Advises the compiler of a variable's `type` (in the form `reference level`, `type`, `width`) of a variable which would otherwise be incorrectly inferred, such as `char c = 5l;` -> `[{move,{i,5},<rd>}, {cast,<rd>,{0,i,8>}]`
 |`{gc,<n>}` | Trim the local stack to `n` (integer) items & delete any associated data in the heap.
 |`{jump,<lb>}` | Unconditionally jump to `lb` (label)
 |`{label,<lb>}` | Create `lb` (label) which can be jumped to using `test`
@@ -43,9 +43,9 @@
 |`{x,<n>}` | Register `n` (integer), given an infinite register system
 |`{y,<n>}` | The ``n``th (integer) item on the current function's part of the stack, which is mapped to an address
 |`{z,<n>}` | The ``n``th argument to a function
-|`{i,<n>}` | A literal with value `n` (integer). Assumed to be the default integer size for the platform.
+|`{i,<n>}` | A literal with value `n` (integer).
 |`{g,<str>}` | A global variable with name `str` (string). (subject to change as it hasn't yet been implemented)
-|`{f,<N>}` | A literal with value `n` (float). Assumed to be the default float size for the platform.
+|`{f,<N>}` | A literal with value `n` (float)
 |`{l,<N>}` | The label `n` (integer), numbering is global, however only labels within the same function are valid.
-|`{<p>,<t>,<s>}` | A type with "reference level" `p` (integer), ie how many levels of dereferencing would be required to get the actual object, type `t` (char) (`f` for float, `i` for int and `n` for void), and width `s` (integer), which refers to the width of type `t` rather than any memory address.
+|`{<p>,<t>,<s>}` | A type with "reference level" `p` (integer), ie how many levels of dereferencing would be required to get the actual object, type `t` (char: `f` for float, `i` for int and `n` for void, which is only used internally), and width `s` (integer), which refers to the width of type `t` rather than any memory address.
 |===
