@@ -7,7 +7,7 @@ all: bin/c_compiler
 
 bin/c_compiler: .build/ bin/ .build/parser.erl .build/lexer.erl
 	erlc -W0 -I include/ -o .build/ -DTARGET_ARCH=mips32 $(ERL_FILES)
-	erl -noinput -pa .build/ -eval $(ESCRIPT_CMD)
+	erl -noinput -eval $(ESCRIPT_CMD)
 	chmod a+x bin/c_compiler
 
 bin/:

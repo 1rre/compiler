@@ -29,13 +29,13 @@ program([Statement|Program],Opts) ->
 
 %% TODO: Change indent on different types
 
-directive('.text',Opts=#opts{indent=I}) ->
-  Output = io_lib:format("~s",['.text']),
+directive(Directive='.text',Opts=#opts{indent=I}) ->
+  Output = io_lib:format("~s",[Directive]),
   ?PRINT_LINE(I-2),
   {ok,Opts};
 
-directive('.data',Opts=#opts{indent=I}) ->
-  Output = io_lib:format("~s",['.data']),
+directive(Directive='.data',Opts=#opts{indent=I}) ->
+  Output = io_lib:format("~s",[Directive]),
   ?PRINT_LINE(I),
   {ok,Opts#opts{indent=I+2}};
 
@@ -56,27 +56,31 @@ statement({'.end',Name},Opts=#opts{indent=I}) ->
   Output = lists:flatten(io_lib:format("~s ~s",['.end',Name])),
   ?PRINT_LINE(I-2),
   {ok,Opts#opts{indent=I-2}};
+statement({'.globl',Name},Opts=#opts{indent=I}) ->
+  Output = lists:flatten(io_lib:format("~s ~s",['.globl',Name])),
+  ?PRINT_LINE(I),
+  {ok,Opts#opts{indent=I}};
 statement({'.ent',Name},Opts=#opts{indent=I}) ->
-  Output = lists:flatten(io_lib:format("~s ~s",['.ent',Name])),
+  Output = lists:flatten(io_lib:format("~*s ~s",[-6,'.ent',Name])),
   ?PRINT_LINE(I),
   {ok,Opts#opts{indent=I+2}};
 statement({A,B={B1,B2}},Opts=#opts{indent=I}) when is_list(B1) andalso is_list(B2) ->
   Pa = lists:flatten(part(A)),
   Pb = lists:flatten(part(B)),
-  Output = lists:flatten(io_lib:format("~*s ~*s",[min(length(Pa),?ST_1),Pa,max(length(Pb),?ST_2),Pb])),
+  Output = lists:flatten(io_lib:format("~*s ~*s",[min(-length(Pa),?ST_1),Pa,max(length(Pb),?ST_2),Pb])),
   ?PRINT_LINE(I),
   {ok,Opts};
 statement({A,B},Opts=#opts{indent=I}) ->
   Pa = lists:flatten(part(A)),
   Pb = lists:flatten(part(B)),
-  Output = lists:flatten(io_lib:format("~*s ~*s",[min(length(Pa),?ST_1),Pa,max(length(Pb),?ST_2),Pb])),
+  Output = lists:flatten(io_lib:format("~*s ~*s",[min(-length(Pa),?ST_1),Pa,max(length(Pb),?ST_2),Pb])),
   ?PRINT_LINE(I),
   {ok,Opts};
 statement({A,B,C},Opts=#opts{indent=I}) ->
   Pa = lists:flatten(part(A)),
   Pb = lists:flatten(part(B)),
   Pc = lists:flatten(part(C)),
-  Output = lists:flatten(io_lib:format("~*s ~*s,~*s",[min(length(Pa),?ST_1),Pa,max(length(Pb),?ST_2),Pb,max(length(Pc),?ST_3),Pc])),
+  Output = lists:flatten(io_lib:format("~*s ~*s,~*s",[min(-length(Pa),?ST_1),Pa,max(length(Pb),?ST_2),Pb,max(length(Pc),?ST_3),Pc])),
   ?PRINT_LINE(I),
   {ok,Opts};
 statement({A,B,C,D},Opts=#opts{indent=I}) ->
@@ -84,7 +88,7 @@ statement({A,B,C,D},Opts=#opts{indent=I}) ->
   Pb = lists:flatten(part(B)),
   Pc = lists:flatten(part(C)),
   Pd = lists:flatten(part(D)),
-  Output = lists:flatten(io_lib:format("~*s ~*s,~*s,~*s",[min(length(Pa),?ST_1),Pa,max(length(Pb),?ST_2),Pb,max(length(Pc),?ST_3),Pc,max(length(Pd),?ST_4),Pd])),
+  Output = lists:flatten(io_lib:format("~*s ~*s,~*s,~*s",[min(-length(Pa),?ST_1),Pa,max(length(Pb),?ST_2),Pb,max(length(Pc),?ST_3),Pc,max(length(Pd),?ST_4),Pd])),
   ?PRINT_LINE(I),
   {ok,Opts};
 % Comment
