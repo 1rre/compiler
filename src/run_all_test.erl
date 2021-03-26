@@ -9,12 +9,12 @@ c_test([],_,_) -> 0;
 c_test([File|Tests],Gcc,Qemu) ->
   process_flag(trap_exit, true),
   io:fwrite(standard_error,"~n~s: ",[File]),
-  try c_compiler:main(["-S", "-o", ".test/test.s", File]) of
+  try c_compiler:main(["-S", "-o", ".test/"++filename:basename(File,".c")++".s", File]) of
     _Result ->
       open_port({spawn_executable, Gcc},
                 [stderr_to_stdout,
                  exit_status,
-                 {args, ["-mfp32","-mhard-float","-o",".test/test.o","-c",".test/test.s"]}]),
+                 {args, ["-mfp32","-mhard-float","-o",".test/"++filename:basename(File,".c")++".o","-c",".test/"++filename:basename(File,".c")++".s"]}]),
       case wait_exe() of
         0 ->
           Driver = filename:rootname(File) ++ "_driver.c",
@@ -22,13 +22,13 @@ c_test([File|Tests],Gcc,Qemu) ->
                     [stderr_to_stdout,
                      exit_status,
                      {args, ["-mfp32","-mhard-float","-static",
-                             "-o",".test/test.bin",".test/test.o",Driver]}]),
+                             "-o",".test/"++filename:basename(File,".c")++".bin",".test/"++filename:basename(File,".c")++".o",Driver]}]),
           case wait_exe() of
             0 ->
               open_port({spawn_executable, Qemu},
                         [stderr_to_stdout,
                          exit_status,
-                         {args, [".test/test.bin"]}]),
+                         {args, [".test/"++filename:basename(File,".c")++".bin"]}]),
               case wait_exe() of
                 0 ->
                   io:fwrite(standard_error,"\e[1;32mpass\e[0;37m~n",[]),
