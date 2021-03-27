@@ -3,7 +3,7 @@
 
 -include("arch_type_consts.hrl").
 
--record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},args=[],
+-record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},args=[],ra_pos=0,ra_add=0,
                  i_reg,f_reg,labels=[],stack_size=0,fp=0,lb_sp=#{}}).
 
 generate(Ir) ->
@@ -167,6 +167,31 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   N_Context = Context#context{types=N_Types},
   %% TODO: Find out what way around SP should be
   [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+
+
+gen_scoped([{move,{x,Ns},{z,0}}|Rest],Context=#context{sp=Sp,types=Types}) ->
+  Ra_Add = case Sp rem 4 of
+    1 -> -7;
+    2 -> -6;
+    3 -> -5;
+    _ -> -4
+  end,
+  Ra_Store = [{addiu,{i,29},{i,29},Ra_Add},{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
+  Ra_Pos = Sp-Ra_Add+4,
+  N_Context = Context#context{sp=Ra_Pos+4,ra_add=Ra_Add,ra_pos=Ra_Pos},
+  % Get the type
+  case maps:get({x,Ns},Types,{0,i,32}) of
+    % Float
+    Type={0,f,S} ->
+      Ra_Types = Types#{{z,0} := Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,N_Context#context{types=Ra_Types}),
+      [{move,{f,12},Reg}|gen_comment(Rest,Reg_Context#context{reg=Rt#{{z,0} := {f,12}}})];
+    Type ->
+      Ra_Types = Types#{{z,0} := Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,N_Context#context{types=Ra_Types}),
+      [{move,{i,4},Reg}|gen_comment(Rest,Reg_Context#context{reg=Rt#{{z,0} := {i,4}}})]
+  end,
+  error(firstarg);
 
 
 gen_scoped([{move,{x,Ns},{z,Nd}}|Rest],Context) ->
@@ -401,29 +426,21 @@ gen_scoped([{jump,{l,N}}|Rest],Context) ->
   [{'j',{Str_N,[maps:size(Context#context.fn)]}},nop|gen_comment(Rest,Context#context{lb_sp=Lb_Sp})];
 
 % TODO: More storing on the stack & updating return value
-gen_scoped([{call,Fn,Arity}|Rest],Context) ->
-  Ra_Add = case Context#context.sp rem 4 of
-    1 -> -7;
-    2 -> -6;
-    3 -> -5;
-    _ -> -4
-  end,
-  Ra_Store = [{addiu,{i,29},{i,29},Ra_Add},{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
-  Ra_Pos = Context#context.sp-Ra_Add+4,
-  {Arg_Context,Arg_Store} = lists:foldl(fun (N, {N_Context,St}) ->
-      Type = maps:get({z,N},N_Context#context.types,{0,i,32}),
-      {ok,Reg,Reg_Context} = get_reg({z,N},Type,N_Context),
-      case Reg of
-        {f,_} ->
-          N_Sp = Reg_Context#context.sp + 4,
-          {Reg_Context#context{sp=N_Sp},St ++ [{'s.s',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]};
-        [{f,_N1},{f,_N2}] -> error(double);
-        _Reg ->
-          N_Sp = Reg_Context#context.sp + 4,
-          {Reg_Context#context{sp=N_Sp},St ++ [{'sw',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]}
-      end
-    end,{Context#context{sp=Ra_Pos+4},[]},lists:seq(Arity-1,0,-1)),
-  {Ra_Diff,N_Sp} = case Arg_Context#context.sp - Ra_Pos - 4 of
+gen_scoped([{call,Fn,Arity}|Rest],Context=#context{sp=Sp,ra_pos=Ra_Pos,ra_add=Ra_Add}) ->
+  % {Arg_Context,Arg_Store} = lists:foldl(fun (N, {N_Context,St}) ->
+  %     Type = maps:get({z,N},N_Context#context.types,{0,i,32}),
+  %     {ok,Reg,Reg_Context} = get_reg({z,N},Type,N_Context),
+  %     case Reg of
+  %       {f,_} ->
+  %         N_Sp = Reg_Context#context.sp + 4,
+  %         {Reg_Context#context{sp=N_Sp},St ++ [{'s.s',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]};
+  %       [{f,_N1},{f,_N2}] -> error(double);
+  %       _Reg ->
+  %         N_Sp = Reg_Context#context.sp + 4,
+  %         {Reg_Context#context{sp=N_Sp},St ++ [{'sw',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]}
+  %     end
+  %   end,{Context#context{sp=Ra_Pos+4},[]},lists:seq(Arity-1,0,-1)),
+  {Ra_Diff,N_Sp} = case Sp - Ra_Pos - 4 of
     N when N < 16 -> {16-N,Ra_Pos+16};
     N -> {0,Ra_Pos+N}
   end,
@@ -432,7 +449,7 @@ gen_scoped([{call,Fn,Arity}|Rest],Context) ->
              {addiu,{i,29},{i,30},-Ra_Pos+4},
              {lw,{i,31},{sp,0}},
              {addiu,{i,29},{i,29},-Ra_Add}],
-  Ra_Store ++ Arg_Store ++ N_Fp_Jal ++ R_Fp_Ra ++ gen_comment(Rest,Context#context{args=[]});
+  N_Fp_Jal ++ R_Fp_Ra ++ gen_comment(Rest,Context#context{args=[]});
 
 gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),

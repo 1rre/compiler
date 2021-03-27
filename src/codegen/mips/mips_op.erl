@@ -1,7 +1,7 @@
 -module(mips_op).
 -export([gen_op/7]).
 
--record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},args=[],
+-record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},args=[],ra_pos=0,ra_add=0,
                  i_reg,f_reg,labels=[],stack_size=0,fp=0,lb_sp=#{}}).
 %% Putting boilerplate for built in functions here because it clutters the mips file
 

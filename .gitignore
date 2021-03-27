@@ -13,5 +13,5 @@ bin/
 null/
 out/
 .test/
-c-testsuite/
+compiler_tests/
 
