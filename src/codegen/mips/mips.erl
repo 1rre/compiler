@@ -196,7 +196,7 @@ gen_scoped([{move,{x,Ns},{z,0}}|Rest],Context=#context{sp=Sp,types=Types}) ->
   end;
 
 gen_scoped([{move,{x,Ns},{z,1}}|Rest],Context=#context{sp=Sp,types=Types,reg=Rt}) ->
-  case {maps:get({x,Ns},Types,{0,i,32}),maps:get({z,Ns},Rt)} of
+  case {maps:get({x,Ns},Types,{0,i,32}),maps:get({z,0},Rt)} of
     % Float
     {Type={0,f,S},{f,12}} ->
       Ra_Types = Types#{{z,1} => Type},
@@ -459,16 +459,21 @@ gen_scoped([{call,Fn,Arity}|Rest],Context=#context{sp=Sp,ra_pos=Ra_Pos,ra_add=Ra
   %         {Reg_Context#context{sp=N_Sp},St ++ [{'sw',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]}
   %     end
   %   end,{Context#context{sp=Ra_Pos+4},[]},lists:seq(Arity-1,0,-1)),
-  {Ra_Diff,N_Sp} = case Sp - Ra_Pos - 4 of
-    N when N < 16 -> {16-N,Ra_Pos+16};
-    N -> {0,Ra_Pos+N}
-  end,
-  N_Fp_Jal = [{addiu,{i,30},{i,30},-N_Sp},{move,{i,29},{i,30}},{jal,Fn}],
-  R_Fp_Ra = [{addiu,{i,30},{i,30},N_Sp},
-             {addiu,{i,29},{i,30},-Ra_Pos+4},
-             {lw,{i,31},{sp,0}},
-             {addiu,{i,29},{i,29},-Ra_Add}],
-  N_Fp_Jal ++ R_Fp_Ra ++ gen_comment(Rest,Context#context{args=[],sp=Ra_Pos-4+Ra_Add});
+  if Ra_Pos =:= 0 ->
+      Ra_Store = [{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
+      Ra_Store ++ gen_scoped([{call,Fn,Arity}|Rest],Context#context{sp=Sp+4,ra_pos=Sp,ra_add=-4});
+    true ->
+      {Ra_Diff,N_Sp} = case Sp - Ra_Pos - 4 of
+        N when N < 16 -> {16-N,Ra_Pos+16};
+        N -> {0,Ra_Pos+N}
+      end,
+      N_Fp_Jal = [{addiu,{i,30},{i,30},-N_Sp},{move,{i,29},{i,30}},{jal,Fn}],
+      R_Fp_Ra = [{addiu,{i,30},{i,30},N_Sp},
+                 {addiu,{i,29},{i,30},-Ra_Pos+4},
+                 {lw,{i,31},{sp,0}},
+                 {addiu,{i,29},{i,29},-Ra_Add}],
+      N_Fp_Jal ++ R_Fp_Ra ++ gen_comment(Rest,Context#context{args=[],sp=Ra_Pos-4+Ra_Add,ra_add=0,ra_pos=0})
+  end;
 
 gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
