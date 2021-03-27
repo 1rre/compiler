@@ -178,82 +178,85 @@ gen_scoped([{move,{x,Ns},{z,0}}|Rest],Context=#context{sp=Sp,types=Types}) ->
   end,
   Ra_Store = [{addiu,{i,29},{i,29},Ra_Add},{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
   Ra_Pos = Sp-Ra_Add+4,
-  N_Context = Context#context{sp=Ra_Pos+4,ra_add=Ra_Add,ra_pos=Ra_Pos},
+  N_Context = Context#context{ra_add=Ra_Add,ra_pos=Ra_Pos},
   % Get the type
   case maps:get({x,Ns},Types,{0,i,32}) of
     % Float
     Type={0,f,S} ->
       Ra_Types = Types#{{z,0} := Type},
       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,N_Context#context{types=Ra_Types}),
-      [{move,{f,12},Reg}|gen_comment(Rest,Reg_Context#context{reg=Rt#{{z,0} := {f,12}}})];
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} := {f,12}},sp=Ra_Pos+S div 8},
+      [{move,{f,12},Reg}|gen_comment(Rest,Rtn_Context)];
     Type ->
-      Ra_Types = Types#{{z,0} := Type},
+      Ra_Types = Types#{{z,0} => Type},
       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,N_Context#context{types=Ra_Types}),
-      [{move,{i,4},Reg}|gen_comment(Rest,Reg_Context#context{reg=Rt#{{z,0} := {i,4}}})]
-  end,
-  error(firstarg);
-
-
-gen_scoped([{move,{x,Ns},{z,Nd}}|Rest],Context) ->
-  case {maps:get({x,Ns},Context#context.types),Context#context.args} of
-    {{0,f,32},[{f,12}|_]} ->
-      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
-      N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
-      N_Args = [{f,14}|Src_Context#context.args],
-      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{'mov.s',{f,14},Src}|gen_comment(Rest,N_Context)];
-    {{0,f,64},[{f,12}|_]} ->
-      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
-      N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
-      N_Args = [{f,14}|Src_Context#context.args],
-      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{'mov.d',{f,14},Src}|gen_comment(Rest,N_Context)];
-    {Type,[{f,12}|_]} ->
-      {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
-      N_Reg = maps:put({z,Nd},{i,5},Src_Context#context.reg),
-      N_Args = [{i,5}|Src_Context#context.args],
-      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{move,{i,5},Src}|gen_comment(Rest,N_Context)];
-    {{0,f,32},[{i,N}|_]} when 7 > N->
-      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
-      N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
-      N_Args = [{i,N+1}|Src_Context#context.args],
-      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{mfc1,{i,N+1},Src}|gen_comment(Rest,N_Context)];
-    {{0,f,64},[{i,N}|_]} when 6 > N ->
-      {ok,[S1,S2],Src_Context} = get_reg({x,Ns},{0,f,64},Context),
-      N_Reg = maps:put({z,Nd},[{i,6},{i,7}],Src_Context#context.reg),
-      N_Args = [[{i,6},{i,7}]|Src_Context#context.args],
-      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{mfc1,{i,6},S1},{mfc1,{i,7},S2}|gen_comment(Rest,N_Context)];
-    {Type,[{i,N}|_]} when 7 > N ->
-      {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
-      N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
-      N_Args = [{i,N+1}|Src_Context#context.args],
-      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{move,{i,N+1},Src}|gen_comment(Rest,N_Context)];
-    {{0,f,32},[]} ->
-      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
-      N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
-      N_Args = [{f,12}|Src_Context#context.args],
-      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{'mov.s',{f,12},Src}|gen_comment(Rest,N_Context)];
-    {{0,f,64},[]} ->
-      {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
-      N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
-      N_Args = [{f,12}|Src_Context#context.args],
-      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{'mov.d',{f,12},Src}|gen_comment(Rest,N_Context)];
-    {Type,[]} ->
-      {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
-      N_Reg = maps:put({z,Nd},{i,4},Src_Context#context.reg),
-      N_Args = [{i,4}|Src_Context#context.args],
-      N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-      [{move,{i,4},Src}|gen_comment(Rest,N_Context)];
-    _ ->
-      % Dest is stack
-        error({no_mips,{move,{x,Ns},{z,Nd}},stack})
+      [{move,{i,4},Reg}|gen_comment(Rest,Reg_Context#context{reg=Rt#{{z,0} => {i,4}},sp=Ra_Pos+4})]
   end;
+
+%gen_scoped([{move,{x,Ns},{z,1}}|Rest],Context=#context{sp=Sp,types=Types}) ->
+
+
+%
+% gen_scoped([{move,{x,Ns},{z,Nd}}|Rest],Context) ->
+%   case {maps:get({x,Ns},Context#context.types),Context#context.args} of
+%     {{0,f,32},[{f,12}|_]} ->
+%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
+%       N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
+%       N_Args = [{f,14}|Src_Context#context.args],
+%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+%       [{'mov.s',{f,14},Src}|gen_comment(Rest,N_Context)];
+%     {{0,f,64},[{f,12}|_]} ->
+%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
+%       N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
+%       N_Args = [{f,14}|Src_Context#context.args],
+%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+%       [{'mov.d',{f,14},Src}|gen_comment(Rest,N_Context)];
+%     {Type,[{f,12}|_]} ->
+%       {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
+%       N_Reg = maps:put({z,Nd},{i,5},Src_Context#context.reg),
+%       N_Args = [{i,5}|Src_Context#context.args],
+%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+%       [{move,{i,5},Src}|gen_comment(Rest,N_Context)];
+%     {{0,f,32},[{i,N}|_]} when 7 > N->
+%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
+%       N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
+%       N_Args = [{i,N+1}|Src_Context#context.args],
+%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+%       [{mfc1,{i,N+1},Src}|gen_comment(Rest,N_Context)];
+%     {{0,f,64},[{i,N}|_]} when 6 > N ->
+%       {ok,[S1,S2],Src_Context} = get_reg({x,Ns},{0,f,64},Context),
+%       N_Reg = maps:put({z,Nd},[{i,6},{i,7}],Src_Context#context.reg),
+%       N_Args = [[{i,6},{i,7}]|Src_Context#context.args],
+%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+%       [{mfc1,{i,6},S1},{mfc1,{i,7},S2}|gen_comment(Rest,N_Context)];
+%     {Type,[{i,N}|_]} when 7 > N ->
+%       {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
+%       N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
+%       N_Args = [{i,N+1}|Src_Context#context.args],
+%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+%       [{move,{i,N+1},Src}|gen_comment(Rest,N_Context)];
+%     {{0,f,32},[]} ->
+%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
+%       N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
+%       N_Args = [{f,12}|Src_Context#context.args],
+%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+%       [{'mov.s',{f,12},Src}|gen_comment(Rest,N_Context)];
+%     {{0,f,64},[]} ->
+%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
+%       N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
+%       N_Args = [{f,12}|Src_Context#context.args],
+%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+%       [{'mov.d',{f,12},Src}|gen_comment(Rest,N_Context)];
+%     {Type,[]} ->
+%       {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
+%       N_Reg = maps:put({z,Nd},{i,4},Src_Context#context.reg),
+%       N_Args = [{i,4}|Src_Context#context.args],
+%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
+%       [{move,{i,4},Src}|gen_comment(Rest,N_Context)];
+%     _ ->
+%       % Dest is stack
+%         error({no_mips,{move,{x,Ns},{z,Nd}},stack})
+%   end;
 
 gen_scoped([{move,{x,Ns},{x,Nd}}|Rest],Context) ->
   Type = maps:get({x,Ns},Context#context.types,{0,i,32}),
