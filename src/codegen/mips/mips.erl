@@ -183,17 +183,33 @@ gen_scoped([{move,{x,Ns},{z,0}}|Rest],Context=#context{sp=Sp,types=Types}) ->
   case maps:get({x,Ns},Types,{0,i,32}) of
     % Float
     Type={0,f,S} ->
-      Ra_Types = Types#{{z,0} := Type},
+      Ra_Types = Types#{{z,0} => Type},
       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,N_Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} := {f,12}},sp=Ra_Pos+S div 8},
-      [{move,{f,12},Reg}|gen_comment(Rest,Rtn_Context)];
+      Size = S div 8,
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} => {f,12}},sp=Ra_Pos+Size},
+      Ra_Store++[{move,{f,12},Reg},{addiu,{i,29},{i,29},-Size}|gen_comment(Rest,Rtn_Context)];
     Type ->
       Ra_Types = Types#{{z,0} => Type},
       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,N_Context#context{types=Ra_Types}),
-      [{move,{i,4},Reg}|gen_comment(Rest,Reg_Context#context{reg=Rt#{{z,0} => {i,4}},sp=Ra_Pos+4})]
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} => {i,4}},sp=Ra_Pos+4},
+      Ra_Store++[{move,{i,4},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)]
   end;
 
-%gen_scoped([{move,{x,Ns},{z,1}}|Rest],Context=#context{sp=Sp,types=Types}) ->
+gen_scoped([{move,{x,Ns},{z,1}}|Rest],Context=#context{sp=Sp,types=Types,reg=Rt}) ->
+  case {maps:get({x,Ns},Types,{0,i,32}),maps:get({z,Ns},Rt)} of
+    % Float
+    {Type={0,f,S},{f,12}} ->
+      Ra_Types = Types#{{z,1} => Type},
+      {ok,Reg,Reg_Context} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Size = S div 8,
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => {f,14}},sp=Sp+Size},
+      [{move,{f,14},Reg},{addiu,{i,29},{i,29},-Size}|gen_comment(Rest,Rtn_Context)];
+    {Type,{i,4}} ->
+      Ra_Types = Types#{{z,1} => Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => {i,5}},sp=Sp+4},
+      [{move,{i,5},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)]
+  end;
 
 
 %
@@ -447,12 +463,12 @@ gen_scoped([{call,Fn,Arity}|Rest],Context=#context{sp=Sp,ra_pos=Ra_Pos,ra_add=Ra
     N when N < 16 -> {16-N,Ra_Pos+16};
     N -> {0,Ra_Pos+N}
   end,
-  N_Fp_Jal = [{addiu,{i,30},{i,30},-N_Sp},{addiu,{i,29},{i,29},-Ra_Diff},{jal,Fn}],
+  N_Fp_Jal = [{addiu,{i,30},{i,30},-N_Sp},{move,{i,29},{i,30}},{jal,Fn}],
   R_Fp_Ra = [{addiu,{i,30},{i,30},N_Sp},
              {addiu,{i,29},{i,30},-Ra_Pos+4},
              {lw,{i,31},{sp,0}},
              {addiu,{i,29},{i,29},-Ra_Add}],
-  N_Fp_Jal ++ R_Fp_Ra ++ gen_comment(Rest,Context#context{args=[]});
+  N_Fp_Jal ++ R_Fp_Ra ++ gen_comment(Rest,Context#context{args=[],sp=Ra_Pos-4+Ra_Add});
 
 gen_scoped([{test,Src,{l,N}}|Rest],Context) ->
   Str_N = integer_to_list(N),
