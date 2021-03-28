@@ -930,6 +930,7 @@ gen_case_branches([{{Const,_},Lb}|Rest],State) ->
 %% Get a shortened name of a type
 %% TODO: #18
 %        We need to add a typedef, enum & struct resolver here
+get_type([{{enum,_},_}],_) -> {ok,{0,i,?SIZEOF_INT}};
 get_type([{long,_},{double,_}],_) -> {ok,{0,f,?SIZEOF_L_DOUBLE}};
 get_type([{double,_}],_)          -> {ok,{0,f,?SIZEOF_DOUBLE}};
 get_type([{float,_}],_)           -> {ok,{0,f,?SIZEOF_FLOAT}};
