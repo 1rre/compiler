@@ -45,8 +45,8 @@ Left  325 multiplication_operator.
 Right 375 cast.
 Unary 350 unary_operator.
 Unary 350 sizeof.
-Left  400 postfix_operator.
-Left  400 postfix_list.
+Right 400 postfix_operator.
+Right 400 postfix_list.
 Right 450 declaration_list.
 Unary 475 external_declaration.
 
@@ -71,6 +71,7 @@ expression -> expression multiplication_operator expression : {bif, element(1,'$
 expression -> sizeof_expression : '$1'.
 expression -> unary_operator expression : {'$1','$2'}.
 expression -> cast expression : {cast,'$1','$2'}.
+expression -> identifier postfix_operator : {'$1','$2'}.
 expression -> expression postfix_operator : {'$1','$2'}.
 expression -> identifier postfix_list : {'$1','$2'}.
 expression -> expression postfix_list : {'$1','$2'}.

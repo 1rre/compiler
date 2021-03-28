@@ -109,7 +109,7 @@ generate({declaration,[{{enum,_},{identifier,_,_Ident},_Enums}],Raw_St}, _State)
   error({enum_statement,Raw_St});
 
 generate({declaration,[{{struct,_},{identifier,_,Ident},Struct}],[]}, State=#state{struct=Structs}) ->
-  Type = lists:foldl(fun
+  Type = lists:foldr(fun
     ({Raw_Type,[Raw_Ident]}, {struct,Members}) ->
       {ok,Mem_Ident,Ptr_Depth,Raw_Arr} = get_ident_specs(Raw_Ident,State),
       {ok,{P,T,S}} = get_type(Raw_Type,State),
@@ -179,12 +179,22 @@ generate({identifier,Ln,Ident}, State) ->
       % So that we can reference it as a pointer?
       N_Types = maps:put({x,Lv_Cnt},{Arr,{P,T,S}},State#state.typecheck),
       {ok,State#state{typecheck=N_Types},[{address,X,{x,Lv_Cnt}}]};
+    {{S={struct,Members},Reg},_} ->
+      N_Types = maps:put({x,Lv_Cnt},S,State#state.typecheck),
+      {ok,State#state{typecheck=N_Types},[{move,Reg,{x,Lv_Cnt}}]};
     {_,undefined} ->
       error({undef,Ident,{line,Ln}});
     {_,Value} ->
       N_Types = maps:put({x,Lv_Cnt},{[],{0,i,32}},State#state.typecheck),
       {ok,State#state{typecheck=N_Types},[{move,{i,Value},{x,Lv_Cnt}}]}
   end;
+
+generate(Raw_Ident={_,{{'.',_},_}},State=#state{lvcnt=Lv_Cnt,var=Var,typecheck=Types}) ->
+  {ok,Ident,_,_} = get_ident_specs(Raw_Ident,State),
+  #{Ident := {Type,M_Loc}} = Var,
+  N_Types = maps:put({x,Lv_Cnt},Type,Types),
+  {ok,State#state{typecheck=N_Types},[{move,M_Loc,{x,Lv_Cnt}}]};
+
 
 %% TODO: Fix this for new arrays
 generate({Rest,{array, Offset}}, State) ->
@@ -257,8 +267,8 @@ generate({sizeof,Expr},State) ->
     {ok,_} -> {ok,State,[{move,{i,?SIZEOF_POINTER div 8},{x,Lv_Cnt}}]};
     _ ->
       {ok,Expr_State,_Expr_St} = generate(Expr, State),
-      {Arr,Type} = maps:get({x,Lv_Cnt},Expr_State#state.typecheck,{[],{0,n,0}}),
-      Size = lists:foldl(fun (A,V) -> A * V end,sizeof(Type,State),Arr),
+      Type = maps:get({x,Lv_Cnt},Expr_State#state.typecheck,{[],{0,n,0}}),
+      Size = sizeof(Type,Expr_State),
       Types = State#state.typecheck,
       N_Types = maps:put({x,Lv_Cnt},{[],{0,i,?SIZEOF_INT}},Types),
       {ok,State#state{typecheck=N_Types},[{move,{i,Size div 8},{x,Lv_Cnt}}]}
@@ -513,8 +523,27 @@ generate(Other, _State) -> error({no_ir,Other}).
 %   {ok,Next_State,Mem_St};
 
 
-get_decl_specs({struct,Members},[Raw_Ident],State)->
-  error({no_ir,struct});
+get_decl_specs({struct,Members},[{Raw_Ident,{'=',_},Raw_St}],State)->
+  error(struct);
+
+get_decl_specs(Struct={struct,Members},[Raw_Ident],State=#state{rvcnt=Rv_Cnt,var=Var,sizeof=Sz,typecheck=Types})->
+  %% Concept: Allocate 0 & tie to struct var name then allocate for each member?
+  {ok, Ident, Ptr_Depth, []} = get_ident_specs(Raw_Ident, State),
+  if
+    Ptr_Depth =:= 0 ->
+      Size = sizeof(Struct,State),
+      {A_St,A_State=#state{var=Var_1}} = lists:foldl(fun
+        ({Name,Type},{Al_St,Al_State=#state{rvcnt=N_Reg,var=A_Var}}) ->
+          {ok,Mem_State,Mem_St} = allocate_mem(Type,Al_State,{y,N_Reg},[]),
+          {Al_St++Mem_St,Mem_State#state{var=A_Var#{{Ident,Name}=>{Type,{y,N_Reg}}},rvcnt=N_Reg+1}}
+      end,{[{allocate,0},{cast,{y,Rv_Cnt},{0,n,Size}}],State#state{rvcnt=Rv_Cnt+1}},Members),
+      N_State = A_State#state{var=Var_1#{Ident => {Struct,{y,Rv_Cnt}}}},
+      {ok,N_State,A_St};
+    true ->
+      Alloc = [{allocate,32}],
+      N_State = State#state{rvcnt=Rv_Cnt+1,var=Var#{Ident => {{Ptr_Depth,Struct},{y,Rv_Cnt}}},
+                            typecheck=Types#{{y,Rv_Cnt}=>{Ptr_Depth,Struct}},sizeof=Sz#{{y,Rv_Cnt}=>32}}
+  end;
 
 %% Delegated function for declarations.
 %% Function prototypes
@@ -632,6 +661,9 @@ get_ident_specs({'*',_}, _State) ->
   {ok, '', 1, []};
 get_ident_specs({{identifier,_,Ident},Fn_St}, _State) when is_list(Fn_St) ->
 {ok, {Ident,Fn_St}, 0, []};
+get_ident_specs({Rest,{{'.',_},{identifier,_,Ident}}}, State) ->
+  {ok,I_Rest,Ptr_Depth,Arr} = get_ident_specs(Rest,State),
+  {ok,{I_Rest,Ident},Ptr_Depth,Arr};
 get_ident_specs({identifier,_,Ident}, _State) ->
   {ok, Ident, 0, []};
 get_ident_specs(Ident, _State) ->
@@ -1006,6 +1038,7 @@ sizeof({0,_,S},_) -> S;
 sizeof({_,_,_},_State) -> ?SIZEOF_POINTER;
 sizeof({struct,[{_Name,Type}|Members]},State) ->
   sizeof(Type,State)+sizeof({struct,Members},State);
+sizeof({struct,[]},State) -> 0;
 sizeof({Arr,T},State) -> lists:foldl(fun
   ({_,A},B) -> A*B;
   (A,B) -> A*B
