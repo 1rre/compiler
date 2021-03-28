@@ -105,9 +105,19 @@ generate({declaration,[{{enum,_},{identifier,_,Ident},Enums}],[]}, State) ->
   {ok,Enum_State} = put_enums(Enums,0,State#state{enum_names=N_Enums}),
   {ok,Enum_State,[]};
 
-
 generate({declaration,[{{enum,_},{identifier,_,_Ident},_Enums}],Raw_St}, _State) ->
   error({enum_statement,Raw_St});
+
+generate({declaration,[{{struct,_},{identifier,_,Ident},Struct}],[]}, State=#state{struct=Structs}) ->
+  Type = lists:foldl(fun
+    ({Raw_Type,[Raw_Ident]}, {struct,Members}) ->
+      {ok,Mem_Ident,Ptr_Depth,Raw_Arr} = get_ident_specs(Raw_Ident,State),
+      {ok,{P,T,S}} = get_type(Raw_Type,State),
+      Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+      {struct,[{Mem_Ident,{Arr,{P+Ptr_Depth,T,S}}}|Members]}
+  end,{struct,[]},Struct),
+  N_Structs = Structs#{Ident=>Type},
+  {ok,State#state{struct=N_Structs},[]};
 
 generate({break,_},State) ->
   Break = State#state.break,
@@ -489,6 +499,22 @@ generate({[]},State) ->
 %        We need to support array declarations and accesses,
 %        which will be done using the `[]` operators and the `offset` token.
 generate(Other, _State) -> error({no_ir,Other}).
+
+
+% get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) ->
+%   {ok, Ident, Ptr_Depth, Raw_Arr} = get_ident_specs(Raw_Ident, State),
+%   Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+%   Type = {Arr,{N+Ptr_Depth,Raw_T,Raw_S}},
+%   Rv_Cnt = State#state.rvcnt,
+%   {ok, Mem_State, Mem_St} = allocate_mem(Type, State,{y,Rv_Cnt},[]),
+%   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
+%   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
+%   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
+%   {ok,Next_State,Mem_St};
+
+
+get_decl_specs({struct,Members},[Raw_Ident],State)->
+  error({no_ir,struct});
 
 %% Delegated function for declarations.
 %% Function prototypes
@@ -959,12 +985,8 @@ get_type([{signed,_}|Type],C) ->
 get_type([{extern,_}|Type],C) -> get_type(Type,C);
 
 % Struct with declaration of struct type
-get_type([{{struct,_},{identifier,_,_Ident}, _Struct_Specs}],_Context) ->
-  error({no_ir,struct});
-
-% Predeclared struct
-get_type([{{struct,_},{identifier,_,_Ident}}],_Context) ->
-  error({no_ir,struct});
+get_type([{{struct,_},{identifier,_,Ident}}],#state{struct=Struct}) ->
+  {ok,maps:get(Ident,Struct)};
 
 get_type([{typedef_name,_,Ident}], Context) ->
   {ok, element(2,maps:get(Ident,Context#state.typedef))};
@@ -982,6 +1004,8 @@ get_type(Type,_) -> {error,{unknown_type,Type}}.
 %        if this is possible (confirm that allocation is done at declaration time?).
 sizeof({0,_,S},_) -> S;
 sizeof({_,_,_},_State) -> ?SIZEOF_POINTER;
+sizeof({struct,[{_Name,Type}|Members]},State) ->
+  sizeof(Type,State)+sizeof({struct,Members},State);
 sizeof({Arr,T},State) -> lists:foldl(fun
   ({_,A},B) -> A*B;
   (A,B) -> A*B
