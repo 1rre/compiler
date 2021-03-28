@@ -56,12 +56,12 @@ gen_arg_types([{0,f,64}|Args],Context,0,false,0) ->
 gen_arg_types([{0,f,64}|Args],Context,N,false,Bits) when 64 >= Bits ->
   Types = maps:put({z,N},{0,f,64},Context#context.types),
   Reg = maps:put({z,N},[{f,14},{f,15}],Context#context.reg),
-  gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,false,Bits+64);
+  gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,true,128);
 
 gen_arg_types([{0,T,64}|Args],Context,N,_,Bits) when 64 >= Bits andalso 2 >= N ->
   Types = maps:put({z,N},{0,T,64},Context#context.types),
   Reg = maps:put({z,N},[{i,6},{i,7}],Context#context.reg),
-  gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,true,Bits+64);
+  gen_arg_types(Args,Context#context{types=Types,reg=Reg},N+1,true,128);
 
 gen_arg_types([Hd|Args],Context,N,_,Bits) when 96 >= Bits andalso 3 >= N ->
   Types = maps:put({z,N},Hd,Context#context.types),
@@ -326,7 +326,77 @@ gen_scoped([{move,{x,Ns},{x,Nd}}|Rest],Context) ->
     _ -> error({no_mips,{move,{x,Ns},{x,Nd}},double})
   end;
 
+% This is hacky but was done right before the deadline so what can you do
+% Basically a1:32,a2:64,an:_,... arguments need to be a1:32,0:32,a2:64,an:_,... on the stack
+gen_scoped([{move,{z,Ns=1},{y,Nd}}|Rest],Context=#context{types=#{{z,0}:=Z0_T,{z,1}:={0,f,64}}}) when Z0_T /= {0,f,64} ->
+  case maps:get({z,Ns},Context#context.reg,nil) of
+    nil ->
+      Types = maps:put({y,Nd},maps:get({z,Ns},Context#context.types),Context#context.types),
+      gen_comment(Rest,Context#context{types=Types});
+    Src ->
+      Dest = maps:get({y,Nd},Context#context.s_reg,Context#context.sp),
+      {Ps,Ts,Ss} = maps:get({z,Ns},Context#context.types,{0,i,32}),
+      {Pd,_Td,Sd} = maps:get({y,Nd},Context#context.types,{Ps,Ts,Ss}),
+      Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
+           io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
+           Sd;
+         Ps /= 0 -> 32;
+       true -> Ss end,
+      N_Types = maps:put({y,Nd},{Ps,Ts,Ss},Context#context.types),
+      N_Context = Context#context{types=N_Types},
+      case {Size,Src} of
+        {32,{f,_N}} ->
+          [{'s.s',Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 ->
+          D_Context = N_Context#context{sp=Context#context.sp+4},
+          [{addiu,{i,29},{i,29},-4},{'s.d',Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {64,[{i,N1},{i,N2}]} when N2 =:= N1+1 ->
+          D_Context = N_Context#context{sp=Context#context.sp+4},
+          [{addiu,{i,29},{i,29},-4},{sw,{i,N2},{sp,Context#context.sp-Dest+4}},{sw,{i,N1},{sp,Context#context.sp-Dest}}|gen_comment(Rest,D_Context)];
+        {64,[N1,N2]} -> error({non_consecutive,[N1,N2]});
+        {32,_Reg} ->
+          [{sw,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {16,_Reg} ->
+          [{sh,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {8,_Reg} ->
+          [{sb,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)]
+      end
+  end;
 
+gen_scoped([{move,{z,Ns=3},{y,Nd}}|Rest],Context=#context{types=#{{z,3}:={0,f,64}}}) ->
+  case maps:get({z,Ns},Context#context.reg,nil) of
+    nil ->
+      Types = maps:put({y,Nd},maps:get({z,Ns},Context#context.types),Context#context.types),
+      gen_comment(Rest,Context#context{types=Types});
+    Src ->
+      Dest = maps:get({y,Nd},Context#context.s_reg,Context#context.sp),
+      {Ps,Ts,Ss} = maps:get({z,Ns},Context#context.types,{0,i,32}),
+      {Pd,_Td,Sd} = maps:get({y,Nd},Context#context.types,{Ps,Ts,Ss}),
+      Size = if {Pd,Ps} =:= {0,0} andalso Ss > Sd ->
+           io:fwrite(standard_error,"Truncating ~B bit item to ~B bits to avoid stack Error~n",[Ss,Sd]),
+           Sd;
+         Ps /= 0 -> 32;
+       true -> Ss end,
+      N_Types = maps:put({y,Nd},{Ps,Ts,Ss},Context#context.types),
+      N_Context = Context#context{types=N_Types},
+      case {Size,Src} of
+        {32,{f,_N}} ->
+          [{'s.s',Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 ->
+          D_Context = N_Context#context{sp=Context#context.sp+4},
+          [{addiu,{i,29},{i,29},-4},{'s.d',Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,D_Context)];
+        {64,[{i,N1},{i,N2}]} when N2 =:= N1+1 ->
+          D_Context = N_Context#context{sp=Context#context.sp+4},
+          [{addiu,{i,29},{i,29},-4},{sw,{i,N2},{sp,Context#context.sp-Dest+4}},{sw,{i,N1},{sp,Context#context.sp-Dest}}|gen_comment(Rest,D_Context)];
+        {64,[N1,N2]} -> error({non_consecutive,[N1,N2]});
+        {32,_Reg} ->
+          [{sw,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {16,_Reg} ->
+          [{sh,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {8,_Reg} ->
+          [{sb,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)]
+      end
+  end;
 
 % Arguments
 gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
@@ -343,18 +413,23 @@ gen_scoped([{move,{z,Ns},{y,Nd}}|Rest],Context) ->
            Sd;
          Ps /= 0 -> 32;
 true -> Ss end,
-      Instr = case {Size,Src} of
-        {32,{f,_N}} -> 's.s';
-        {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 -> 's.d';
-        {64,[{f,N1},N2]} -> error({non_consecutive,[{f,N1},N2]});
-        {32,_Reg} -> sw;
-        {16,_Reg} -> sh;
-        {8,_Reg} -> sb
-      end,
       N_Types = maps:put({y,Nd},{Ps,Ts,Ss},Context#context.types),
       N_Context = Context#context{types=N_Types},
-      %% TODO: Find out what way around SP should be
-      [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)]
+      case {Size,Src} of
+        {32,{f,_N}} ->
+          [{'s.s',Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {64,[{f,N1},{f,N2}]} when N2 =:= N1+1 ->
+          [{'s.d',Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {64,[{i,N1},{i,N2}]} when N2 =:= N1+1 ->
+          [{sw,{i,N2},{sp,Context#context.sp-Dest+4}},{sw,{i,N1},{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {64,[N1,N2]} -> error({non_consecutive,[N1,N2]});
+        {32,_Reg} ->
+          [{sw,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {16,_Reg} ->
+          [{sh,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
+        {8,_Reg} ->
+          [{sb,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)]
+      end
   end;
 
 % Get from stack

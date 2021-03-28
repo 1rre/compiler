@@ -45,7 +45,7 @@ generate({function,{Raw_Type,{Raw_Ident,Raw_Args},Raw_St}}, State) when is_list(
   true -> ok end,
   % Reverse because the stack be like that sometimes
   {ok, Arg_State, _Arg_St} = generate(lists:reverse(Raw_Args), State#state{scope=1}),
-  Arg_Types = [Arg_T || {{_Arr,Arg_T},{y,_}} <- maps:values(Arg_State#state.var)],
+  Arg_Types = [Arg_T || {{y,_},{_Arr,Arg_T}} <- maps:to_list(Arg_State#state.typecheck)],
   Arity = case Raw_Args of
     [[{void,_}]] -> 0;
     _ -> length(Raw_Args)
@@ -75,7 +75,7 @@ generate({function,{Raw_Type,Raw_Ident_Ptr,Raw_St}}, State) ->
   true -> ok end,
   % Reverse because the stack be like that sometimes
   {ok, Arg_State, _Arg_St} = generate(lists:reverse(Raw_Args), State#state{scope=1}),
-  Arg_Types = [Arg_T || {{_Arr,Arg_T},{y,_}} <- maps:values(Arg_State#state.var)],
+  Arg_Types = [Arg_T || {{y,_},{_Arr,Arg_T}} <- maps:to_list(Arg_State#state.typecheck)],
   Arity = case Raw_Args of
     [[{void,_}]] -> 0;
     _ -> length(Raw_Args)
