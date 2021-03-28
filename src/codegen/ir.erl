@@ -119,6 +119,17 @@ generate({declaration,[{{struct,_},{identifier,_,Ident},Struct}],[]}, State=#sta
   N_Structs = Structs#{Ident=>Type},
   {ok,State#state{struct=N_Structs},[]};
 
+generate({declaration,[{{struct,_},{identifier,_,Ident},Struct}],Decl}, State=#state{struct=Structs}) ->
+  Type = lists:foldr(fun
+    ({Raw_Type,[Raw_Ident]}, {struct,Members}) ->
+      {ok,Mem_Ident,Ptr_Depth,Raw_Arr} = get_ident_specs(Raw_Ident,State),
+      {ok,{P,T,S}} = get_type(Raw_Type,State),
+      Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
+      {struct,[{Mem_Ident,{Arr,{P+Ptr_Depth,T,S}}}|Members]}
+  end,{struct,[]},Struct),
+  N_Structs = Structs#{Ident=>Type},
+  generate({declaration,[{{struct,0},{identifier,0,Ident}}],Decl},State#state{struct=N_Structs});
+
 generate({break,_},State) ->
   Break = State#state.break,
   {ok,State,[{jump,{l,Break}}]};
