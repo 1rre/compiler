@@ -4,7 +4,7 @@
 -include("arch_type_consts.hrl").
 
 -record(context,{fn=#{},types=#{},sp=0,s_reg=#{},reg=#{},args=[],ra_pos=0,ra_add=0,
-                 i_reg,f_reg,labels=[],stack_size=0,fp=0,lb_sp=#{}}).
+                 a_sp=0,i_reg,f_reg,labels=[],stack_size=0,fp=0,lb_sp=#{}}).
 
 generate(Ir) ->
   % Use these for ints & pointers if possible
@@ -168,177 +168,151 @@ gen_scoped([{move,{x,Ns},{y,Nd}}|Rest],Context) ->
   %% TODO: Find out what way around SP should be
   [{Instr,Src,{sp,Context#context.sp-Dest}}|gen_comment(Rest,N_Context)];
 
-
-gen_scoped([{move,{x,Ns},{z,0}}|Rest],Context=#context{sp=Sp,types=Types}) ->
+gen_scoped([{move,{x,Ns},{z,0}}|Rest],Context=#context{sp=Sp,types=Types,a_sp=Asp}) ->
   Ra_Add = case Sp rem 4 of
     1 -> -7;
     2 -> -6;
     3 -> -5;
     _ -> -4
   end,
-  Ra_Store = [{addiu,{i,29},{i,29},Ra_Add},{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
+  Ra_Store = [{addiu,{i,29},{i,29},Ra_Add},{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4},asp_lookahead],
   Ra_Pos = Sp-Ra_Add+4,
   N_Context = Context#context{ra_add=Ra_Add,ra_pos=Ra_Pos},
-  % Get the type
   case maps:get({x,Ns},Types,{0,i,32}) of
-    % Float
     Type={0,f,32} ->
       Ra_Types = Types#{{z,0} => Type},
       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,N_Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} => {f,12}},sp=Ra_Pos+4},
-      Ra_Store++[{'mov.s',{f,12},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)];
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} => {f,12}},sp=Ra_Pos+4,a_sp=Asp+4},
+      Ra_Store++[{'mov.s',{f,12},Reg}|gen_comment(Rest,Rtn_Context)];
+
     Type={0,f,64} ->
       Ra_Types = Types#{{z,0} => Type},
       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,N_Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} => [{f,12},{f,13}]},sp=Ra_Pos+8},
-      Ra_Store++[{'mov.s',{f,12},Reg},{addiu,{i,29},{i,29},-8}|gen_comment(Rest,Rtn_Context)];
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} => [{f,12},{f,13}]},sp=Ra_Pos+8,a_sp=Asp+8},
+      Ra_Store++[{'mov.s',{f,12},Reg}|gen_comment(Rest,Rtn_Context)];
+
     Type ->
       Ra_Types = Types#{{z,0} => Type},
       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,N_Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} => {i,4}},sp=Ra_Pos+4},
-      Ra_Store++[{move,{i,4},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)]
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,0} => {i,4}},sp=Ra_Pos+4,a_sp=Asp+4},
+      Ra_Store++[{move,{i,4},Reg}|gen_comment(Rest,Rtn_Context)]
   end;
 
-gen_scoped([{move,{x,Ns},{z,1}}|Rest],Context=#context{sp=Sp,types=Types,reg=Rt}) ->
+gen_scoped([{move,{x,Ns},{z,1}}|Rest],Context=#context{sp=Sp,types=Types,reg=Rt,a_sp=Asp}) ->
   case {maps:get({x,Ns},Types,{0,i,32}),maps:get({z,0},Rt)} of
     % Float
     {Type={0,f,32},_Reg} when _Reg =:= {f,12} orelse _Reg =:= [{f,12},{f,13}] ->
       Ra_Types = Types#{{z,1} => Type},
       {ok,Reg,Reg_Context} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => {f,14}},sp=Sp+4},
-      [{'mov.s',{f,14},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)];
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => {f,14}},sp=Sp+4,a_sp=Asp+4},
+      [{'mov.s',{f,14},Reg}|gen_comment(Rest,Rtn_Context)];
+
     {Type={0,f,64},[{f,12},{f,13}]} ->
       Ra_Types = Types#{{z,1} => Type},
       {ok,Reg,Reg_Context} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => [{f,14},{f,15}]},sp=Sp+8},
-      [{'mov.d',{f,14},Reg},{addiu,{i,29},{i,29},-8}|gen_comment(Rest,Rtn_Context)];
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => [{f,14},{f,15}]},sp=Sp+8,a_sp=Asp+8},
+      [{'mov.d',{f,14},Reg}|gen_comment(Rest,Rtn_Context)];
+
     {Type={0,f,64},{f,12}} ->
       Ra_Types = Types#{{z,1} => Type},
       {ok,Reg,Reg_Context} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => [{f,14},{f,15}]},sp=Sp+12},
-      [{'mov.d',{f,14},Reg},{addiu,{i,29},{i,29},-12}|gen_comment(Rest,Rtn_Context)];
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => [{f,14},{f,15}]},sp=Sp+12,a_sp=Asp+12},
+      [{'mov.d',{f,14},Reg}|gen_comment(Rest,Rtn_Context)];
+
     {Type={0,f,32},_Reg} ->
       Ra_Types = Types#{{z,1} => Type},
       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => {i,5}},sp=Sp+4},
-      [{mfc1,{i,5},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)];
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => {i,5}},sp=Sp+4,a_sp=Asp+4},
+      [{mfc1,{i,5},Reg}|gen_comment(Rest,Rtn_Context)];
+
     {Type={0,f,64},_Reg} ->
       Ra_Types = Types#{{z,1} => Type},
       {ok,[R1,R2],Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => [{i,6},{i,7}]},sp=Sp+12},
-      [{mfc1,{i,6},R1},{mfc1,{i,7},R2},{addiu,{i,29},{i,29},-12}|gen_comment(Rest,Rtn_Context)];
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => [{i,6},{i,7}]},sp=Sp+12,a_sp=Asp+12},
+      [{mfc1,{i,6},R1},{mfc1,{i,7},R2}|gen_comment(Rest,Rtn_Context)];
+
     {Type,_Reg} ->
       Ra_Types = Types#{{z,1} => Type},
       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => {i,5}},sp=Sp+4},
-      [{move,{i,5},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)]
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,1} => {i,5}},sp=Sp+4,a_sp=Asp+4},
+      [{move,{i,5},Reg}|gen_comment(Rest,Rtn_Context)]
   end;
 
+gen_scoped([{move,{x,Ns},{z,2}}|Rest],Context=#context{sp=Sp,types=Types,reg=Rt,a_sp=Asp}) ->
+  case {maps:get({x,Ns},Types,{0,i,32}),maps:get({z,1},Rt)} of
+    {Type={0,f,32},_Reg} when _Reg =:= [{f,14},{f,15}] ->
+      Ra_Types = Types#{{z,2} => Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,2} => stack},sp=Sp+4,a_sp=Asp+4},
+      %% TODO: TEST
+      [{swc1,Reg,{sp,Asp}}|gen_comment(Rest,Rtn_Context)];
 
-% gen_scoped([{move,{x,Ns},{z,2}}|Rest],Context=#context{sp=Sp,types=Types,reg=Rt}) ->
-%   case {maps:get({x,Ns},Types,{0,i,32}),maps:get({z,1},Rt)} of
-%     {Type,stack} ->
-%       error({stack_arg,{z,2}});
-%     {Type={0,f,64},_Reg} when _Reg =:= {i,5} orelse _Reg =:= {f,14} ->
-%       Ra_Types = Types#{{z,3} => Type},
-%       {ok,[R1,R2],Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-%       Rtn_Context = Reg_Context#context{reg=Rt#{{z,3} => [{i,6},{i,7}]},sp=Sp+8},
-%       [{mfc1,{i,6},R1},{mfc1,{i,7},R2},{addiu,{i,29},{i,29},-8}|gen_comment(Rest,Rtn_Context)];
-%     {Type={0,f,64},_Reg} ->
-%       error({stack_arg,{z,2}});
-%     {Type={0,f,32},_Reg} ->
-%         Ra_Types = Types#{{z,3} => Type},
-%         {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-%         Rtn_Context = Reg_Context#context{reg=Rt#{{z,3} => {i,6}},sp=Sp+4},
-%         [{mfc1,{i,6},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)];
-%     {Type,_Reg} ->
-%       Ra_Types = Types#{{z,3} => Type},
-%       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-%       Rtn_Context = Reg_Context#context{reg=Rt#{{z,3} => {i,6}},sp=Sp+4},
-%       [{move,{i,6},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)]
-%   end;
-%
-%
-% gen_scoped([{move,{x,Ns},{z,3}}|Rest],Context=#context{sp=Sp,types=Types,reg=Rt}) ->
-%   case {maps:get({x,Ns},Types,{0,i,32}),maps:get({z,2},Rt)} of
-%     {Type,stack} ->
-%       error({stack_arg,{z,3});
-%     {Type={0,f,64},_Reg} ->
-%       error({stack_arg,{z,3}});
-%     {Type={0,f,32},_Reg} ->
-%         Ra_Types = Types#{{z,4} => Type},
-%         {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-%         Rtn_Context = Reg_Context#context{reg=Rt#{{z,4} => {i,7}},sp=Sp+4},
-%         [{mfc1,{i,7},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)];
-%     {Type,_Reg} ->
-%       Ra_Types = Types#{{z,4} => Type},
-%       {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
-%       Rtn_Context = Reg_Context#context{reg=Rt#{{z,4} => {i,7}},sp=Sp+4},
-%       [{move,{i,7},Reg},{addiu,{i,29},{i,29},-4}|gen_comment(Rest,Rtn_Context)]
-%   end;
+    {Type={0,f,64},_Reg} ->
+      Ra_Types = Types#{{z,2} => Type},
+      {ok,[R1,R2],Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,2} => stack},sp=Sp+8,a_sp=Asp+8},
+      %% TODO: TEST
+      [{swc1,R1,{sp,Asp}},{swc1,R2,{sp,Asp-4}}|gen_comment(Rest,Rtn_Context)];
 
+    {Type={0,f,32},_Reg} ->
+      Ra_Types = Types#{{z,2} => Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,2} => {i,6}},sp=Sp+4,a_sp=Asp+4},
+      [{mfc1,{i,6},Reg}|gen_comment(Rest,Rtn_Context)];
 
-%
-% gen_scoped([{move,{x,Ns},{z,Nd}}|Rest],Context) ->
-%   case {maps:get({x,Ns},Context#context.types),Context#context.args} of
-%     {{0,f,32},[{f,12}|_]} ->
-%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
-%       N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
-%       N_Args = [{f,14}|Src_Context#context.args],
-%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-%       [{'mov.s',{f,14},Src}|gen_comment(Rest,N_Context)];
-%     {{0,f,64},[{f,12}|_]} ->
-%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
-%       N_Reg = maps:put({z,Nd},{f,14},Src_Context#context.reg),
-%       N_Args = [{f,14}|Src_Context#context.args],
-%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-%       [{'mov.d',{f,14},Src}|gen_comment(Rest,N_Context)];
-%     {Type,[{f,12}|_]} ->
-%       {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
-%       N_Reg = maps:put({z,Nd},{i,5},Src_Context#context.reg),
-%       N_Args = [{i,5}|Src_Context#context.args],
-%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-%       [{move,{i,5},Src}|gen_comment(Rest,N_Context)];
-%     {{0,f,32},[{i,N}|_]} when 7 > N->
-%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
-%       N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
-%       N_Args = [{i,N+1}|Src_Context#context.args],
-%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-%       [{mfc1,{i,N+1},Src}|gen_comment(Rest,N_Context)];
-%     {{0,f,64},[{i,N}|_]} when 6 > N ->
-%       {ok,[S1,S2],Src_Context} = get_reg({x,Ns},{0,f,64},Context),
-%       N_Reg = maps:put({z,Nd},[{i,6},{i,7}],Src_Context#context.reg),
-%       N_Args = [[{i,6},{i,7}]|Src_Context#context.args],
-%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-%       [{mfc1,{i,6},S1},{mfc1,{i,7},S2}|gen_comment(Rest,N_Context)];
-%     {Type,[{i,N}|_]} when 7 > N ->
-%       {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
-%       N_Reg = maps:put({z,Nd},{i,N+1},Src_Context#context.reg),
-%       N_Args = [{i,N+1}|Src_Context#context.args],
-%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-%       [{move,{i,N+1},Src}|gen_comment(Rest,N_Context)];
-%     {{0,f,32},[]} ->
-%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,32},Context),
-%       N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
-%       N_Args = [{f,12}|Src_Context#context.args],
-%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-%       [{'mov.s',{f,12},Src}|gen_comment(Rest,N_Context)];
-%     {{0,f,64},[]} ->
-%       {ok,Src,Src_Context} = get_reg({x,Ns},{0,f,64},Context),
-%       N_Reg = maps:put({z,Nd},{f,12},Src_Context#context.reg),
-%       N_Args = [{f,12}|Src_Context#context.args],
-%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-%       [{'mov.d',{f,12},Src}|gen_comment(Rest,N_Context)];
-%     {Type,[]} ->
-%       {ok,Src,Src_Context} = get_reg({x,Ns},Type,Context),
-%       N_Reg = maps:put({z,Nd},{i,4},Src_Context#context.reg),
-%       N_Args = [{i,4}|Src_Context#context.args],
-%       N_Context = Src_Context#context{args=N_Args,reg=N_Reg},
-%       [{move,{i,4},Src}|gen_comment(Rest,N_Context)];
-%     _ ->
-%       % Dest is stack
-%         error({no_mips,{move,{x,Ns},{z,Nd}},stack})
-%   end;
+    {Type,_Reg} ->
+      Ra_Types = Types#{{z,2} => Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,2} => {i,6}},sp=Sp+4,a_sp=Asp+4},
+      [{move,{i,6},Reg}|gen_comment(Rest,Rtn_Context)]
+  end;
+
+gen_scoped([{move,{x,Ns},{z,3}}|Rest],Context=#context{sp=Sp,types=Types,reg=Rt,a_sp=Asp}) ->
+  case {maps:get({x,Ns},Types,{0,i,32}),maps:get({z,1},Rt)} of
+    {Type={0,f,32},_Reg} when _Reg =:= {i,6} ->
+      Ra_Types = Types#{{z,3} => Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,3} => {i,7}},sp=Sp+4,a_sp=Asp+4},
+      [{mfc1,{i,7},Reg}|gen_comment(Rest,Rtn_Context)];
+    {Type={0,f,64},_Reg} ->
+      Ra_Types = Types#{{z,3} => Type},
+      {ok,[R1,R2],Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,3} => stack},sp=Sp+8,a_sp=Asp+8},
+      %% TODO: TEST
+      [{swc1,R1,{sp,Asp}},{swc1,R2,{sp,Asp-4}}|gen_comment(Rest,Rtn_Context)];
+    {Type={0,f,32},_Reg} ->
+      Ra_Types = Types#{{z,3} => Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,3} => stack},sp=Sp+4,a_sp=Asp+4},
+      %% TODO: TEST
+      [{swc1,Reg,{sp,Asp}}|gen_comment(Rest,Rtn_Context)];
+    {Type,_Reg} ->
+      Ra_Types = Types#{{z,3} => Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,3} => {i,7}},sp=Sp+4,a_sp=Asp+4},
+      [{move,{i,7},Reg}|gen_comment(Rest,Rtn_Context)]
+  end;
+
+gen_scoped([{move,{x,Ns},{z,Nd}}|Rest],Context=#context{sp=Sp,types=Types,reg=Rt,a_sp=Asp}) ->
+  case maps:get({x,Ns},Types,{0,i,32}) of
+    Type={0,f,64} ->
+      Ra_Types = Types#{{z,3} => Type},
+      {ok,[R1,R2],Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,Nd} => stack},sp=Sp+8,a_sp=Asp+8},
+      %% TODO: TEST
+      [{swc1,R1,{sp,Asp}},{swc1,R2,{sp,Asp-4}}|gen_comment(Rest,Rtn_Context)];
+    Type={0,f,32} ->
+      Ra_Types = Types#{{z,Nd} => Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,Nd} => stack},sp=Sp+4,a_sp=Asp+4},
+      %% TODO: TEST
+      [{swc1,Reg,{sp,Asp}}|gen_comment(Rest,Rtn_Context)];
+    Type ->
+      Ra_Types = Types#{{z,Nd} => Type},
+      {ok,Reg,Reg_Context=#context{reg=Rt}} = get_reg({x,Ns},Type,Context#context{types=Ra_Types}),
+      Rtn_Context = Reg_Context#context{reg=Rt#{{z,Nd} => stack},sp=Sp+4,a_sp=Asp+4},
+      [{sw,Reg,{sp,Asp}}|gen_comment(Rest,Rtn_Context)]
+  end;
 
 gen_scoped([{move,{x,Ns},{x,Nd}}|Rest],Context) ->
   Type = maps:get({x,Ns},Context#context.types,{0,i,32}),
@@ -511,34 +485,22 @@ gen_scoped([{jump,{l,N}}|Rest],Context) ->
   [{'j',{Str_N,[maps:size(Context#context.fn)]}},nop|gen_comment(Rest,Context#context{lb_sp=Lb_Sp})];
 
 % TODO: More storing on the stack & updating return value
-gen_scoped([{call,Fn,Arity}|Rest],Context=#context{sp=Sp,ra_pos=Ra_Pos,ra_add=Ra_Add}) ->
-  % {Arg_Context,Arg_Store} = lists:foldl(fun (N, {N_Context,St}) ->
-  %     Type = maps:get({z,N},N_Context#context.types,{0,i,32}),
-  %     {ok,Reg,Reg_Context} = get_reg({z,N},Type,N_Context),
-  %     case Reg of
-  %       {f,_} ->
-  %         N_Sp = Reg_Context#context.sp + 4,
-  %         {Reg_Context#context{sp=N_Sp},St ++ [{'s.s',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]};
-  %       [{f,_N1},{f,_N2}] -> error(double);
-  %       _Reg ->
-  %         N_Sp = Reg_Context#context.sp + 4,
-  %         {Reg_Context#context{sp=N_Sp},St ++ [{'sw',Reg,{sp,0}},{addiu,{i,29},{i,29},-4}]}
-  %     end
-  %   end,{Context#context{sp=Ra_Pos+4},[]},lists:seq(Arity-1,0,-1)),
+gen_scoped([{call,Fn,Arity}|Rest],Context=#context{sp=Sp,ra_pos=Ra_Pos,ra_add=Ra_Add,a_sp=Asp}) ->
   if Ra_Pos =:= 0 ->
       Ra_Store = [{sw,{i,31},{sp,0}},{addiu,{i,29},{i,29},-4}],
       Ra_Store ++ gen_scoped([{call,Fn,Arity}|Rest],Context#context{sp=Sp+4,ra_pos=Sp,ra_add=-4});
     true ->
-      {Ra_Diff,N_Sp} = case Sp - Ra_Pos - 4 of
+      {Ra_Diff,N_Sp} = case Asp of
         N when N < 16 -> {16-N,Ra_Pos+16};
         N -> {0,Ra_Pos+N}
       end,
-      N_Fp_Jal = [{addiu,{i,30},{i,30},-N_Sp},{move,{i,29},{i,30}},{jal,Fn}],
+      N_Fp_Jal = [{asp_ref,Asp},{addiu,{i,30},{i,30},-N_Sp},{move,{i,29},{i,30}},{jal,Fn}],
       R_Fp_Ra = [{addiu,{i,30},{i,30},N_Sp},
                  {addiu,{i,29},{i,30},-Ra_Pos+4},
                  {lw,{i,31},{sp,0}},
                  {addiu,{i,29},{i,29},-Ra_Add}],
-      N_Fp_Jal ++ R_Fp_Ra ++ gen_comment(Rest,Context#context{args=[],sp=Ra_Pos-4+Ra_Add,ra_add=0,ra_pos=0})
+      N_Context = Context#context{args=[],sp=Ra_Pos-4+Ra_Add,ra_add=0,ra_pos=0,a_sp=0},
+      N_Fp_Jal ++ R_Fp_Ra ++ gen_comment(Rest,N_Context)
   end;
 
 gen_scoped([{test,Src,{l,N}}|Rest],Context) ->

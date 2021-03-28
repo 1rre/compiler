@@ -19,6 +19,11 @@ fwrite(Program,File,Debug) ->
   if File =:= standard_io -> ok;
      true -> file:close(Iostream) end.
 
+program([asp_lookahead|Program],Opts) ->
+  {ok,Asp} = find_asp(Program),
+  program([{addiu,{i,29},{i,29},-Asp}|Program],Opts);
+program([{asp_ref,_}|Program],Opts) ->
+  program(Program,Opts);
 program([],Opts) -> {ok,Opts};
 program([Directive|Program],Opts) when is_atom(Directive) ->
   {ok,New_Opts} = directive(Directive,Opts),
@@ -26,6 +31,9 @@ program([Directive|Program],Opts) when is_atom(Directive) ->
 program([Statement|Program],Opts) ->
   {ok,New_Opts} = statement(Statement,Opts),
   program(Program,New_Opts).
+
+find_asp([{asp_ref,Asp}|_]) -> {ok,Asp};
+find_asp([_|Rest]) -> find_asp(Rest).
 
 %% TODO: Change indent on different types
 
