@@ -498,33 +498,27 @@ generate({[]},State) ->
 
 %% Any other nodes of the AST are currently unsupported.
 %  Currently we raise an error, dumping the unsupported node as well as the current state.
-%% TODO: #11
-%        I need to look further into globabl variables,
-%        but it'd be very helpful to be able to differentiate them here.
-%% TODO: #2
-%        We need to add unary and postfix operators like `++` and `-`.
-%% TODO: N/A
-%        We need to support chars, strings, etc. here
-%% TODO: #5
-%        We need to support array declarations and accesses,
-%        which will be done using the `[]` operators and the `offset` token.
 generate(Other, _State) -> error({no_ir,Other}).
 
-
-% get_decl_specs({N,Raw_T,Raw_S}, [Raw_Ident], State) ->
-%   {ok, Ident, Ptr_Depth, Raw_Arr} = get_ident_specs(Raw_Ident, State),
-%   Arr = [get_constant(Elem,State) || Elem <- Raw_Arr],
-%   Type = {Arr,{N+Ptr_Depth,Raw_T,Raw_S}},
-%   Rv_Cnt = State#state.rvcnt,
-%   {ok, Mem_State, Mem_St} = allocate_mem(Type, State,{y,Rv_Cnt},[]),
-%   New_Var = maps:put(Ident,{Type,{y,Rv_Cnt}},Mem_State#state.var),
-%   New_Types = maps:put({y,Rv_Cnt},Type,Mem_State#state.typecheck),
-%   Next_State = (copy_lvcnt(State,Mem_State))#state{var=New_Var,rvcnt=Rv_Cnt+1,typecheck=New_Types},
-%   {ok,Next_State,Mem_St};
-
-
-get_decl_specs({struct,Members},[{Raw_Ident,{'=',_},Raw_St}],State)->
-  error(struct);
+get_decl_specs(Struct={struct,Members},[{Raw_Ident,{'=',_},Raw_St}],State=#state{rvcnt=Rv_Cnt,lvcnt=Lv_Cnt,var=Var,sizeof=Sz,typecheck=Types}) ->
+  {ok, Ident, Ptr_Depth, []} = get_ident_specs(Raw_Ident, State),
+  if
+    Ptr_Depth =:= 0 ->
+      Size = sizeof(Struct,State),
+      {A_St,A_State=#state{var=Var_1}} = lists:foldl(fun
+        (N,{Al_St,Al_State=#state{rvcnt=N_Reg,var=A_Var}}) ->
+          {Name,Type} = lists:nth(N,Members),
+          Init = try lists:nth(N,Raw_St) catch _:_ -> [] end,
+          {ok,Mem_State,Mem_St} = allocate_mem(Type,Al_State,{y,N_Reg},Init),
+          {Al_St++Mem_St++[{move,{x,Lv_Cnt},{y,N_Reg}}],Mem_State#state{var=A_Var#{{Ident,Name}=>{Type,{y,N_Reg}}},rvcnt=N_Reg+1}}
+      end,{[{allocate,0},{cast,{y,Rv_Cnt},{0,n,Size}}],State#state{rvcnt=Rv_Cnt+1}},lists:seq(1,length(Members))),
+      N_State = A_State#state{var=Var_1#{Ident => {Struct,{y,Rv_Cnt}}}},
+      {ok,N_State,A_St};
+    true ->
+      Alloc = [{allocate,32}],
+      N_State = State#state{rvcnt=Rv_Cnt+1,var=Var#{Ident => {{Ptr_Depth,Struct},{y,Rv_Cnt}}},
+                            typecheck=Types#{{y,Rv_Cnt}=>{Ptr_Depth,Struct}},sizeof=Sz#{{y,Rv_Cnt}=>32}}
+  end;
 
 get_decl_specs(Struct={struct,Members},[Raw_Ident],State=#state{rvcnt=Rv_Cnt,var=Var,sizeof=Sz,typecheck=Types})->
   %% Concept: Allocate 0 & tie to struct var name then allocate for each member?
