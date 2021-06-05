@@ -1,7 +1,5 @@
 = C Compiler
 
-image::https://i.imgur.com/tWyI3s5.png[e]
-
 == Compiling from source
 run `make bin/c_compiler`
 
