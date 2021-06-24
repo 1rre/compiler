@@ -70,7 +70,6 @@ The percentage of tests passed is printed at the end of testing.
 |`{store,<rs>,<rd>}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register)
 |`{test,<ra>,<lb>}` | Branch to `lb` (label) if the value in `ra` is 0
 |`{<op>,[<ra>,<rb>],<rd>}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
-|`{test_heap,<size>,<rd>}` | Allocate `size` (integer) bits on the heap & stores the address in rd.
 |===
 
 === Arguments
