@@ -34,3 +34,56 @@ This prints the state of the stack & registers, next instruction to be executed 
 A test script, `test.sh`, has been included which will run any tests 1 subdirectory deep in the `compiler_tests` folder.
 An indication is given as to whether the test passed or failed, and if it failed a reason is given.
 The percentage of tests passed is printed at the end of testing.
+
+== IR Syntax
+
+=== Global Statements
+[%header,cols="3,5"]
+|===
+|Syntax | Usage
+|`{function,<type>,<name>,<args>,<st>}` | Define a function `name` (identifier) with return type `type`, args `args` (list of types), defining it as `st` (scoped statement list).
+|`{global,<type>,<name>,<data>}` | Declare a global variable `name` (identifier) with type `type` & initialise it to `data` (either `local` or `data` statement).
+|===
+
+=== Data Statements
+[%header,cols="3,5"]
+|===
+|Syntax | Usage
+|`{data,<type>,<init>}` | Initialises a static space in the program data at compile time for `type` & initialises that space to `init` (in the form `reference level`, `type`, `width`)
+|`{local,<data>}` | Declare a subsection of an array (as stated in an initialiser list) & initialise it to `data` (data statement list).
+|===
+
+=== Scoped Statements
+[%header,cols="3,5"]
+|===
+|Syntax | Usage
+|`{address,<rs>,<rd>}` | Finds the memory location of the object in `rs` (register or stack) & stores a pointer to it in `rd` (register)
+|`{allocate,<n>}` | Allocate `n` (integer) bits on the stack
+|`{call,<fn>,<ar>,<ra>}` | Call `fn` (function) with `ar` (integer) arguments contiguous from `ra` (stack)
+|`{cast,<ra>,<type>}` | Advises the compiler of a variable's `type` (in the form `reference level`, `type`, `width`) of a variable which would otherwise be incorrectly inferred, such as `char c = 5l;` -> `[{move,{i,5},<rd>}, {cast,<rd>,{0,i,8>}]`
+|`{gc,<n>}` | Trim the local stack to `n` (integer) items & delete any associated data in the heap.
+|`{jump,<lb>}` | Unconditionally jump to `lb` (label)
+|`{label,<lb>}` | Create `lb` (label) which can be jumped to using `test`
+|`{load,<rs>,<rd>}` | Finds the memory location pointed to by `rs` (register or stack) & stores the value in `rd` (register)
+|`{move,<data>,<rd>}` | Copy the value of `data` (register, stack or immediate) to `rd` (register or stack)
+|`return` | Return the value in register 0 to the calling function (this is fine for all functions as return value of void functions is undefined)
+|`{store,<rs>,<rd>}` | Stores the value in `rs` (register) in the memory location pointed to by `rd` (register)
+|`{test,<ra>,<lb>}` | Branch to `lb` (label) if the value in `ra` is 0
+|`{<op>,[<ra>,<rb>],<rd>}` | Perform the operation specified in `op` (BIF) on `ra` (register) and `rb` (register), storing the result in `rd` (register)
+|`{test_heap,<size>,<rd>}` | Allocate `size` (integer) bits on the heap & stores the address in rd.
+|===
+
+=== Arguments
+[%header,cols="3,5"]
+|===
+|Argument | Meaning
+|`{x,<n>}` | Register `n` (integer), given an infinite register system
+|`{y,<n>}` | The ``n``th (integer) item on the current function's part of the stack, which is mapped to an address
+|`{z,<n>}` | The ``n``th argument to a function
+|`{i,<n>}` | A literal with value `n` (integer).
+|`{g,<str>}` | A global variable with name `str` (string). (subject to change as it hasn't yet been implemented)
+|`{f,<N>}` | A literal with value `n` (float)
+|`{l,<N>}` | The label `n` (integer), numbering is global, however only labels within the same function are valid.
+|`{<p>,<t>,<s>}` | A type with "reference level" `p` (integer), ie how many levels of dereferencing would be required to get the actual object, type `t` (char: `f` for float, `i` for int and `n` for void, which is only used internally), and width `s` (integer), which refers to the width of type `t` rather than any memory address.
+|===
+
